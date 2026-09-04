@@ -41,6 +41,13 @@
   --verdigris: #1e6b63;
   --verdigris-wash: #e4eeec;  /* selected rows, active nav background */
 
+  /* Derived, not a new color in the palette: the primary button's pressed and
+   * hovered fill, mixed from two colors that are already in §3. Hover states on
+   * secondary and tertiary buttons and on table rows use --verdigris-wash at 40%
+   * instead, which Tailwind expresses as `bg-verdigris-wash/40` and needs no
+   * token of its own. */
+  --verdigris-deep: color-mix(in srgb, var(--verdigris) 88%, var(--ink));
+
   /* Status only. Never decorative. */
   --live: #2e7d5b;
   --stale: #a8721c;
@@ -147,6 +154,7 @@
   --color-rule-firm: var(--rule-firm);
   --color-verdigris: var(--verdigris);
   --color-verdigris-wash: var(--verdigris-wash);
+  --color-verdigris-deep: var(--verdigris-deep);
   --color-live: var(--live);
   --color-stale: var(--stale);
   --color-offline: var(--offline);
