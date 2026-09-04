@@ -14,6 +14,12 @@ board document is a single `jsonb` column rather than a `board_widgets` table;
 bundle invalidation is org-wide by design. §10 is the one section to read before
 touching anything about rebuilds.
 
+Three further decisions have since been recorded: asset URLs are media-proxy
+paths and never signed URLs (§6); referential integrity from the board document
+is deliberately not enforced, with soft delete and a renderer placeholder
+instead (§5); and the CLAUDE.md rules this schema contradicted have been amended,
+so that question is closed rather than tracked.
+
 ---
 
 ## 1. Conventions
@@ -39,9 +45,9 @@ These hold for every table unless the table's own section says otherwise.
   `set_updated_at()` trigger.
 - **Dates that are calendar dates** (a birth date, a zmanim cache date) are
   `date`. They are not instants and must not become `timestamptz`.
-- **Soft delete** (`deleted_at timestamptz null`) only on `orgs`, `boards`,
-  `assets`, and `people` — the four things a user will ask you to undo. See open
-  question 10.
+- **Soft delete** (`deleted_at timestamptz null`) on `orgs`, `boards`, `assets`,
+  `albums`, and `people` — the things a user will ask you to undo, plus the two
+  that board documents reference without a foreign key (§5). See open question 8.
 - **Text, not varchar.** No length limits in the type; use check constraints
   where a real limit exists.
 - **Money and counts** are `integer` or `bigint`. No `float` anywhere.
@@ -78,7 +84,7 @@ where it will churn.
 
 **Not an enum:** the canonical zman IDs (`alos_72`, `netz`, `sof_zman_shma_gra`,
 …). Seventeen values that will grow, referenced from jsonb in three places. See
-open question 8.
+open question 6.
 
 **Also not an enum:** widget type. Adding widget #26 must mean creating one folder
 and nothing else (plan §5), and an enum would make it a migration.
@@ -108,7 +114,7 @@ The tenant. Its own `id` is the `org_id` every other table points at.
 | `hebrew_prefs` | jsonb not null default `'{}'` | Script vs transliteration, gematria, nekudos, sunset rollover, 12/24h. Org default; screens override. |
 | `theme` | jsonb not null default `'{}'` | Org design tokens (plan §4d) — palette, font pairing, spacing, radius. |
 | `plan` | text not null default `'free'` | Placeholder until Stripe (P8). |
-| `screen_limit` | integer null | Null = unlimited. See open question 4. |
+| `screen_limit` | integer null | Null = unlimited. See open question 3. |
 | `created_by` | uuid null → `auth.users(id)` | |
 | `created_at` / `updated_at` | timestamptz not null | |
 | `deleted_at` | timestamptz null | Owner-only soft delete. |
@@ -176,7 +182,7 @@ makes these policies terminate. Anyone "cleaning up" the helpers by dropping
 `security definer` will take the whole app down.
 
 A second trap: an `admin` can currently promote themselves to `owner`, since the
-update policy only checks rank. See open question 11.
+update policy only checks rank — a trigger now blocks it; see open question 9.
 
 ### org_invites
 
@@ -226,8 +232,9 @@ the lookup, and a policy permissive enough to allow it would let anyone read eve
 invite in the product. Acceptance is therefore a server route holding the service
 role: it validates the token, checks `expires_at`, `accepted_at` and `revoked_at`,
 inserts the `org_members` row and stamps `accepted_at`, all in one transaction.
-This is the same pattern as the bundle route, and it is the second of four places
-the service role legitimately appears — see open question 1.
+This is the same pattern as the bundle route. CLAUDE.md's rule is that the
+service role appears only in server-only code — code importing `server-only`,
+never a client component and never `app/s/` — which this route satisfies.
 
 ---
 
@@ -359,8 +366,8 @@ The join between a playlist and a board, carrying order and schedule.
 `on delete restrict` on `board_id` is intentional: deleting a board that is
 scheduled on a live screen should fail loudly and name the playlist holding it,
 rather than silently emptying a rotation. Note that this is now the *only*
-referential protection a board gets — see open question 14 for what the move to a
-jsonb document costs on the asset and album side.
+referential protection a board gets; the asset and album side is deliberately
+unenforced, and §5 records that decision.
 
 **RLS** — select for members, all writes for `editor`.
 
@@ -416,7 +423,7 @@ table.
 `schema_version` is present from the first write. Without a column-level DDL step
 to hang a migration on, changing the document's shape later is a data migration
 over jsonb, and an unversioned document makes that guesswork. See open question
-16.
+13.
 
 **Positions are percentages, and nothing in the database enforces it.**
 
@@ -478,6 +485,36 @@ load is a single primary-key lookup with one function call, not a scan of a
 widgets table under a per-row policy. The table that was the second-biggest RLS
 performance risk in the first draft is no longer a risk at all.
 
+### Referential integrity from `doc` — decided
+
+**Decided: not enforced.** Asset and album ids live inside `doc` as plain jsonb
+values. There is no foreign key, nothing cascades, and nothing blocks deleting an
+album that three boards render. Three things make that safe enough:
+
+1. **`assets` and `albums` both carry `deleted_at`.** Deleting either from the
+   dashboard is a soft delete, so the row — and the storage object behind it —
+   survives the dangling reference. A board pointing at a soft-deleted album is
+   pointing at something that still exists and can be restored, not at a hole.
+2. **The renderer shows a defined placeholder** for a reference that is missing,
+   soft-deleted, or not yet processed. Specified, not incidental: a missing photo
+   on a lobby screen has to look deliberate rather than broken, because the
+   alternative is a gabbai calling to say the screen is failing. Both halves of
+   the shared renderer get this for free, which is the whole point of not forking
+   it.
+3. **The delete dialog warns but does not block.** Before deleting an album or an
+   asset it queries the GIN index on `boards.doc` for boards that reference it and
+   names them — "Kiddush photos is on 2 boards: Weekday board, Shabbos board" —
+   and then lets the user proceed. Warning rather than blocking is the deliberate
+   half: a hard block turns a stale reference on a forgotten board into an
+   unfixable delete, and the person deleting the album usually knows better than
+   the constraint does whether it still matters.
+
+What this gives up is the database's guarantee. The check runs in the dialog, so a
+delete issued anywhere else — a script, a direct SQL session, a future bulk tool —
+produces a dangling reference with no warning at all. That is an accepted cost,
+and the placeholder in point 2 is what makes it survivable rather than a broken
+screen.
+
 ---
 
 ## 6. Media
@@ -529,6 +566,50 @@ index and the processing state machine.
 of `name` being an org the user belongs to. Getting one right and forgetting the
 other is the most common way a multi-tenant Supabase app leaks files.
 
+### Asset URLs and the media proxy — decided
+
+**Decided: a media proxy. Bundles never contain signed URLs, ever.** They contain
+stable proxy paths:
+
+```
+/m/<asset_id>/<variant>-<hash>.<ext>
+```
+
+Variants are immutable. A given `(asset_id, variant, hash)` names one byte
+sequence for all time, so the proxy serves them with:
+
+```
+Cache-Control: public, max-age=31536000, immutable
+```
+
+Re-processing an asset changes the hash and therefore the path, so a new
+derivative is a cache miss rather than a stale hit. There is no invalidation step
+and no purge to forget.
+
+**Why not signed URLs.** A signature carries an expiry, and §9 stores the built
+bundle as a row. A signed URL is therefore frozen into a saved payload at build
+time: a bundle built on Monday with a 24-hour signature is serving dead image
+links on Wednesday even to a screen that is perfectly online, because the content
+hash hasn't changed and nothing triggers a rebuild. The screen would show broken
+images while every part of the system reported healthy. Proxy paths don't expire,
+so a bundle stays valid exactly as long as its content does.
+
+**The trade-off, stated plainly.** A CDN-cached object is not re-authorized per
+request. Once `/m/<asset_id>/display-a3f9.webp` is in an edge cache, anyone
+holding that URL can fetch it without presenting a session, and revoking access to
+an asset does not evict what the CDN already has. This is therefore **equivalent
+in privacy to a public bucket with unguessable paths** — the `asset_id` and the
+hash are the only secret, and the security property is that they are unguessable,
+not that each request is checked.
+
+For this content that is acceptable: these are photos a shul deliberately put on a
+screen in its own lobby. It would not be acceptable for anything in `people`, and
+nothing from `people` is ever served through this path — the proxy resolves
+`asset_id` against `assets` and serves nothing else.
+
+The proxy route is server-only and holds the service role. Authorization happens
+once, at the proxy, when the object is first fetched — not per CDN hit.
+
 ### albums
 
 | Column | Type | Notes |
@@ -545,12 +626,13 @@ other is the most common way a multi-tenant Supabase app leaks files.
 | `share_expires_at` | timestamptz null | |
 | `moderation_required` | boolean not null default true | If the share link is on, this should not be off by default. |
 | `created_at` / `updated_at` | timestamptz not null | |
+| `deleted_at` | timestamptz null | Soft delete, so a board document referencing this album keeps pointing at something restorable rather than at a hole. See §5. |
 
 **Keys and indexes**
 
 - pk `(id)`, unique `(id, org_id)`
 - unique `(share_token)` partial, where not null
-- index `(org_id)`
+- index `(org_id)` where `deleted_at is null`
 
 **RLS** — select for members, all writes for `editor`.
 
@@ -640,7 +722,7 @@ cannot be indexed usefully for "everyone in the next 60 days".
 
 **No materialized occurrence rows.** The 60-day lookahead is computed at bundle
 build time from the Hebrew month and day via `@hebcal/core` and the Hebcal
-anniversary API. See open question 6.
+anniversary API. See open question 4.
 
 **RLS**
 
@@ -687,7 +769,7 @@ name; the interface does not.
 ### schedules
 
 Davening times and shiurim. One row per recurring item ("Shacharis, weekdays,
-7:00"), not one row per named schedule. See open question 7.
+7:00"), not one row per named schedule. See open question 5.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -820,7 +902,7 @@ call Google inline.
 Recurring events are stored **expanded into instances** within the sync window
 (Google's `singleEvents=true`), not as masters plus rules. The bundle needs a flat
 30-day list and nothing in the product needs to edit a series. See open question
-15 for what that costs.
+16 for what that costs.
 
 **RLS**
 
@@ -843,8 +925,9 @@ lobby screen that never existed in the shul's calendar.
 is the entire point: twenty Crown Heights shuls resolve to the same `location_id`,
 so one API call and one row serves all of them (plan §5c). Adding `org_id` here
 would multiply MyZmanim's per-location billing by the number of customers in a
-neighborhood. Confirmed correct as proposed; the only follow-up is amending the
-CLAUDE.md rule that this table contradicts (open question 1).
+neighborhood. Confirmed correct as proposed, and CLAUDE.md now says so directly:
+the tenant-table rule names this table as a deliberate exception and tells the
+next reader not to "fix" it.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -1096,7 +1179,7 @@ repeatedly enqueues its full screen count each time, and rebuilds are the
 expensive operation because each one resolves 90 days of zmanim and 60 days of
 anniversaries. If that ever becomes a problem, the fix is worker concurrency
 limits and per-screen rate limiting on rebuilds, not narrowing what gets
-invalidated. Open question 17 tracks it.
+invalidated. Open question 14 tracks it.
 
 ---
 
@@ -1143,7 +1226,7 @@ the most sensitive thing it records. No write policies at all — rows are writt
 also means no client can delete or edit an audit row, which is most of what makes
 it an audit log rather than a changelog.
 
-Open question 18 covers what gets logged and for how long.
+Open question 15 covers what gets logged and for how long.
 
 ---
 
@@ -1222,9 +1305,20 @@ anything writes outside the app.
 
 ## 13. Policy strategy
 
-**Deny by default, everywhere.** Enable and force RLS on every table in `public`,
-in the same migration that creates the table (CLAUDE.md). A table with RLS enabled
-and no policy denies everything, which is the correct starting state.
+**Deny by default, everywhere.** Enable RLS on every table in `public`, in the
+same migration that creates the table (CLAUDE.md). A table with RLS enabled and no
+policy denies everything, which is the correct starting state.
+
+**Enabled, not forced.** `FORCE ROW LEVEL SECURITY` makes the table owner subject
+to RLS as well, and that breaks this schema rather than hardening it. The helper
+functions are `SECURITY DEFINER` and run as the owner precisely so they can read
+`org_members` without tripping the policy that calls them; forcing RLS puts that
+read back under the policy and reintroduces the recursion the definer exists to
+break. `request_org_rebuild()` has the same shape — it updates `screens` on behalf
+of an editor who has no write access to `screens`. Nothing in this product
+connects to Postgres as the table owner: PostgREST connects as `anon` or
+`authenticated`, and `service_role` bypasses RLS by design. So FORCE would buy no
+security here and would cost correctness.
 `screen_bundles`, `screen_heartbeats`, `calendar_events`, `audit_log` and
 `zmanim_cache` stay in that state for writes permanently — all five are written
 only by trusted server code holding the service role.
@@ -1300,7 +1394,7 @@ is sixty times smaller. What remains:
 3. **`audit_log` is now the largest table.** It grows without bound, and an
    org-wide activity feed scans it under a per-row function call. The
    `(org_id, created_at desc)` index makes the common query a bounded scan;
-   retention (open question 18) is what keeps it that way.
+   retention (open question 15) is what keeps it that way.
 4. **`calendar_events` for an org syncing several busy calendars** is the other
    table where row counts get real. The partial index on
    `(org_id, starts_at) where status <> 'cancelled'` is what the builder's 30-day
@@ -1314,7 +1408,7 @@ is sixty times smaller. What remains:
    application query must remember `where deleted_at is null`. One that forgets
    shows deleted rows to users. Folding `deleted_at is null` into the select policy
    fixes it, but then nothing can ever read a deleted row to restore it. Open
-   question 10.
+   question 8.
 7. **`zmanim_cache`'s select policy is the cheap one and should stay that way.**
    The 90-day bundle read is a primary-key range scan; adding an ownership join
    would put a correlated subquery on the hottest read path in the product.
@@ -1325,29 +1419,13 @@ is sixty times smaller. What remains:
 
 Decided since the first draft and therefore removed: the board document as jsonb
 versus a widgets table; `has_org_role_at_least` ranking semantics; whether
-`zmanim_cache` is tenant-scoped; how bundles are stored and invalidated; and the
-four tables now specified above. Ordered roughly by how expensive they are to get
-wrong.
+`zmanim_cache` is tenant-scoped; how bundles are stored and invalidated; the four
+tables now specified above; asset URLs (§6, a media proxy); referential integrity
+from the board document (§5, deliberately unenforced); and the CLAUDE.md wording
+this schema contradicted, now amended. Ordered roughly by how expensive they are
+to get wrong.
 
-**1. CLAUDE.md now contradicts this schema in two places and should be amended
-before the first migration.**
-   - *"Every table has `org_id` and an RLS policy."* `zmanim_cache` is confirmed
-     shared with no `org_id`, so the rule needs to read "every *tenant* table has
-     `org_id` and an RLS policy; shared reference and cache tables have RLS with no
-     write policy." Left as-is, the next person to read it will helpfully add an
-     `org_id` to the cache and multiply the MyZmanim bill.
-   - *"The service-role key never appears in a client component or in `app/s/`"*
-     is right, but the accompanying claim that the bundle route is "the ONLY place
-     the service-role key is used" is now false four times over: the bundle route
-     reads, the build worker writes `screen_bundles`, the heartbeat route upserts
-     telemetry, the invite-accept route creates the first membership row, and the
-     share-link upload route writes assets. All five are server-only and none is
-     reachable from a client component, so the *security* rule holds; the
-     *inventory* doesn't. Reword it to enumerate the trusted server surfaces, so
-     that adding a sixth is a deliberate act rather than a rule already known to
-     be inaccurate.
-
-**2. Screen tokens are stored in plaintext, with no rotation grace period.** They
+**1. Screen tokens are stored in plaintext, with no rotation grace period.** They
 have to be displayable — the gabbai copies the URL onto a TV — so a one-way hash
 doesn't work without keeping the plaintext anyway. The consequence is that a
 database read hands an attacker every screen URL in the product, and those URLs
@@ -1357,31 +1435,18 @@ blacks out the TV until someone walks over and retypes the URL; a `screen_tokens
 child table with `revoked_at` would allow overlapping validity. Worth doing if
 tokens are ever rotated in practice.
 
-**3. Tables the plan still requires that this pass doesn't cover.** Each needs the
+**2. Tables the plan still requires that this pass doesn't cover.** Each needs the
 same `org_id` + RLS treatment: `polls` and `poll_votes`, `message_board_posts`
 (P7, and the moderation queue is not optional), `subscriptions` / billing state
 (P8, see question 4), and a token-use log for the rate limiting plan §8 asks for.
 
-**4. Per-screen or per-org pricing is still open (plan §10.5) and it shapes this
+**3. Per-screen or per-org pricing is still open (plan §10.5) and it shapes this
 schema.** A nullable `screen_limit` on `orgs` is a placeholder. If pricing is
 per-screen, screens need their own billing state — active, suspended, trialing —
 and a suspended screen must degrade to a "contact the shul office" board rather
 than going black, which is a display-behavior question as much as a schema one.
 
-**5. Asset URLs versus offline screens, now sharper.** Signed Storage URLs expire,
-and a screen may be offline for days while rendering from its cached bundle (plan
-§3b–3c). With `screen_bundles`, those URLs are *frozen into a stored payload at
-build time* — a bundle built on Monday with a 24-hour signature is serving dead
-image links on Wednesday even to screens that are perfectly online, because the
-hash hasn't changed and nothing triggers a rebuild. Three options: a public bucket
-with unguessable paths (simple, but a shul's photos of children become publicly
-fetchable), signed URLs with a TTL comfortably longer than the rebuild cadence
-plus the maximum tolerable offline window, or a token-scoped media proxy route
-that keeps bundle URLs stable and does authorization at fetch time. The third is
-the only one that doesn't put an expiry clock inside a cached artifact. Needs
-deciding before P5, and it is a privacy decision as much as a technical one.
-
-**6. Hebrew date occurrences: computed or materialized.** Month is stored as text
+**4. Hebrew date occurrences: computed or materialized.** Month is stored as text
 with explicit `adar_i` / `adar_ii` because numeric months are ambiguous across
 leap years, and anniversary occurrences are deliberately not materialized. If
 bundle build time makes computing 60 days of yahrzeits per screen too slow — and
@@ -1391,13 +1456,13 @@ out via the Hebcal anniversary API is the fix. The caveat is that it must be
 regenerated whenever a date is corrected, and a stale occurrence row is a yahrzeit
 announced on the wrong day, which is the single worst bug this product can have.
 
-**7. `schedules` is flat; it may want to be two tables.** One row per item matches
+**5. `schedules` is flat; it may want to be two tables.** One row per item matches
 how the Davening Hours widget reads. But shuls think in named schedules — "summer
 weekday", "Shabbos" — and a container plus `schedule_items` would let a whole
 seasonal set be swapped by changing one `effective_from` rather than editing twenty
 rows. Revisit at P4 when real davening data exists.
 
-**8. The canonical zman IDs have no home in the database.** They appear as
+**6. The canonical zman IDs have no home in the database.** They appear as
 `schedules.zman_id`, as keys inside `zmanim_cache.times`, and inside widget
 `config` in `boards.doc`. Three uncoordinated string vocabularies is how
 `tzeis_3_stars` becomes `tzeis_3stars` in one of them. Either a `zman_ids` lookup
@@ -1406,33 +1471,37 @@ widget layer is the source of truth and add no constraint at all. Half-enforcing
 it is the worst option — and note that moving the board document to jsonb removed
 the one place a foreign key could have helped.
 
-**9. Fractional `numeric` ordering has a known failure mode.** Repeatedly
+**7. Fractional `numeric` ordering has a known failure mode.** Repeatedly
 inserting between two adjacent items halves the gap and eventually exhausts
 precision. A playlist has under twenty items so this never happens in practice,
 but flagging it so the choice is deliberate rather than accidental.
 
-**10. Soft delete is inconsistent by design and that's a risk.** Four tables have
+**8. Soft delete is inconsistent by design and that's a risk.** Five tables have
 `deleted_at`; the rest don't. Every query against those four must remember the
 filter and RLS won't remind anyone. Folding `deleted_at is null` into the select
 policy makes forgetting impossible but also makes restore impossible without the
 service role. My inclination is to fold it in and do restores through a server
 route, but it's a real trade.
 
-**11. Nothing prevents privilege escalation within `org_members` yet.** As
-written, an `admin` can update their own row to `owner`, and an `admin` can demote
-the last `owner`. Both need trigger enforcement: only owners may grant `owner`,
-nobody may change their own role, and an org must always retain at least one owner.
-These are constraints RLS cannot express, and they are easy to leave for "later"
-and never write. `org_invites` already restricts `role <> 'owner'`, which closes
-the invite path but not the direct-update one.
+**9. Ownership transfer has no flow, though the escalation holes are
+now closed.** The migration adds a `before insert or update or delete` trigger on
+`org_members` enforcing three things RLS cannot express: only an `owner` may grant
+the `owner` role, nobody may change their own role, and an org must always retain
+at least one owner. `org_invites` already restricts `role <> 'owner'`, so the
+invite path was never open. What is still missing is the deliberate act those
+guards now force to exist: an owner handing ownership to someone else, which needs
+a two-step flow (grant, then optionally step down) rather than a single update, and
+a decision about whether an org may have more than one owner at a time. The
+triggers make the wrong thing impossible; they don't make the right thing
+reachable.
 
-**12. There's no notion of an active org.** A user may belong to several, every
+**10. There's no notion of an active org.** A user may belong to several, every
 policy is org-scoped, and the app carries an org id in every query. That's normal,
 but it means org switching lives entirely in application state and a bug there
 shows one shul's data under another shul's name. A `user_preferences(user_id,
 last_org_id)` table would at least make the default deterministic across devices.
 
-**13. Shared infrastructure with the yeshiva system (plan §10.6) is unresolved and
+**11. Shared infrastructure with the yeshiva system (plan §10.6) is unresolved and
 this schema assumes "separate".** `orgs`, `org_members`, `org_invites` and both
 helper functions are exactly the layer that would be shared. If the answer is
 "shared", they belong in a common schema with the product tables referencing
@@ -1440,18 +1509,7 @@ across, and that is very hard to retrofit once both products have their own `org
 table with different columns. The cheapest question here to answer now and one of
 the most expensive to answer late.
 
-**14. `boards.doc` has no referential integrity, and that is new.** Asset and album
-ids live inside the document, so nothing stops deleting an album that three boards
-render. `playlist_items.board_id` still protects boards from deletion via
-`on delete restrict`, but assets and albums lost their equivalent when the widgets
-table went away. Two workable answers: query the GIN index before allowing an
-album or asset delete and refuse with a list of boards, or accept dangling
-references and have the widget renderer show a defined placeholder. The second is
-more honest about the failure mode and needs the placeholder specified — a missing
-photo on a lobby screen should look deliberate, not broken. Either way, decide it
-in P1 rather than discovering it in P5.
-
-**15. Whole-document writes make concurrency coarser and amplify writes.**
+**12. Whole-document writes make concurrency coarser and amplify writes.**
 `doc_version` optimistic concurrency now guards the entire board: two people
 editing different widgets on the same board conflict, where per-row storage would
 have let them through. More practically, a 1s-debounced autosave rewrites and
@@ -1461,14 +1519,14 @@ single-user in practice and boards are small — but a maximum widget count and 
 maximum document size should be picked in P1 and enforced in the zod schema, so
 the ceiling is a validation error rather than a performance mystery.
 
-**16. Document schema versioning needs an upgrade-on-read path.** `schema_version`
+**13. Document schema versioning needs an upgrade-on-read path.** `schema_version`
 is in the document from the first write, but nothing yet says what happens when
 the shape changes: whether `parseBoardDoc()` migrates old versions on read and
 rewrites lazily on next save, or whether a batch job rewrites every board. Lazy
 migration is usually right and means the renderer must handle every historical
 version it might meet, which is a maintenance cost worth accepting knowingly.
 
-**17. Rebuild queue behavior at scale — not the invalidation, the worker.** §10 is
+**14. Rebuild queue behavior at scale — not the invalidation, the worker.** §10 is
 settled and deliberately over-eager. What is not specified is what happens when a
 large org edits content in a tight loop: each write flags every screen, and each
 rebuild resolves 90 days of zmanim and 60 days of anniversaries. The likely answer
@@ -1477,14 +1535,14 @@ screen, both of which preserve correctness because the flag is a timestamp that
 survives until a build clears it. Explicitly *not* a licence to narrow what gets
 invalidated.
 
-**18. What the audit log records, and for how long.** Every table or a subset;
+**15. What the audit log records, and for how long.** Every table or a subset;
 `changed` diffs on every update or only on the tables a shul would ask about;
 retention, given that the log inherits the sensitivity of `people`. Unbounded
 growth also makes it the largest table in the schema now that heartbeats are
 bucketed. A year of retention with the diff omitted for high-churn tables is a
 reasonable starting point, but it should be a decision rather than a default.
 
-**19. Recurring calendar events are stored expanded, which has a horizon.**
+**16. Recurring calendar events are stored expanded, which has a horizon.**
 Instances exist only as far ahead as the sync window, so a bundle asking for 30
 days needs the sync to stay comfortably ahead of that. Two consequences to
 confirm: what happens to a series edited retroactively — expanded instances must
