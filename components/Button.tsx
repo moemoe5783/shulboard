@@ -24,9 +24,13 @@ const BASE =
 const VARIANTS: Record<ButtonVariant, string> = {
   // White text on the accent. --surface is the palette's white; there is no
   // separate on-accent token because there is no second white.
+  // Disabled keeps the accent and drops its opacity, the same move the secondary
+  // makes when its border goes from --rule-firm to --rule: the same button, in an
+  // unavailable state. A solid grey fill read as heavier than a live secondary,
+  // which inverted the hierarchy.
   primary:
     "bg-verdigris text-surface px-3 enabled:hover:bg-verdigris-deep " +
-    "disabled:bg-ink-faint disabled:text-surface",
+    "disabled:bg-verdigris/40",
   secondary:
     "border-rule-firm text-ink border bg-transparent px-3 " +
     "enabled:hover:bg-verdigris-wash/40 disabled:border-rule disabled:text-ink-faint",

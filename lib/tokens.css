@@ -120,6 +120,13 @@
 
   --focus-width: 2px;
   --focus-offset: 2px;
+
+  /* The only shadow in the product. Shadows exist for things that genuinely
+   * float — menus, popovers, modals, the drag ghost in the editor — and nothing
+   * in normal document flow may use this. Named --elevation-* rather than
+   * --shadow-* because --shadow-* is Tailwind's namespace, and a theme entry
+   * pointing at a :root variable of its own name is circular. */
+  --elevation-menu: 0 4px 12px rgba(27, 42, 46, 0.12);
 }
 
 /*
@@ -199,6 +206,8 @@
 
   --radius-control: var(--corner-control);
   --radius-panel: var(--corner-panel);
+
+  --shadow-menu: var(--elevation-menu);
 
   /* Drives the whole spacing scale: p-1 is 4px, p-2 is 8px, p-4 is 16px. */
   --spacing: var(--unit);

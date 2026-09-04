@@ -186,7 +186,8 @@ export default function PrimitivesPage() {
   return (
     <div className="bg-paper font-ui flex min-h-screen">
       <NavRail
-        orgName="Beis Menachem"
+        orgs={[{ id: "demo", name: "Beis Menachem" }]}
+        activeOrgId="demo"
         items={NAV_ITEMS}
         footerItems={NAV_FOOTER}
         activeId="screens"
