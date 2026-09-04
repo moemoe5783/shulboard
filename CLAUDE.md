@@ -22,9 +22,12 @@ Visual spec: @docs/design.md
   it. If it renders differently in the two places, that's a bug.
 - No raw hex, rgb, or Tailwind color classes anywhere outside `lib/tokens.css`.
   Use the CSS variables.
-- Every table has `org_id` and an RLS policy. Write the policy in the same
-  migration as the table, never later.
-- The service-role key never appears in a client component or in `app/s/`.
+- Every tenant table has `org_id` and an RLS policy, written in the same
+  migration as the table. `zmanim_cache` is deliberately shared across orgs and
+  has no `org_id` — this is correct, do not "fix" it.
+- The service-role key is used only in server-only code. It never appears in a
+  client component, in `app/s/`, or in any file that doesn't import
+  `server-only`.
 - Positions in board documents are stored as percentages, never pixels.
 - `font-variant-numeric: tabular-nums` on every time, date, and count.
 
