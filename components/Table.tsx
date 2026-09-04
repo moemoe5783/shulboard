@@ -69,6 +69,27 @@ export function Table<Row>({
 }: TableProps<Row>) {
   const interactive = Boolean(onRowClick);
 
+  // A header rule over blank space is exactly the thing an empty state replaces,
+  // so when there is nothing to list the column headers do not render either.
+  if (rows.length === 0) {
+    return (
+      <table className="w-full border-collapse">
+        <caption className="sr-only">{caption}</caption>
+        <tbody>
+          <tr>
+            <td colSpan={columns.length} className="px-5 py-8">
+              <h3 className="text-heading">{empty.title}</h3>
+              <p className="text-body text-ink-soft mt-1 max-w-prose">
+                {empty.description}
+              </p>
+              {empty.action && <div className="mt-4">{empty.action}</div>}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  }
+
   return (
     <table className="w-full border-collapse">
       <caption className="sr-only">{caption}</caption>
@@ -88,17 +109,6 @@ export function Table<Row>({
         </tr>
       </thead>
       <tbody>
-        {rows.length === 0 && (
-          <tr>
-            <td colSpan={columns.length} className="px-5 py-8">
-              <h3 className="text-heading">{empty.title}</h3>
-              <p className="text-body text-ink-soft mt-1 max-w-prose">
-                {empty.description}
-              </p>
-              {empty.action && <div className="mt-4">{empty.action}</div>}
-            </td>
-          </tr>
-        )}
         {rows.map((row) => (
           <tr
             key={rowKey(row)}
