@@ -317,10 +317,11 @@ export default function TokensPage() {
             </tbody>
           </table>
           <p className="text-body text-ink-soft mt-4 max-w-3xl">
-            Zmanim values on a board are set in Frank Ruhl Libre and align. Times in
-            dashboard chrome are set in Assistant and drift by up to 3px across a
-            five-figure run at 15px, which is visible down a 40px-row table. Closing
-            that gap needs a decision about the chrome face, not another utility.
+            This is why a column of clock times is set in Frank Ruhl Libre, in
+            chrome as well as on a board. Numbers inside prose stay in Assistant:
+            &ldquo;Last seen 4 minutes ago&rdquo; is a sentence, nothing needs to
+            align, and switching faces mid-sentence would look worse than 3px of
+            drift.
           </p>
         </Section>
 

@@ -29,7 +29,11 @@ Visual spec: @docs/design.md
   client component, in `app/s/`, or in any file that doesn't import
   `server-only`.
 - Positions in board documents are stored as percentages, never pixels.
-- `font-variant-numeric: tabular-nums` on every time, date, and count.
+- Any column of clock times in dashboard chrome is set in Frank Ruhl Libre,
+  which has tabular figures. Assistant has none, so `tabular-nums` is a no-op on
+  it — apply the numeric utility anyway (it costs nothing and starts working if
+  the face changes), but never rely on it to align a column set in Assistant.
+  Numbers inside prose stay in Assistant.
 
 ## Visual rules — these get violated constantly, check every time
 

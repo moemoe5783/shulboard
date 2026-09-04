@@ -102,9 +102,11 @@ proportions across both scripts — which matters enormously in a product where
 every screen mixes English UI with Hebrew content. Using one family for both is a
 choice grounded in the subject, not a default.
 
-**`Frank Ruhl Libre`** is reserved for **Hebrew dates and zmanim values only** —
-in board previews and the zmanim settings table. It carries sefarim typography,
-which is where those numbers live in real life. It never appears in UI chrome.
+**`Frank Ruhl Libre`** carries sefarim typography, which is where these numbers
+live in real life. It covers **Hebrew dates, zmanim values, and — as of the
+measurement below — any column of clock times in dashboard chrome.** It is still
+not a chrome face: it never sets a label, a heading, a button, or running prose.
+It sets figures that have to line up.
 
 Do not use Inter. It is the default and it reads as one.
 
@@ -118,10 +120,45 @@ Scale (all Assistant unless noted)
   Smallest          12px  ← floor, never below
 
 Weights: 400 and 600 only. No 500, no 700.
-Numerals: font-variant-numeric: tabular-nums on EVERY time, date, and count.
-          Non-tabular times in a table jitter and look amateur.
+Numerals: Columns of clock times are set in Frank Ruhl Libre. Assistant has no
+          tabular figure set, so tabular-nums cannot align them. See below.
 Case: sentence case everywhere. No Title Case, no ALL CAPS.
 ```
+
+**Numerals — decided, after measuring.** The original rule here was
+`font-variant-numeric: tabular-nums` on every time, date, and count. That rule
+cannot be satisfied by Assistant: **Assistant ships no tabular figure set, so the
+property is a no-op on it.**
+
+Measured in Chromium against the Google Fonts cuts we load, at 15px:
+
+| Face | `11111` | `00000` | Spread |
+|---|---|---|---|
+| Assistant, normal | 33.83px | 36.91px | 3.08px |
+| Assistant, `tabular-nums` | 33.83px | 36.91px | **3.08px — unchanged** |
+| Frank Ruhl Libre, normal | 35.27px | 42.23px | 6.96px |
+| Frank Ruhl Libre, `tabular-nums` | 42.23px | 42.23px | **0px** |
+
+Frank Ruhl Libre responding in the same probe is the control: the measurement
+detects the feature where it exists, and Assistant simply does not have it. Three
+pixels of drift across five figures is visible down a column of 40px rows, which
+is the jitter this rule existed to prevent.
+
+So:
+
+- **A column of clock times is set in Frank Ruhl Libre**, which aligns. This is
+  the one place the sefarim face enters chrome, and it earns it — those figures
+  are the reason the face is in the product at all.
+- **Numbers inside prose stay in Assistant.** "Last seen 4 minutes ago" is a
+  sentence, not a column; nothing needs to align, and switching faces mid-sentence
+  would look worse than the drift.
+- **Keep applying the `numeric` utility everywhere the old rule called for it.**
+  It costs nothing, it is correct, and it starts working the day the chrome face
+  gains `tnum` or is replaced. Just never rely on it to align a column set in
+  Assistant.
+
+Plain-language times — "now", "3 days", "hasn't checked in since Monday" — are
+prose and stay in Assistant. Only actual clock times get the sefarim face.
 
 ### Space and shape
 
