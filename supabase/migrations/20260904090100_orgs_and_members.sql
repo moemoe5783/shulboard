@@ -195,6 +195,18 @@ create trigger orgs_add_creator_as_owner
   after insert on public.orgs
   for each row execute function public.orgs_add_creator_as_owner();
 
+-- CONSEQUENCE, and it will bite whoever writes the next org-creation path:
+-- INSERT INTO orgs ... RETURNING will FAIL for the creator.
+--
+-- Postgres applies the SELECT policy to a RETURNING clause, the SELECT policy
+-- here is is_org_member(id), and this trigger is AFTER INSERT -- it fires at the
+-- end of the statement, so at the moment RETURNING is evaluated the membership
+-- does not exist yet and the read is refused. The error says "new row violates
+-- row-level security policy", which points at the WITH CHECK and is misleading.
+--
+-- Insert without RETURNING, then select the row back. PostgREST spells RETURNING
+-- as .insert().select(), so that is the call to avoid.
+
 -- Three rules RLS cannot express, because RLS filters rows and cannot compare the
 -- new row against the rest of the table:
 --   1. only an owner may grant the owner role
