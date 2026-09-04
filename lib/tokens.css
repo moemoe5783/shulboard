@@ -1,0 +1,216 @@
+/*
+ * Design tokens — docs/design.md §3.
+ *
+ * THIS IS THE ONLY FILE IN THE PROJECT ALLOWED TO CONTAIN A RAW COLOR VALUE.
+ * Everywhere else uses the variables below, or the Tailwind utilities generated
+ * from them at the bottom of this file. If you find yourself typing a hex code
+ * anywhere else, the token is missing and belongs here.
+ *
+ * Two naming layers, on purpose. The :root block holds the canonical tokens and
+ * deliberately avoids Tailwind's namespace prefixes (--color-*, --text-*,
+ * --font-*, --radius-*), because a theme entry that referenced a :root variable
+ * of the same name would be circular and would silently resolve to nothing. The
+ * @theme block maps each canonical token into the namespace that generates the
+ * utility. Canonical name on the left of the mapping, utility on the right:
+ *
+ *   --ink              -> text-ink, bg-ink, border-ink
+ *   --corner-control   -> rounded-control
+ *   --type-ui          -> font-ui
+ *   --size-body        -> text-body
+ */
+
+:root {
+  /* ---------------------------------------------------------------------
+   * Color
+   *
+   * Two surfaces, not five. Depth comes from hairlines, never from shadows.
+   * ------------------------------------------------------------------- */
+
+  --ink: #1b2a2e;        /* deep blue-green. Primary text, editor chrome. */
+  --ink-soft: #5a6b6e;   /* secondary text, metadata */
+  --ink-faint: #8a9799;  /* placeholders, disabled */
+  --paper: #f2f4f3;      /* app background — cool, faintly green-gray */
+  --surface: #ffffff;    /* content panes, table bodies */
+
+  --rule: rgba(27, 42, 46, 0.1);        /* hairlines */
+  --rule-firm: rgba(27, 42, 46, 0.18);  /* section dividers, table header rule */
+
+  /* The one accent. Oxidized brass — the color those memorial plaques become.
+   * It marks the primary action in a view and nothing else. A view with three
+   * verdigris buttons has no primary action. */
+  --verdigris: #1e6b63;
+  --verdigris-wash: #e4eeec;  /* selected rows, active nav background */
+
+  /* Status only. Never decorative. */
+  --live: #2e7d5b;
+  --stale: #a8721c;
+  --offline: #a63a2e;
+
+  /* ---------------------------------------------------------------------
+   * Type
+   *
+   * TWO SEPARATE FONT NAMESPACES, AND THEY MUST STAY SEPARATE.
+   *
+   *   --type-ui       Dashboard chrome. Assistant, a genuinely bilingual
+   *                   Hebrew-and-Latin face. Applied by OPTING IN with the
+   *                   `font-ui` utility on a chrome root — never set globally.
+   *   --type-sefarim  Hebrew dates and zmanim values, where sefarim typography
+   *                   belongs. Never appears in UI chrome.
+   *
+   * Nothing here sets a document-wide font-family, and nothing should. The board
+   * renderer is shared by the editor and the display route, and its type comes
+   * from the board document — fonts will be user-selectable per text element. If
+   * chrome type leaked onto the renderer through inheritance, a board would
+   * render one way in the editor and another way on the TV, which is precisely
+   * the bug CLAUDE.md's shared-renderer rule exists to prevent.
+   *
+   * --default-font-family below is the neutral stack the document falls back to.
+   * It is deliberately NOT Assistant.
+   *
+   * --font-assistant and --font-frank-ruhl are injected by next/font in
+   * app/layout.tsx, which declares the variables without applying either face.
+   * ------------------------------------------------------------------- */
+
+  --type-ui: var(--font-assistant), system-ui, sans-serif;
+  --type-sefarim: var(--font-frank-ruhl), Georgia, serif;
+
+  /* 12px is the floor. Never go below it. */
+  --size-title: 20px;
+  --size-heading: 16px;
+  --size-body: 15px;
+  --size-cell: 14px;
+  --size-meta: 13px;
+  --size-min: 12px;
+
+  --line-title: 28px;
+  --line-heading: 24px;
+  --line-body: 24px;
+  --line-cell: 20px;
+  --line-meta: 16px;
+  --line-min: 16px;
+
+  --track-title: -0.01em;
+
+  /* 400 and 600 only. No 500, no 700. */
+  --weight-regular: 400;
+  --weight-semibold: 600;
+
+  /* ---------------------------------------------------------------------
+   * Space and shape
+   * ------------------------------------------------------------------- */
+
+  --unit: 4px;  /* base unit. All spacing is a multiple. */
+
+  /* Two radii. That's it — not 12px, not 16px, not full-round anything except
+   * status dots. */
+  --corner-control: 5px;  /* controls and inputs */
+  --corner-panel: 6px;    /* panels and content panes */
+
+  --border-hairline: 1px;  /* never 0.5px: it renders inconsistently */
+
+  --row-height: 40px;      /* table row. Dense but clickable with a trackpad. */
+  --control-height: 32px;  /* inputs and buttons */
+
+  --focus-width: 2px;
+  --focus-offset: 2px;
+}
+
+/*
+ * Tailwind v4 theme.
+ *
+ * This project has no tailwind.config.js — v4 configures the theme in CSS. The
+ * `inline` keyword makes utilities emit the referenced value directly instead of
+ * going through a second variable.
+ *
+ * The `initial` lines clear Tailwind's built-in scales. That is deliberate and
+ * load-bearing: with the default palette cleared, `bg-red-500` and `text-2xl` and
+ * `rounded-2xl` do not exist, so the hard rules in CLAUDE.md are enforced by the
+ * build rather than by code review. Adding a value back means adding it here,
+ * which is exactly the conversation that should happen.
+ */
+@theme inline {
+  --color-*: initial;
+  --text-*: initial;
+  --font-weight-*: initial;
+  --radius-*: initial;
+  --font-*: initial;
+
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-rule: var(--rule);
+  --color-rule-firm: var(--rule-firm);
+  --color-verdigris: var(--verdigris);
+  --color-verdigris-wash: var(--verdigris-wash);
+  --color-live: var(--live);
+  --color-stale: var(--stale);
+  --color-offline: var(--offline);
+
+  /* `font-ui` and `font-sefarim` are opt-in. There is deliberately no
+   * `--font-sans`, because defining one would make Tailwind's preflight apply it
+   * to the whole document and the board renderer would inherit chrome type. */
+  --font-ui: var(--type-ui);
+  --font-sefarim: var(--type-sefarim);
+  --default-font-family: ui-sans-serif, system-ui, sans-serif;
+
+  /* Weight is baked into each step because the spec pairs them: there is no
+   * 20px/400 in this design. Color is not baked in — `text-meta` still needs
+   * `text-ink-soft` alongside it. */
+  --text-title: var(--size-title);
+  --text-title--line-height: var(--line-title);
+  --text-title--letter-spacing: var(--track-title);
+  --text-title--font-weight: var(--weight-semibold);
+
+  --text-heading: var(--size-heading);
+  --text-heading--line-height: var(--line-heading);
+  --text-heading--font-weight: var(--weight-semibold);
+
+  --text-body: var(--size-body);
+  --text-body--line-height: var(--line-body);
+  --text-body--font-weight: var(--weight-regular);
+
+  --text-cell: var(--size-cell);
+  --text-cell--line-height: var(--line-cell);
+  --text-cell--font-weight: var(--weight-regular);
+
+  --text-meta: var(--size-meta);
+  --text-meta--line-height: var(--line-meta);
+  --text-meta--font-weight: var(--weight-regular);
+
+  --text-min: var(--size-min);
+  --text-min--line-height: var(--line-min);
+  --text-min--font-weight: var(--weight-regular);
+
+  --font-weight-regular: var(--weight-regular);
+  --font-weight-semibold: var(--weight-semibold);
+
+  --radius-control: var(--corner-control);
+  --radius-panel: var(--corner-panel);
+
+  /* Drives the whole spacing scale: p-1 is 4px, p-2 is 8px, p-4 is 16px. */
+  --spacing: var(--unit);
+}
+
+/*
+ * Every time, date, and count in this product needs tabular figures —
+ * proportional numerals jitter in a column and read as amateur.
+ *
+ * Tailwind ships `tabular-nums`; this is the project's own name for it, so the
+ * rule has a single thing to grep for when checking a view.
+ *
+ * MEASURED LIMITATION: Assistant ships no tabular figure set, so this utility is
+ * a no-op wherever Assistant is the face — which is all dashboard chrome. Its
+ * figures vary by about 3px across a five-figure run at 15px. Frank Ruhl Libre
+ * does have one, so zmanim values on a board align correctly. Keep applying this
+ * utility everywhere the rule calls for it: it is correct, it costs nothing, and
+ * it starts working the moment the chrome face gains tnum or is replaced. What it
+ * cannot do is make Assistant align on its own. See /tokens for the comparison.
+ */
+@utility numeric {
+  font-variant-numeric: tabular-nums;
+}
