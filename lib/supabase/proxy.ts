@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { SIGN_IN_PATH } from "@/lib/routes";
 import { isSupabaseConfigured, supabaseEnv } from "./env";
 
 /**
@@ -11,7 +12,7 @@ import { isSupabaseConfigured, supabaseEnv } from "./env";
  */
 const PUBLIC_PREFIXES = [
   "/s/",
-  "/sign-in",
+  SIGN_IN_PATH,
   "/auth/",
   // Dev reference sheets. Remove these when the app ships.
   "/tokens",
@@ -77,7 +78,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
 function redirectToSignIn(request: NextRequest): NextResponse {
   const target = request.nextUrl.clone();
-  target.pathname = "/sign-in";
+  target.pathname = SIGN_IN_PATH;
   target.search = "";
   // So the user lands where they were headed once they are signed in.
   const from = request.nextUrl.pathname + request.nextUrl.search;

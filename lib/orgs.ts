@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -93,7 +94,7 @@ export const getActiveOrg = cache(async (): Promise<Membership | null> => {
  * line; this is the one that runs even if a matcher is edited badly. */
 export async function requireUser(): Promise<User> {
   const user = await getUser();
-  if (!user) redirect("/sign-in");
+  if (!user) redirect(SIGN_IN_PATH);
   return user;
 }
 

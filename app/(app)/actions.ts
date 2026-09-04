@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ACTIVE_ORG_COOKIE, getMemberships, requireUser } from "@/lib/orgs";
+import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 
 const YEAR = 60 * 60 * 24 * 365;
@@ -131,5 +132,5 @@ export async function signOut(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(ACTIVE_ORG_COOKIE);
 
-  redirect("/sign-in");
+  redirect(SIGN_IN_PATH);
 }
