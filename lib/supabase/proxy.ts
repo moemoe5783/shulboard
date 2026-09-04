@@ -27,6 +27,8 @@ function isPublic(pathname: string): boolean {
 /**
  * Refreshes the session cookie and turns away signed-out visitors.
  *
+ * Called from proxy.ts — Next 16's replacement for the middleware convention.
+ *
  * The response object has to be the one the Supabase client wrote its cookies
  * onto — building a fresh NextResponse here would silently drop a refreshed token
  * and sign the user out at an unpredictable interval.

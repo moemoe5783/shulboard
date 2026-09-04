@@ -89,7 +89,7 @@ export const getActiveOrg = cache(async (): Promise<Membership | null> => {
   return memberships.find((m) => m.orgId === preferred) ?? memberships[0];
 });
 
-/** For pages that cannot render without a session. The middleware is the first
+/** For pages that cannot render without a session. The proxy is the first
  * line; this is the one that runs even if a matcher is edited badly. */
 export async function requireUser(): Promise<User> {
   const user = await getUser();

@@ -15,7 +15,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 const PORT = Number(process.env.PORT ?? 3210);
 const BASE = `http://127.0.0.1:${PORT}`;
 
-// Syntactically valid, points at nothing. The middleware never reaches the
+// Syntactically valid, points at nothing. The proxy never reaches the
 // network for a request with no session cookie, so nothing here is contacted.
 const DUMMY_ENV = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
