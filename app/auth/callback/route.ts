@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   const next = from && from.startsWith("/") && !from.startsWith("//") ? from : "/";
 
   if (!code) {
-    const target = new URL("/sign-in", origin);
+    const target = new URL(SIGN_IN_PATH, origin);
     target.searchParams.set(
       "error",
       "That sign-in link is missing its code. Ask for a new one.",
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    const target = new URL("/sign-in", origin);
+    const target = new URL(SIGN_IN_PATH, origin);
     // What happened and what to do, not an apology.
     target.searchParams.set(
       "error",
