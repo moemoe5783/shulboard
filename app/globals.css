@@ -1,1 +1,18 @@
 @import "tailwindcss";
+@import "../lib/tokens.css";
+
+@layer base {
+  /* Surface colors only. No font-family here on purpose — chrome opts into
+   * Assistant with `font-ui`, and the board renderer must not inherit it.
+   * See the type section of lib/tokens.css. */
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+  }
+
+  /* Visible, and never removed. */
+  :focus-visible {
+    outline: var(--focus-width) solid var(--verdigris);
+    outline-offset: var(--focus-offset);
+  }
+}
