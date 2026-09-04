@@ -37,6 +37,10 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   "${PSQL[@]}" -d "$DBNAME" -f "$f" >/dev/null
 done
 
+# Committed once, outside any transaction, so each test file can use it. The test
+# files roll back, so the log starts empty for every one of them.
+"${PSQL[@]}" -d "$DBNAME" -f "$ROOT/scripts/test-helpers.sql" >/dev/null
+
 shopt -s nullglob
 tests=("$ROOT"/supabase/tests/*.sql)
 if [ ${#tests[@]} -eq 0 ]; then
