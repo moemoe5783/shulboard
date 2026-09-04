@@ -31,5 +31,8 @@
     "supabase": "^2.116.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "unrs-resolver": false
   }
 }
