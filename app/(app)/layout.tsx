@@ -14,16 +14,21 @@ import { setActiveOrg, signOut } from "./actions";
 // scoped to one person's memberships.
 export const dynamic = "force-dynamic";
 
+// Screens is the only section that has been built. The rest are shown disabled
+// rather than hidden: the rail is the map of the product, and a row that
+// navigates nowhere is worse than one that plainly says "not yet".
 const NAV_ITEMS: NavItem[] = [
-  { id: "screens", label: "Screens", href: "/" },
-  { id: "boards", label: "Boards", href: "/" },
-  { id: "media", label: "Media", href: "/" },
-  { id: "people", label: "People", href: "/" },
-  { id: "notices", label: "Notices", href: "/" },
-  { id: "schedules", label: "Schedules", href: "/" },
+  { id: "screens", label: "Screens", href: "/screens" },
+  { id: "boards", label: "Boards", href: "/boards", disabled: true },
+  { id: "media", label: "Media", href: "/media", disabled: true },
+  { id: "people", label: "People", href: "/people", disabled: true },
+  { id: "notices", label: "Notices", href: "/notices", disabled: true },
+  { id: "schedules", label: "Schedules", href: "/schedules", disabled: true },
 ];
 
-const NAV_FOOTER: NavItem[] = [{ id: "settings", label: "Settings", href: "/" }];
+const NAV_FOOTER: NavItem[] = [
+  { id: "settings", label: "Settings", href: "/settings", disabled: true },
+];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   await requireUser();
@@ -47,7 +52,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         switchAction={setActiveOrg}
         items={NAV_ITEMS}
         footerItems={NAV_FOOTER}
-        activeId="screens"
         footer={
           // A rail row, not a button variant. Sign out is navigation-adjacent and
           // should not wear the accent that marks the active section.

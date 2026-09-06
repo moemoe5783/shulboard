@@ -19,7 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "media", label: "Media", href: "#" },
   { id: "people", label: "People", href: "#" },
   { id: "notices", label: "Notices", href: "#", count: 2 },
-  { id: "schedules", label: "Schedules", href: "#" },
+  // One row disabled, so the reference sheet shows that state too.
+  { id: "schedules", label: "Schedules", href: "#", disabled: true },
 ];
 
 const NAV_FOOTER: NavItem[] = [{ id: "settings", label: "Settings", href: "#" }];
