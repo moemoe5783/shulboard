@@ -154,7 +154,7 @@ export function SignInForm({
       </div>
 
       {error && (
-        <p role="alert" className="text-body text-offline mt-4">
+        <p role="alert" className="text-body text-ink mt-4">
           {error}
         </p>
       )}

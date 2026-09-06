@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { requestNow } from "@/lib/clock";
+import { requestOrigin } from "@/lib/origin";
 import { formatResolution, lastSeenLabel, screenStatus, type ScreenStatus } from "@/lib/screens";
 import { DisplayLink } from "./DisplayLink";
 import { ScreenSettings } from "./ScreenSettings";
@@ -23,20 +23,6 @@ const STATUS_DOT: Record<ScreenStatus, string> = {
   stale: "bg-stale",
   offline: "bg-offline",
 };
-
-/**
- * The origin the gabbai is actually looking at.
- *
- * The link gets typed into a TV remote, so it has to be the host they know, not
- * a build-time guess. Vercel sets x-forwarded-proto; local dev doesn't, and
- * there http is right.
- */
-async function requestOrigin(): Promise<string> {
-  const headerList = await headers();
-  const host = headerList.get("host") ?? "localhost:3000";
-  const proto = headerList.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export default async function ScreenPage({ params, searchParams }: PageProps<"/screens/[id]">) {
   const { id } = await params;
@@ -109,7 +95,7 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
               <dt className="text-ink-soft w-32 shrink-0">Last seen</dt>
               <dd className="flex items-center gap-2">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]}`} />
-                <span>{lastSeenLabel(screen.last_seen_at, now)}</span>
+                <span className="numeric">{lastSeenLabel(screen.last_seen_at, now)}</span>
               </dd>
             </div>
             <div className="text-cell flex gap-4">
@@ -118,13 +104,15 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
             </div>
             <div className="text-cell flex gap-4">
               <dt className="text-ink-soft w-32 shrink-0">Size</dt>
-              <dd>{formatResolution(screen.canvas_width, screen.canvas_height)}</dd>
+              <dd className="numeric">
+                {formatResolution(screen.canvas_width, screen.canvas_height)}
+              </dd>
             </div>
           </dl>
         </section>
 
         <section className="p-6">
-          <h2 className="text-heading">Link and removal</h2>
+          <h2 className="text-heading">Change the link or remove the screen</h2>
           <p className="text-body text-ink-soft mt-1 max-w-prose">
             Rotate the link if it has gone somewhere it shouldn&rsquo;t. Deleting
             the screen removes it from the wall for good.
