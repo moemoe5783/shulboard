@@ -48,7 +48,7 @@ export function NewOrgForm({ timezones }: { timezones: string[] }) {
       </div>
 
       {state.error && (
-        <p role="alert" className="text-body text-offline">
+        <p role="alert" className="text-body text-ink">
           {state.error}
         </p>
       )}

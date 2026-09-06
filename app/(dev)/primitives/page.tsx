@@ -80,6 +80,11 @@ const DOT: Record<Screen["status"], string> = {
   offline: "bg-offline",
 };
 
+// The same geometry every menu row in the product uses.
+const MENU_ITEM =
+  "text-cell rounded-control text-ink hover:bg-verdigris-wash/40 " +
+  "flex h-8 w-full items-center px-2 text-left";
+
 const SCREEN_COLUMNS: Column<Screen>[] = [
   {
     key: "screen",
@@ -216,6 +221,31 @@ export default function PrimitivesPage() {
 
           <Section title="Every screen in the building">
             <Table
+              rowAction={(screen) => (
+                // The reference sheet shows the menu's shape and how it sits in
+                // the row. The links go nowhere here on purpose — this page has
+                // no data behind it.
+                <details className="relative inline-block text-left">
+                  <summary className="text-cell rounded-control text-ink-soft hover:bg-verdigris-wash/40 flex h-8 w-8 cursor-pointer list-none items-center justify-center">
+                    <span className="sr-only">More for {screen.name}</span>
+                    <span aria-hidden>⋯</span>
+                  </summary>
+                  <div className="rounded-panel border-rule bg-surface absolute top-9 right-0 z-10 w-44 border p-1 shadow-menu">
+                    <ul className="flex flex-col">
+                      <li>
+                        <a href="#" className={MENU_ITEM}>
+                          Open
+                        </a>
+                      </li>
+                      <li>
+                        <a href="#" className={MENU_ITEM}>
+                          Copy display link
+                        </a>
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+              )}
               caption="Screens, what each is showing, and when it last checked in"
               columns={SCREEN_COLUMNS}
               rows={SCREENS}

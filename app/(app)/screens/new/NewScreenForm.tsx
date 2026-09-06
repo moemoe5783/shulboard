@@ -52,7 +52,7 @@ export function NewScreenForm() {
       </div>
 
       {state.error && (
-        <p role="alert" className="text-body text-offline">
+        <p role="alert" className="text-body text-ink">
           {state.error}
         </p>
       )}

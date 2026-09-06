@@ -71,8 +71,13 @@
    * render one way in the editor and another way on the TV, which is precisely
    * the bug CLAUDE.md's shared-renderer rule exists to prevent.
    *
-   * --default-font-family below is the neutral stack the document falls back to.
-   * It is deliberately NOT Assistant.
+   * --type-neutral below is the stack the document falls back to when nothing has
+   * opted in. It is deliberately NOT Assistant. It also backs
+   * --default-mono-font-family: Tailwind's preflight sets <code>, <kbd>, <samp>
+   * and <pre> to that variable, and leaving it undefined let those elements fall
+   * through to ui-monospace — a third typeface in a product that specifies two.
+   * §2 bans monospace for data, so the gap is closed here rather than left for
+   * each view to remember.
    *
    * --font-assistant and --font-frank-ruhl are injected by next/font in
    * app/layout.tsx, which declares the variables without applying either face.
@@ -80,6 +85,7 @@
 
   --type-ui: var(--font-assistant), system-ui, sans-serif;
   --type-sefarim: var(--font-frank-ruhl), Georgia, serif;
+  --type-neutral: ui-sans-serif, system-ui, sans-serif;
 
   /* 12px is the floor. Never go below it. */
   --size-title: 20px;
@@ -171,7 +177,8 @@
    * to the whole document and the board renderer would inherit chrome type. */
   --font-ui: var(--type-ui);
   --font-sefarim: var(--type-sefarim);
-  --default-font-family: ui-sans-serif, system-ui, sans-serif;
+  --default-font-family: var(--type-neutral);
+  --default-mono-font-family: var(--type-neutral);
 
   /* Weight is baked into each step because the spec pairs them: there is no
    * 20px/400 in this design. Color is not baked in — `text-meta` still needs

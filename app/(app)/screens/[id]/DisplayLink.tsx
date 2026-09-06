@@ -28,9 +28,12 @@ export function DisplayLink({ url }: { url: string }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <code className="text-cell text-ink border-rule rounded-control bg-paper min-w-0 flex-1 truncate border px-2 py-1.5">
+      {/* Not <code>. The display link is data a gabbai reads off the screen and
+          types into a TV, not source, and preflight would set <code> in a
+          monospace face this product does not specify. */}
+      <span className="text-cell text-ink border-rule rounded-control bg-paper min-w-0 flex-1 truncate border px-2 py-1.5">
         {url}
-      </code>
+      </span>
       <Button variant="primary" onClick={copy}>
         {copied ? "Copied" : "Copy link"}
       </Button>

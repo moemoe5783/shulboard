@@ -3,6 +3,7 @@ import { buttonClassName } from "@/components/Button";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { requestNow } from "@/lib/clock";
+import { requestOrigin } from "@/lib/origin";
 import { formatResolution, lastSeenLabel, screenStatus } from "@/lib/screens";
 import { ScreensTable, type ScreenRow } from "./ScreensTable";
 
@@ -23,7 +24,9 @@ export default async function ScreensPage() {
 
   const { data: screens, error } = await supabase
     .from("screens")
-    .select("id, name, location_note, canvas_width, canvas_height, last_seen_at, playlist_id")
+    .select(
+      "id, name, location_note, token, canvas_width, canvas_height, last_seen_at, playlist_id",
+    )
     .eq("org_id", org.orgId)
     .order("name");
 
@@ -55,6 +58,7 @@ export default async function ScreensPage() {
   // Formatted here, on the server, against one clock. Doing it in the browser
   // would make the first paint disagree with the server's markup.
   const now = requestNow();
+  const origin = await requestOrigin();
   const rows: ScreenRow[] = (screens ?? []).map((screen) => ({
     id: screen.id,
     name: screen.name,
@@ -65,6 +69,7 @@ export default async function ScreensPage() {
     status: screenStatus(screen.last_seen_at, now),
     lastSeen: lastSeenLabel(screen.last_seen_at, now),
     size: formatResolution(screen.canvas_width, screen.canvas_height),
+    url: `${origin}/s/${screen.token}`,
   }));
 
   return (
@@ -72,11 +77,11 @@ export default async function ScreensPage() {
       <div className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-title">Screens</h1>
-          <p className="text-body text-ink-soft mt-1">
-            {rows.length === 0
-              ? "Nothing is running yet."
-              : "What every screen in the building is showing right now."}
-          </p>
+          {rows.length > 0 && (
+            <p className="text-body text-ink-soft mt-1">
+              What every screen in the building is showing right now.
+            </p>
+          )}
         </div>
         {/* When the list is empty the empty state carries the one primary, so
             this header action would be the second. One per view. */}

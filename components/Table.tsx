@@ -66,6 +66,15 @@ export type TableProps<Row> = {
   rows: Row[];
   rowKey: (row: Row) => string;
   onRowClick?: (row: Row) => void;
+  /**
+   * A quiet overflow menu at the right of the row — docs/design.md §4. Rendered
+   * in a column of its own, revealed on hover and whenever something inside it
+   * has focus, so it is reachable by keyboard rather than mouse-only.
+   *
+   * It is opacity, not conditional rendering: the cell holds its width either
+   * way, so nothing in the row shifts when the pointer arrives.
+   */
+  rowAction?: (row: Row) => ReactNode;
   empty: EmptyState;
   /** Describes the table for screen readers. Not rendered. */
   caption: string;
@@ -79,10 +88,12 @@ export function Table<Row>({
   rows,
   rowKey,
   onRowClick,
+  rowAction,
   empty,
   caption,
 }: TableProps<Row>) {
   const interactive = Boolean(onRowClick);
+  const columnCount = columns.length + (rowAction ? 1 : 0);
 
   // A header rule over blank space is exactly the thing an empty state replaces,
   // so when there is nothing to list the column headers do not render either.
@@ -92,7 +103,7 @@ export function Table<Row>({
         <caption className="sr-only">{caption}</caption>
         <tbody>
           <tr>
-            <td colSpan={columns.length} className="px-5 py-8">
+            <td colSpan={columnCount} className="px-5 py-8">
               <h3 className="text-heading">{empty.title}</h3>
               <p className="text-body text-ink-soft mt-1 max-w-prose">
                 {empty.description}
@@ -121,13 +132,21 @@ export function Table<Row>({
               {column.label}
             </th>
           ))}
+          {rowAction && (
+            // No label. The column is the row's own menu, not a heading over a
+            // set of values, and inventing one would put a word in the header
+            // rule that names nothing.
+            <th scope="col" className={`h-8 w-12 ${CELL}`}>
+              <span className="sr-only">Actions</span>
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
           <tr
             key={rowKey(row)}
-            className={`hover:bg-verdigris-wash/40 h-10 ${
+            className={`hover:bg-verdigris-wash/40 group h-10 ${
               interactive ? "cursor-pointer" : ""
             }`}
             // A clickable row needs a keyboard path. The people using this are
@@ -138,6 +157,9 @@ export function Table<Row>({
             onKeyDown={
               onRowClick
                 ? (event) => {
+                    // Only the row itself. Without this, Enter on the overflow
+                    // menu inside the row would open the row as well.
+                    if (event.target !== event.currentTarget) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       onRowClick(row);
@@ -156,6 +178,20 @@ export function Table<Row>({
                 {column.cell(row)}
               </td>
             ))}
+            {rowAction && (
+              <td
+                className={`text-cell w-12 text-right ${CELL}`}
+                // The menu is inside a clickable row, so a click on it must not
+                // also open the row. Attached only when the row is clickable,
+                // because a handler is a function and a server-rendered table
+                // cannot carry one.
+                onClick={onRowClick ? (event) => event.stopPropagation() : undefined}
+              >
+                <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 has-[[open]]:opacity-100">
+                  {rowAction(row)}
+                </div>
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
