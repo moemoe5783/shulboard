@@ -1,4 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 /*
  * Left navigation rail — docs/design.md §4.
@@ -16,6 +20,13 @@ export type NavItem = {
   href: string;
   /** Right-aligned in the rail. Information, not decoration. */
   count?: number;
+  /**
+   * The section exists in the product but has no view yet. Rendered as a
+   * visibly inert row rather than a link that goes nowhere: a nav item that
+   * navigates to the wrong place is a bug report waiting to happen, and hiding
+   * it would make the rail lie about what the product is.
+   */
+  disabled?: boolean;
 };
 
 export type OrgOption = { id: string; name: string };
@@ -34,7 +45,12 @@ export type NavRailProps = {
   footerItems?: NavItem[];
   /** Rendered below the footer items. Sign out lives here. */
   footer?: ReactNode;
-  activeId: string;
+  /**
+   * Which row is current. Normally left out — the rail reads the pathname, so
+   * nothing has to remember to pass the right id from each page. Set it to pin
+   * a row, which is what the reference sheet needs.
+   */
+  activeId?: string;
 };
 
 /**
@@ -46,10 +62,36 @@ export const navRowClassName =
   "text-cell rounded-control text-ink hover:bg-verdigris-wash/40 " +
   "flex h-8 w-full items-center px-2 text-left";
 
+function ItemBody({ item }: { item: NavItem }) {
+  return (
+    <>
+      <span className="min-w-0 truncate">{item.label}</span>
+      {item.count !== undefined && (
+        // 13px --ink-soft on the active item too: the count is information
+        // about the section, not part of the selected state.
+        <span className="text-meta text-ink-soft numeric ml-auto">{item.count}</span>
+      )}
+    </>
+  );
+}
+
 function Item({ item, active }: { item: NavItem; active: boolean }) {
+  if (item.disabled) {
+    return (
+      <li>
+        <span
+          aria-disabled="true"
+          className="text-cell rounded-control text-ink-faint flex h-8 w-full items-center gap-2 px-2 text-left"
+        >
+          <ItemBody item={item} />
+        </span>
+      </li>
+    );
+  }
+
   return (
     <li>
-      <a
+      <Link
         href={item.href}
         aria-current={active ? "page" : undefined}
         className={
@@ -58,13 +100,8 @@ function Item({ item, active }: { item: NavItem; active: boolean }) {
             : `${navRowClassName} gap-2`
         }
       >
-        <span className="min-w-0 truncate">{item.label}</span>
-        {item.count !== undefined && (
-          // 13px --ink-soft on the active item too: the count is information
-          // about the section, not part of the selected state.
-          <span className="text-meta text-ink-soft numeric ml-auto">{item.count}</span>
-        )}
-      </a>
+        <ItemBody item={item} />
+      </Link>
     </li>
   );
 }
@@ -137,6 +174,26 @@ function OrgSwitcher({
   );
 }
 
+/**
+ * Which row the current URL belongs to.
+ *
+ * Longest matching href wins, so a future /screens/settings section would not
+ * be swallowed by /screens. A disabled row never matches — it has no view for a
+ * URL to be inside.
+ */
+function currentItemId(items: NavItem[], pathname: string | null): string | undefined {
+  if (!pathname) return undefined;
+
+  let best: NavItem | undefined;
+  for (const item of items) {
+    if (item.disabled) continue;
+    const inside = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (!inside) continue;
+    if (!best || item.href.length > best.href.length) best = item;
+  }
+  return best?.id;
+}
+
 export function NavRail({
   orgs,
   activeOrgId,
@@ -146,13 +203,16 @@ export function NavRail({
   footer,
   activeId,
 }: NavRailProps) {
+  const pathname = usePathname();
+  const current = activeId ?? currentItemId([...items, ...footerItems], pathname);
+
   return (
     <nav aria-label="Sections" className="bg-paper flex w-54 shrink-0 flex-col px-3 py-4">
       <OrgSwitcher orgs={orgs} activeOrgId={activeOrgId} switchAction={switchAction} />
 
       <ul className="flex flex-col gap-0.5">
         {items.map((item) => (
-          <Item key={item.id} item={item} active={item.id === activeId} />
+          <Item key={item.id} item={item} active={item.id === current} />
         ))}
       </ul>
 
@@ -160,7 +220,7 @@ export function NavRail({
         <div className="mt-auto pt-6">
           <ul className="flex flex-col gap-0.5">
             {footerItems.map((item) => (
-              <Item key={item.id} item={item} active={item.id === activeId} />
+              <Item key={item.id} item={item} active={item.id === current} />
             ))}
           </ul>
           {footer}

@@ -12,6 +12,15 @@ PORT="${PGPORT:-55432}"
 WORKDIR="${PGTMP:-$(mktemp -d)}"
 DBNAME=shulboard_test
 
+# initdb refuses to run as root, and in a container the shell often is root.
+# Hand the whole script to the postgres user rather than asking whoever runs the
+# tests to remember. The data directory has to belong to that user too.
+if [ "$(id -u)" -eq 0 ] && id postgres >/dev/null 2>&1 && command -v runuser >/dev/null; then
+  chown postgres "$WORKDIR"
+  exec runuser -u postgres -- \
+    env PGTMP="$WORKDIR" PGBIN="$PGBIN" PGPORT="$PORT" bash "$0" "$@"
+fi
+
 if [ ! -x "$PGBIN/initdb" ]; then
   echo "no postgres install found; set PGBIN to a postgres bin directory" >&2
   exit 1

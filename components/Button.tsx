@@ -39,6 +39,18 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "enabled:hover:bg-verdigris-wash/40 disabled:text-ink-faint",
 };
 
+/**
+ * The button's classes, for the cases where the right element is a link.
+ *
+ * Navigation is an anchor: it gets middle-click, open-in-new-tab, and a status
+ * bar showing where it goes, none of which a button with an onClick handler
+ * has. Rather than growing an asChild prop, the styling is available on its own
+ * and the caller picks the correct element.
+ */
+export function buttonClassName(variant: ButtonVariant = "secondary"): string {
+  return `${BASE} ${VARIANTS[variant]}`;
+}
+
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
 };

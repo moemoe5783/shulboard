@@ -113,7 +113,14 @@ async function run(label, env) {
     // redirect rather than written here, so that a sign-in page which moved
     // shows up as a failure instead of a test that agrees with itself.
     let destination = null;
-    for (const path of ["/", "/orgs/new"]) {
+    const protectedPaths = [
+      "/",
+      "/screens",
+      "/screens/new",
+      "/screens/00000000-0000-0000-0000-000000000000",
+      "/orgs/new",
+    ];
+    for (const path of protectedPaths) {
       const res = await fetch(BASE + path, { redirect: "manual" });
       const location = res.headers.get("location") ?? "";
       const redirected = res.status >= 300 && res.status < 400;
@@ -146,6 +153,18 @@ async function run(label, env) {
     // deployment, nothing was deployed at all.
     const tokens = await fetch(`${BASE}/tokens`, { redirect: "manual" });
     check(tokens.status === 200, "signed out: a static public page serves", `${tokens.status}`);
+
+    // The regression guard for the server/client boundary. /primitives is a
+    // SERVER component rendering Table with cell and rowKey functions, exactly
+    // as the dashboard does. When Table was marked "use client" this 500'd,
+    // and nothing caught it because every other route in this suite is reached
+    // while signed out, so no signed-in page ever rendered.
+    const primitives = await fetch(`${BASE}/primitives`, { redirect: "manual" });
+    check(
+      primitives.status === 200,
+      "signed out: a server component renders Table without crossing the boundary",
+      `${primitives.status}`,
+    );
 
     // The path the visitor wanted is carried through, so they land there after.
     const deep = await fetch(`${BASE}/orgs/new`, { redirect: "manual" });
