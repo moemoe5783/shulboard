@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { navRowClassName } from "./navRow";
 
 /*
  * Left navigation rail — docs/design.md §4.
@@ -52,15 +53,6 @@ export type NavRailProps = {
    */
   activeId?: string;
 };
-
-/**
- * The shape of a rail row, exported so anything else that belongs in the rail —
- * sign out, for instance — matches it exactly rather than approximating it with
- * a button variant that would put a stray accent in the navigation.
- */
-export const navRowClassName =
-  "text-cell rounded-control text-ink hover:bg-verdigris-wash/40 " +
-  "flex h-8 w-full items-center px-2 text-left";
 
 function ItemBody({ item }: { item: NavItem }) {
   return (

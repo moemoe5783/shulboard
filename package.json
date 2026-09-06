@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint && node scripts/check-boundaries.mjs",
     "typecheck": "next typegen && tsc --noEmit",
     "test:db": "bash scripts/test-db.sh",
     "test:routes": "node scripts/test-routes.mjs",

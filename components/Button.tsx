@@ -1,5 +1,3 @@
-"use client";
-
 import type { ButtonHTMLAttributes } from "react";
 
 /*
@@ -11,6 +9,14 @@ import type { ButtonHTMLAttributes } from "react";
  *
  * There is deliberately no icon prop. The spec allows an icon only when it is
  * load-bearing, and every icon slot that exists gets filled eventually.
+ *
+ * NO "use client" HERE, ON PURPOSE — same reason as components/Table.tsx.
+ * Nothing in this file uses a hook or attaches a handler of its own, so it is a
+ * shared component: a server page renders it directly, a client page passes it
+ * an onClick. Marking it client also turned buttonClassName() into a client
+ * reference, which a server page cannot call at all — the build caught that on
+ * app/not-found.tsx, and every dynamic server page using it would have thrown
+ * the same way at request time.
  */
 
 export type ButtonVariant = "primary" | "secondary" | "tertiary";

@@ -1,4 +1,5 @@
-import { NavRail, navRowClassName, type NavItem } from "@/components/NavRail";
+import { NavRail, type NavItem } from "@/components/NavRail";
+import { navRowClassName } from "@/components/navRow";
 import { getActiveOrg, getMemberships, requireUser } from "@/lib/orgs";
 import { setActiveOrg, signOut } from "./actions";
 
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
 // rather than hidden: the rail is the map of the product, and a row that
 // navigates nowhere is worse than one that plainly says "not yet".
 const NAV_ITEMS: NavItem[] = [
+  { id: "overview", label: "Overview", href: "/" },
   { id: "screens", label: "Screens", href: "/screens" },
   { id: "boards", label: "Boards", href: "/boards", disabled: true },
   { id: "media", label: "Media", href: "/media", disabled: true },
