@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, supabaseUrl } from "@/lib/supabase/client";
+import { supabaseConfigProblem } from "@/lib/supabase/env";
 
 /**
  * Magic link and Google, both landing on /auth/callback.
@@ -12,6 +13,23 @@ import { createClient } from "@/lib/supabase/client";
  * office is as likely to share a mailbox as a Google account and the email path
  * is the one that always works.
  */
+/**
+ * A network failure from supabase-js arrives as "Failed to fetch", which is the
+ * browser saying the request never completed and nothing else. The usual causes
+ * are a wrong project URL, a paused project, or a build that predates the
+ * environment variables — so name them, rather than repeating the browser.
+ */
+function describe(error: { message: string }, url: string | null): string {
+  if (/failed to fetch|networkerror|load failed/i.test(error.message)) {
+    return (
+      `Couldn't reach Supabase${url ? ` at ${url}` : ""}. Check that the project ` +
+      `is running and not paused, that NEXT_PUBLIC_SUPABASE_URL points at it, and ` +
+      `that this build was made after those variables were set.`
+    );
+  }
+  return `${error.message}. Check the address and try again.`;
+}
+
 export function SignInForm({
   from,
   initialError,
@@ -22,6 +40,11 @@ export function SignInForm({
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | undefined>(initialError);
+
+  // The client holds the values that were inlined at build time; the page that
+  // rendered this read them at request time. When those disagree, this is the
+  // half that decides, because this is the half that makes the call.
+  const configProblem = supabaseConfigProblem();
 
   const callback = () => {
     const url = new URL("/auth/callback", window.location.origin);
@@ -34,32 +57,56 @@ export function SignInForm({
     setError(undefined);
     setStatus("sending");
 
-    const supabase = createClient();
-    const { error: sendError } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: callback() },
-    });
+    try {
+      const supabase = createClient();
+      const { error: sendError } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: callback() },
+      });
 
-    if (sendError) {
-      // What happened and what to do.
-      setError(`That didn't send: ${sendError.message}. Check the address and try again.`);
+      if (sendError) {
+        setError(`That didn't send. ${describe(sendError, supabaseUrl())}`);
+        setStatus("idle");
+        return;
+      }
+
+      setStatus("sent");
+    } catch (thrown) {
+      // createClient() throws when the configuration is unusable. Without this
+      // the button would sit on "Sending" forever with the reason only in the
+      // console.
+      setError(
+        `That didn't send. ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+      );
       setStatus("idle");
-      return;
     }
-
-    setStatus("sent");
   }
 
   async function continueWithGoogle() {
     setError(undefined);
-    const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: callback() },
-    });
-    if (oauthError) {
-      setError(`Google sign-in didn't start: ${oauthError.message}. Try the email link instead.`);
+    try {
+      const supabase = createClient();
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: callback() },
+      });
+      if (oauthError) {
+        setError(`Google sign-in didn't start. ${describe(oauthError, supabaseUrl())}`);
+      }
+    } catch (thrown) {
+      setError(
+        `Google sign-in didn't start. ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+      );
     }
+  }
+
+  if (configProblem) {
+    return (
+      <>
+        <h2 className="text-heading">Sign-in isn&rsquo;t configured yet</h2>
+        <p className="text-body text-ink-soft mt-1">{configProblem}</p>
+      </>
+    );
   }
 
   if (status === "sent") {
