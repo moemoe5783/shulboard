@@ -147,6 +147,18 @@ async function run(label, env) {
     const tokens = await fetch(`${BASE}/tokens`, { redirect: "manual" });
     check(tokens.status === 200, "signed out: a static public page serves", `${tokens.status}`);
 
+    // The regression guard for the server/client boundary. /primitives is a
+    // SERVER component rendering Table with cell and rowKey functions, exactly
+    // as the dashboard does. When Table was marked "use client" this 500'd,
+    // and nothing caught it because every other route in this suite is reached
+    // while signed out, so no signed-in page ever rendered.
+    const primitives = await fetch(`${BASE}/primitives`, { redirect: "manual" });
+    check(
+      primitives.status === 200,
+      "signed out: a server component renders Table without crossing the boundary",
+      `${primitives.status}`,
+    );
+
     // The path the visitor wanted is carried through, so they land there after.
     const deep = await fetch(`${BASE}/orgs/new`, { redirect: "manual" });
     const deepTarget = new URL(deep.headers.get("location") ?? "", BASE);

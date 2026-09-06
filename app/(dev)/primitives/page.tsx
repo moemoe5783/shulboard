@@ -1,5 +1,3 @@
-"use client";
-
 import { Button, type ButtonVariant } from "@/components/Button";
 import { NavRail, type NavItem } from "@/components/NavRail";
 import { Table, type Column } from "@/components/Table";
@@ -7,6 +5,12 @@ import { Table, type Column } from "@/components/Table";
 /*
  * The three primitives at realistic density: the rail, a table, and the buttons.
  * Placeholder data throughout — this is a reference sheet, not a view.
+ *
+ * A SERVER component, deliberately. Every real view is one, and a client
+ * reference sheet exercises a different boundary than the thing it documents:
+ * a server component may not hand a function to a client component, so a Table
+ * that only ever rendered from a client page hid that it could not be used from
+ * a server one.
  */
 
 const NAV_ITEMS: NavItem[] = [
@@ -215,7 +219,6 @@ export default function PrimitivesPage() {
               columns={SCREEN_COLUMNS}
               rows={SCREENS}
               rowKey={(screen) => screen.id}
-              onRowClick={() => {}}
               empty={{
                 title: "Add your first screen",
                 description:

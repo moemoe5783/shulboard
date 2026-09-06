@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 
 /*
@@ -10,6 +8,23 @@ import type { ReactNode } from "react";
  *
  * Hover is a background shift to --verdigris-wash at 40% and nothing else: no
  * lift, no scale, no shadow, no transition.
+ *
+ * NO "use client" HERE, ON PURPOSE.
+ *
+ * `cell` and `rowKey` are functions, and a server component may not hand a
+ * function to a client component. Marking this file "use client" therefore made
+ * the whole component unusable from a server page — which is every real view —
+ * and the failure only appeared once a signed-in page tried to render.
+ *
+ * Without the directive this is a shared component: rendered on the server when
+ * a server page imports it, where `cell` and `rowKey` are simply called during
+ * render and never cross a boundary; bundled for the browser when a client page
+ * imports it, where the row handlers below work as normal.
+ *
+ * The consequence to know about: `onRowClick` is a function too, so only a
+ * client component can pass it. A server page gets a non-interactive table, and
+ * the handlers below are `undefined` there, which is exactly what makes server
+ * rendering legal.
  */
 
 export type ColumnKind =
