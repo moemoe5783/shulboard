@@ -113,7 +113,14 @@ async function run(label, env) {
     // redirect rather than written here, so that a sign-in page which moved
     // shows up as a failure instead of a test that agrees with itself.
     let destination = null;
-    for (const path of ["/", "/orgs/new"]) {
+    const protectedPaths = [
+      "/",
+      "/screens",
+      "/screens/new",
+      "/screens/00000000-0000-0000-0000-000000000000",
+      "/orgs/new",
+    ];
+    for (const path of protectedPaths) {
       const res = await fetch(BASE + path, { redirect: "manual" });
       const location = res.headers.get("location") ?? "";
       const redirected = res.status >= 300 && res.status < 400;
