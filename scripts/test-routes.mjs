@@ -167,6 +167,13 @@ await run("With Supabase not configured at all:", {
   NEXT_PUBLIC_SUPABASE_URL: "",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
 });
+// A dashboard link is the URL people paste by mistake. It has both variables
+// present, so a presence-only check would call it configured and then throw
+// inside the proxy on every request. Fail closed instead.
+await run("With a dashboard URL pasted in by mistake:", {
+  NEXT_PUBLIC_SUPABASE_URL: "https://supabase.com/dashboard/project/abcdef",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-route-tests",
+});
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);

@@ -21,18 +21,11 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
         </p>
 
         <div className="rounded-panel border-rule bg-surface mt-6 border p-6">
-          {isSupabaseConfigured() ? (
-            <SignInForm from={from} initialError={error} />
-          ) : (
-            <>
-              <h2 className="text-heading">Sign-in isn&rsquo;t configured yet</h2>
-              <p className="text-body text-ink-soft mt-1">
-                This deployment has no Supabase keys. Set
-                NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY, then
-                reload.
-              </p>
-            </>
-          )}
+          {/* SignInForm reports an unusable configuration itself. It reads the
+              values that were inlined into this bundle at build time, which are
+              the ones the sign-in call will actually use — the server's view of
+              process.env can differ and would mislead. */}
+          <SignInForm from={from} initialError={error} />
         </div>
       </div>
     </main>
