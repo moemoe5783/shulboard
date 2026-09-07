@@ -5,13 +5,15 @@ Vercel, Supabase (Postgres + Auth + Storage + Realtime).
 
 Full architecture: @docs/plan.md
 Visual spec: @docs/design.md
+Environment variables: @docs/environment.md
 
 ## Structure
 
 - `app/(app)/` — authenticated dashboard. Supabase Auth + RLS.
 - `app/s/[token]/` — public display route. No auth. One TV per URL.
-- `app/api/screen/[token]/bundle/` — server route, service-role key, returns the
-  display bundle. The ONLY place the service-role key is used.
+- `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
+  `app/m/[id]/[file]/`, and `app/api/cron/build-bundles/` — the five server
+  routes holding the service-role key. Nowhere else uses it.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx
 - `lib/tokens.css` — every color, size, and radius in the product
