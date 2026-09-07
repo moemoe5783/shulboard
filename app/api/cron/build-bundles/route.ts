@@ -14,6 +14,12 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * A ROUTE RATHER THAN A DAEMON because the deployment target is Vercel, where a
  * cron entry hits a URL. The work is in lib/bundle/build.ts so nothing about it
  * depends on that.
+ *
+ * GET, NOT POST. Vercel Cron always invokes the configured path with a GET
+ * request — there is no way to make it send anything else. POST stays
+ * exported too, for firing this by hand (curl, another scheduler) without
+ * reaching for a browser bar; both run the identical, identically-guarded
+ * handler below.
  */
 
 export const dynamic = "force-dynamic";
@@ -23,13 +29,15 @@ export const maxDuration = 60;
  *  make a single run exceed its wall-clock limit and lose the whole batch. */
 const BATCH = 10;
 
-export async function POST(request: Request) {
+async function handleBuildRequest(request: Request): Promise<NextResponse> {
   const secret = process.env.CRON_SECRET;
   const offered = request.headers.get("authorization");
 
   // No secret configured means the endpoint is closed, not open. An unguarded
   // build worker is an unauthenticated way to make the database do the most
-  // expensive thing it does, repeatedly.
+  // expensive thing it does, repeatedly. Vercel sends this value itself, as
+  // `Authorization: Bearer <CRON_SECRET>`, whenever the project has an
+  // environment variable of exactly that name — see docs/environment.md.
   if (!secret || offered !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "not authorised" }, { status: 401 });
   }
@@ -67,3 +75,6 @@ export async function POST(request: Request) {
     results,
   });
 }
+
+export const GET = handleBuildRequest;
+export const POST = handleBuildRequest;
