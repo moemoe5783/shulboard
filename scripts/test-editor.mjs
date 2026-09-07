@@ -209,10 +209,10 @@ try {
     `${seeded[0].left} / ${seeded[0].width}`,
   );
   check(
-    (await page.locator("summary", { hasText: "Add widget" }).count()) === 1,
+    (await page.locator("summary", { hasText: "Add element" }).count()) === 1,
     "the add menu is built from the registry",
   );
-  await page.locator("summary", { hasText: "Add widget" }).click();
+  await page.locator("summary", { hasText: "Add element" }).click();
   await settle();
   const offered = await page.evaluate(() =>
     [...document.querySelectorAll("details button")].map((b) => b.firstChild?.textContent).filter(Boolean),
@@ -440,7 +440,7 @@ try {
     check(withOne === 2, "one clock and the status row share the tick", `${withOne}`);
 
     const addClock = async () => {
-      await page.locator("summary", { hasText: "Add widget" }).click();
+      await page.locator("summary", { hasText: "Add element" }).click();
       await settle();
       await page.getByRole("button", { name: /^Clock/ }).first().click();
       await page.waitForTimeout(1100);
