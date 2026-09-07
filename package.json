@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:db": "bash scripts/test-db.sh",
     "test:routes": "node scripts/test-routes.mjs",
-    "test": "npm run test:db && npm run build && npm run test:routes"
+    "test": "npm run test:db && npm run build && npm run test:routes && npm run test:editor",
+    "test:editor": "node scripts/test-editor.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
@@ -31,6 +32,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "playwright-core": "^1.63.0",
     "supabase": "^2.116.0",
     "tailwindcss": "^4",
     "typescript": "^5"
