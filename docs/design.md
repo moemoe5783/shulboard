@@ -165,7 +165,8 @@ prose and stay in Assistant. Only actual clock times get the sefarim face.
 ```
 Base unit: 4px. All spacing is a multiple.
 Radius:    5px on controls and inputs. 6px on panels. That's it — two values.
-           Not 12px, not 16px, not full-round anything except status dots.
+           Not 12px, not 16px, not full-round anything except status dots and
+           the editor's rotate handle (see below).
 Borders:   1px --rule. Never 0.5px (renders inconsistently across displays).
 Table row: 40px. Dense but clickable for a 60-year-old with a trackpad.
 Controls:  32px high inputs and buttons.
@@ -265,6 +266,18 @@ Canvas sits on `--ink` at 88% opacity. Snap guides in `--verdigris` at 1px —
 functional, not pink-because-Figma-is-pink. Selection outline 1px `--verdigris`
 with 7px square handles.
 
+**The rotate handle is round, and that is the second exception to the
+full-round rule in §3.** It sits among eight square resize handles and does a
+different job; shape is how you tell a grip from a corner without a label, and
+at 7px there is no room for any other distinction. Round means "status" in the
+dashboard and "rotate" in the editor, and those two never appear together.
+
+Focus rings on the editor's chrome use `--focus-dark`, not `--verdigris`.
+Measured: `--verdigris` on `--ink` is 2.36:1, under the 3:1 WCAG 2.2 asks of a
+focus indicator; the lighter mix is 6.76:1 and still reads as the same accent.
+It is scoped to the dark regions — the canvas and the right-click menu are light
+surfaces and keep the normal ring.
+
 The right panel is the zmanim capability matrix from §5c made visible:
 unavailable zmanim for the chosen source are shown disabled with a tooltip
 explaining why, not hidden. Hiding them makes users think the app is broken.
@@ -278,6 +291,15 @@ explaining why, not hidden. Hiding them makes users think the app is broken.
   content — not a card. This one rule removes most slop.
 - **Tables are tables.** `<table>`, hairline under the header row only, no zebra
   striping, no borders between columns, no rounded corners on rows.
+
+  **Accepted exception: the editor's layers panel.** It is a list of records and
+  it is not a `<table>`. The tables rule exists to stop lists of records turning
+  into a grid of cards, and a 200px rail of rows that will eventually be
+  draggable is not that failure mode — it is navigation, closer to the app rail
+  than to the screens view. A real table there would also fight its own
+  geometry: 40px rows and 20px cell padding do not fit 200px beside a name, a
+  lock and a hide control. Every other list in the product is a table; this is
+  the one that is argued for rather than assumed.
 - **Buttons:** primary is `--verdigris` fill with white text. Secondary is
   transparent with a 1px `--rule-firm` border. Tertiary is text-only in
   `--verdigris`. One primary per view. No icons inside text buttons unless the

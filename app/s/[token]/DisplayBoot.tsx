@@ -14,11 +14,11 @@ import { useEffect, useSyncExternalStore } from "react";
  * KNOWN CONSEQUENCE, deliberate: because storage wins, rotating a screen's token
  * does NOT take effect on a device that has already booted once — opening the
  * new URL on it will still run the old token, which is the opposite of what
- * rotation is for. The fix, once the display is real, is for the bundle endpoint
- * to reject a revoked token and for this to fall back to the URL and rewrite
- * storage when it does. Until something can say "that token is dead", the choice
- * is between this and losing restore-on-power-up. The precedence is the one line
- * marked below.
+ * rotation is for. Client storage cannot enforce rotation; only the server can.
+ * plan.md §3a now requires the bundle endpoint to reject a revoked or rotated
+ * token, and that is the compensating control. When this route grows a bundle
+ * fetch, a rejection there clears the stored token and falls back to the URL —
+ * until then the precedence below is the whole story.
  *
  * Nothing here reaches the network and nothing reads a Supabase key. The service
  * role key never appears anywhere under app/s/.

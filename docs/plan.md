@@ -64,6 +64,17 @@ Runs on the server with the service role key — never expose the anon key to th
 display client and never try to do this with RLS gymnastics. Add ETag so
 unchanged polls are 304s.
 
+**The endpoint must reject a revoked or rotated token, and that is where token
+rotation actually takes effect.** The display route is storage-first: it boots
+from the token it has kept since it was paired, because that is what makes the
+pairing code work and what lets an unplugged screen come back on its own.
+Client storage therefore cannot enforce rotation — a device that has booted once
+will keep presenting its old token no matter what URL somebody opens on it. The
+server is the only place that can say no. So a 401 or 410 here is not an error
+path bolted on later; it is the compensating control that makes "rotate this
+screen's link" mean anything, and the display's response to it is to clear its
+stored token and fall back to whatever the URL carries.
+
 ### 3b. Compute locally, prefetch the rest
 Clock, date, Hebrew date, parsha, daf yomi, countdowns — **computed in the
 browser** from lat/long + system clock. No network needed, ever.
@@ -133,7 +144,11 @@ transforms give you Canva-grade interaction *and* live content.
 - Z-order: bring forward/back/front/back, plus a layers panel
 - Lock, hide, duplicate, delete
 - Undo/redo as a command stack (~50 deep) — implement from the start, not later
-- Copy/paste within and across boards
+- Copy/paste within and across boards. **Across boards needs the async Clipboard
+  API and its permission prompt** — the board fragment is written as JSON to the
+  system clipboard and read back on paste, so it survives a reload and a second
+  tab. A module-scope variable is a dev-lab shortcut that only holds within one
+  page session; it is not the implementation.
 - Right-click context menu mirroring the above
 
 ### 4c. Foundation — DECIDED
