@@ -55,8 +55,52 @@ as $$
   );
 $$;
 
+-- Real Supabase's own auth.jwt(): the full claim set, for policies that read
+-- more than sub or role (the realtime channel-authorization policy reads
+-- screen_id, a claim that only ever exists on the token
+-- /api/screen/[token]/realtime-auth mints -- there is no Supabase Auth user
+-- behind it).
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb);
+$$;
+
 grant usage on schema auth to anon, authenticated, service_role;
 grant select on auth.users to anon, authenticated, service_role;
+
+-- A minimal stand-in for the `realtime` schema a real Supabase project already
+-- ships. Only enough to test the RLS policy our own migration adds to
+-- realtime.messages -- not a reimplementation of Realtime itself.
+create schema if not exists realtime;
+
+create table if not exists realtime.messages (
+  id bigint generated always as identity primary key,
+  topic text not null,
+  inserted_at timestamptz not null default now()
+);
+
+-- The topic a client is attempting to subscribe to. On a real project the
+-- Realtime server sets this before checking whether the request may proceed;
+-- our SQL tests set it the same way (tests.set_realtime_topic).
+create or replace function realtime.topic()
+returns text
+language sql
+stable
+as $$
+  select nullif(current_setting('realtime.topic', true), '');
+$$;
+
+-- RLS is enabled on realtime.messages by default on a real Supabase project;
+-- our own migration only ever adds a policy to it, never enables RLS itself,
+-- so the shim has to do that part.
+alter table realtime.messages enable row level security;
+
+grant usage on schema realtime to anon, authenticated, service_role;
+grant select, insert on realtime.messages to anon, authenticated, service_role;
+grant usage on sequence realtime.messages_id_seq to anon, authenticated, service_role;
 
 -- PostgREST grants table privileges separately from RLS; without these the roles
 -- cannot reach the tables at all and every RLS test would pass vacuously.

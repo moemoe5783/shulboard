@@ -12,7 +12,7 @@
  */
 
 import { canonicalJson, etagFor, etagMatches, hashPayload } from "../lib/bundle/hash.ts";
-import { mediaProxyPath } from "../lib/bundle/media.ts";
+import { mediaProxyPath, parseVariantFile, readAssetVariant } from "../lib/bundle/media.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail = "") {
@@ -109,6 +109,53 @@ check(
 check(
   !mediaProxyPath(asset).includes("?"),
   "and it carries no query string, so it can never carry an expiry",
+);
+
+// ---- splitting the proxy filename back apart ------------------------------
+
+check(
+  JSON.stringify(parseVariantFile("display-a3f9.webp")) ===
+    JSON.stringify({ variant: "display", contentHash: "a3f9", extension: "webp" }),
+  "a variant file splits on its last dash and last dot",
+);
+check(
+  parseVariantFile("thumb-abc-123.jpg")?.variant === "thumb-abc",
+  "a hash-shaped variant name still splits at the LAST dash, not the first",
+);
+check(parseVariantFile("no-extension") === null, "no dot at all is not a variant file");
+check(parseVariantFile("nodash.jpg") === null, "no dash at all is not a variant file");
+check(parseVariantFile(".jpg") === null, "a dot with nothing before it doesn't split");
+check(parseVariantFile("a-.jpg") === null, "a dash with nothing before it doesn't split");
+
+// ---- reading a variant out of assets.variants -----------------------------
+
+const variants = {
+  display: {
+    storage_path: "org1/a1/display.webp",
+    content_hash: "a3f9",
+    extension: "webp",
+    content_type: "image/webp",
+    bytes: 45000,
+  },
+};
+
+check(
+  JSON.stringify(readAssetVariant(variants, "display")) ===
+    JSON.stringify({
+      storagePath: "org1/a1/display.webp",
+      contentHash: "a3f9",
+      extension: "webp",
+      contentType: "image/webp",
+      bytes: 45000,
+    }),
+  "a variant present in the jsonb reads back in full",
+);
+check(readAssetVariant(variants, "thumb") === null, "a variant not yet generated reads as null");
+check(readAssetVariant({}, "display") === null, "an asset with no variants at all reads as null");
+check(readAssetVariant(null, "display") === null, "a null variants column reads as null, not a throw");
+check(
+  readAssetVariant({ display: { storage_path: "x" } }, "display") === null,
+  "a variant missing required fields reads as null rather than a partial object",
 );
 
 const failed = results.filter((r) => !r.ok).length;

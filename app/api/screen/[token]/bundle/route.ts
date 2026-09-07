@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { etagFor, etagMatches } from "@/lib/bundle/hash";
 import type { BundleEnvelope } from "@/lib/bundle/types";
+import { resolveScreenToken } from "@/lib/screen-token";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
 /*
@@ -52,13 +53,9 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
     );
   }
 
-  const { data: screen, error: screenError } = await db
-    .from("screens")
-    .select("id, org_id, is_active")
-    .eq("token", token)
-    .maybeSingle();
+  const result = await resolveScreenToken(db, token);
 
-  if (screenError) {
+  if (!result.ok && result.reason === "lookup_failed") {
     return NextResponse.json(
       { error: "Couldn't reach the board.", code: "lookup_failed" },
       { status: 502, headers: { "cache-control": "no-store" } },
@@ -67,7 +64,9 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
 
   // A rotated token no longer matches any row, so "not found" and "rotated" are
   // the same branch. A deactivated screen is revocation without deletion.
-  if (!screen || screen.is_active === false) return gone();
+  if (!result.ok) return gone();
+
+  const screen = result.screen;
 
   const ifNoneMatch = request.headers.get("if-none-match");
 

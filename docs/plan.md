@@ -99,6 +99,15 @@ Only human-entered content (announcements, events, photos) can go stale, and the
 ### 3d. Live updates without refresh
 - Supabase Realtime broadcast on channel `screen:<id>`. Editor publishes
   `bundle_changed` on save → display refetches and cross-fades.
+- **The channel is private and authorized per screen, not open to the anon
+  key.** The anon key is public and identical for every screen the product
+  serves, so subscribing also requires a short-lived JWT from
+  `POST /api/screen/[token]/realtime-auth` (re-validates the display token,
+  never a Supabase Auth session) carrying that one screen's id as a claim. An
+  RLS policy on `realtime.messages` lets a client onto `screen:<id>` only if
+  its JWT names that id. Skipping this is not a smaller version of the
+  feature — it is any anonymous client able to subscribe to (or, absent a
+  matching insert policy, still not publish on) any screen's channel.
 - **Plus a 60s polling fallback.** TV browsers drop websockets constantly and
   don't always fire reconnect events. Belt and suspenders.
 - Widget-level realtime for polls and message board (direct Postgres changes
@@ -358,6 +367,17 @@ data migration.
   on a shul's photos shouldn't be served publicly.
 - Generate variants on upload: thumb (400px), display (1080px), large (2160px),
   WebP + AVIF. Screens fetch by slot size, not the original.
+  **Serving side already exists and fixes the shape:** `GET
+  /m/<asset_id>/<variant>-<hash>.<ext>` reads a variant out of
+  `assets.variants` (jsonb keyed by variant name), where each entry must carry
+  `storage_path`, `content_hash`, `extension`, `content_type`, `bytes` — the
+  upload pipeline's job is to write exactly that shape, not invent its own.
+  The route serves bytes straight from Storage with the service role (never a
+  signed URL — §3a's reasoning about expiry applies here too), 404s a hash or
+  extension that no longer matches what's on file, and 404s a soft-deleted
+  asset (`deleted_at`) rather than serving it. A bundle only ever embeds one
+  variant per asset today (`display`) because `dataNeeds` carries an
+  `assetId` and nothing yet says which size a widget wants.
 - Per-file progress, resumable for large videos, clear per-file error states.
 - Reordering, captions, bulk delete, bulk move between albums.
 

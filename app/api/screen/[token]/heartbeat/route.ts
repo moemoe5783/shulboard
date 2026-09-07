@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { HeartbeatBody } from "@/lib/bundle/types";
+import { resolveScreenToken } from "@/lib/screen-token";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
 /*
@@ -27,18 +28,14 @@ export async function POST(
   const db = serviceClientOrNull();
   if (!db) return NextResponse.json({ ok: false }, { status: 503 });
 
-  const { data: screen } = await db
-    .from("screens")
-    .select("id, org_id, is_active")
-    .eq("token", token)
-    .maybeSingle();
-
   // Same answer as the bundle route, for the same reason: a client-writable
   // heartbeat would let anyone forge liveness for any screen, so an unknown or
-  // rotated token gets nothing.
-  if (!screen || screen.is_active === false) {
+  // rotated token — or a lookup that failed outright — gets nothing.
+  const result = await resolveScreenToken(db, token);
+  if (!result.ok) {
     return NextResponse.json({ ok: false, code: "token_invalid" }, { status: 410 });
   }
+  const screen = result.screen;
 
   let body: HeartbeatBody = {};
   try {

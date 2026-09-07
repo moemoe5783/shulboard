@@ -13,12 +13,13 @@
     "test": "npm run test:db && npm run test:widgets && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display",
     "test:editor": "node scripts/test-editor.mjs",
     "test:widgets": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-widgets.ts",
-    "test:display": "node scripts/test-display.mjs",
+    "test:display": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-display.mjs",
     "test:bundle": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-bundle.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.115.0",
+    "jose": "^6.2.12",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",

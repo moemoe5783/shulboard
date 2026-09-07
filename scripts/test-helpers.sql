@@ -97,8 +97,26 @@ create function tests.authenticate_as(uid uuid) returns void language sql as $$
   );
 $$;
 
--- service_role too: the display's server routes run as it, so the tests that
--- exercise them have to as well.
-grant usage on schema tests to authenticated, service_role;
-grant insert, select on tests.log to authenticated, service_role;
-grant usage, select on sequence tests.log_id_seq to authenticated, service_role;
+-- A screen's Realtime credential -- no `sub`, because there is no Supabase
+-- Auth user behind it. Mirrors exactly what
+-- POST /api/screen/[token]/realtime-auth mints.
+create function tests.authenticate_as_screen(screen_id uuid) returns void language sql as $$
+  select set_config(
+    'request.jwt.claims',
+    json_build_object('role', 'authenticated', 'screen_id', screen_id)::text,
+    true
+  );
+$$;
+
+-- What the Realtime server sets before checking whether the current caller may
+-- subscribe to a topic, so realtime.topic() has something to read in a test.
+create function tests.set_realtime_topic(topic text) returns void language sql as $$
+  select set_config('realtime.topic', topic, true);
+$$;
+
+-- service_role and anon too: the display's server routes run as service_role,
+-- and the realtime authorization tests assert from anon directly, so the
+-- tests that exercise either have to be able to record a result as it.
+grant usage on schema tests to authenticated, service_role, anon;
+grant insert, select on tests.log to authenticated, service_role, anon;
+grant usage, select on sequence tests.log_id_seq to authenticated, service_role, anon;

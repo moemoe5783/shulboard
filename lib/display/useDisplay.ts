@@ -199,14 +199,14 @@ export function useDisplay(token: string) {
     void (async () => {
       const { subscribeToBundleChanges } = await import("./realtime");
       if (cancelled) return;
-      dispose = subscribeToBundleChanges(screenId, () => void refresh());
+      dispose = subscribeToBundleChanges(token, screenId, () => void refresh());
     })();
 
     return () => {
       cancelled = true;
       dispose?.();
     };
-  }, [bundle?.screen.id, refresh]);
+  }, [token, bundle?.screen.id, refresh]);
 
   // ---- §3e: heartbeat -----------------------------------------------------
 
