@@ -54,5 +54,15 @@ export const manifest: WidgetManifest<ImageConfig> = {
    * fetched and cached once. A widget with nothing chosen yet needs nothing.
    */
   dataNeeds: (config) => (config.assetId ? [{ kind: "asset", assetId: config.assetId }] : []),
+  /**
+   * docs/sizing.md §2 doesn't mention media in either "applies to" list — an
+   * image already fills its box via `fit`/`cover` cropping (the config field
+   * above, a different and older use of the word "fit"), so there's no font
+   * size for a sizing mode to drive either way. Declared `fit` for manifest
+   * completeness — every widget must state one — but it's a no-op here, not
+   * a real choice. Not toggleable, since there's nothing for the other mode
+   * to mean for a picture.
+   */
+  sizing: { mode: "fit", userToggleable: false },
   instanceLabel: (config) => config.alt || "Image",
 };
