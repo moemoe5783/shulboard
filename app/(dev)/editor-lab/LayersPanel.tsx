@@ -37,7 +37,8 @@ export function LayersPanel() {
 
       {rows.length === 0 ? (
         <div className="p-3">
-          <p className="text-body text-paper">Add your first widget</p>
+          {/* "element" — docs/sizing.md §6. "widget" is unchanged in code. */}
+          <p className="text-body text-paper">Add your first element</p>
           <p className={`${CHROME_META} mt-1`}>
             Everything on the board is listed here, front to back.
           </p>

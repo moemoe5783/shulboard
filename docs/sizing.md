@@ -176,15 +176,41 @@ properties panel for the same problem.
 
 ---
 
-## 6. Naming: "widget" vs "element"
+## 6. Naming: "widget" vs "element" — decided
 
-Open question, worth settling before the term spreads further.
+**"Element" in the editor UI. "Widget" everywhere in code.** Settled, not open.
 
-- **In code** — folders, manifest types, registry, `dataNeeds` — "widget" is
-  accurate. A Zmanim block is a live data component, not a static element.
-- **In the editor UI**, where a gabbai reads it, "element" is friendlier and
-  matches what design tools call things.
+- **In code** — folder names, `WidgetManifest`, `WidgetRenderer`, the registry
+  in `widgets/manifests.ts`/`renderers.ts`/`settings.ts`, `dataNeeds`,
+  `widgetLabel()`, the `data-widget-id` DOM attribute, `setWidgetConfig`, every
+  doc comment — stays "widget". A Zmanim block is a live data component, not a
+  static element, and that is still an accurate word for what the folder
+  contains. Nothing here changed.
+- **In the editor UI** — the add-element menu, the layers panel's empty state,
+  the properties panel's headings and multi-selection copy, the status bar's
+  count — says "element": "Add element", "Add your first element", "3
+  elements selected", "12 elements". A gabbai never reads the word "widget"
+  anywhere in the product.
 
-Whichever is chosen, it should be consistent within each layer. Renaming code
-later is a large mechanical diff; renaming UI strings is cheap. So: decide the UI
-term now, and leave the code term alone unless there's a strong reason.
+**Why the split holds rather than drifting into an inconsistency someone
+"fixes" later:** the two words are answering different questions for
+different readers. Code answers "what kind of thing is this to build" for
+whoever is adding widget number twenty-six, and "widget" is the more precise
+answer — plan.md §5's whole registry pattern (manifest / Renderer / Settings,
+one folder each) is written around that word and around `dataNeeds`, which is
+a code concept with no UI translation at all. The editor UI answers "what is
+this thing on my board" for a gabbai who has never heard either word walk in
+the door, and "element" reads as the generic, design-tool-shaped answer —
+"widget" in that context sounds like a gadget, not a heading or a clock.
+Renaming the UI strings cost four files. Renaming the code would touch every
+widget folder, the registry, the bundle builder, and every doc comment that
+explains why the registry looks the way it does — for no reader-facing
+benefit, since nobody using the product ever sees a folder name. That
+asymmetry is why the split is stable rather than a compromise waiting to be
+resolved one way: there is no version of "fixing" it that isn't strictly
+worse for one of the two readers.
+
+If a future session finds a "widget" in editor UI copy, that is a bug in that
+string, not a reason to reopen this. If a future session is tempted to rename
+`WidgetManifest` to `ElementManifest` for consistency with the UI word, don't
+— read this section first.

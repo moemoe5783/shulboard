@@ -87,7 +87,10 @@ export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: num
       onToggle={(event) => setOpen(event.currentTarget.open)}
       className="relative"
     >
-      <summary className={`${CHROME_BUTTON} cursor-pointer list-none`}>Add widget</summary>
+      {/* "Add element" — docs/sizing.md §6: "element" is the editor UI's word
+          for this; "widget" stays the word in code (folders, manifests,
+          WIDGET_MANIFESTS below), unchanged. */}
+      <summary className={`${CHROME_BUTTON} cursor-pointer list-none`}>Add element</summary>
 
       {/* A menu floats, which is what earns it the one shadow in the product. */}
       <div className="rounded-panel border-rule bg-surface absolute top-9 left-0 z-30 w-64 border p-1 shadow-menu">
