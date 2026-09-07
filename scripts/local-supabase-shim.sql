@@ -6,7 +6,14 @@
 -- exists so `npm run test:db` can run the migrations and the RLS tests against a
 -- throwaway local Postgres.
 
-create extension if not exists pgcrypto;
+-- A real Supabase project installs this into its own `extensions` schema, not
+-- `public` -- matched here so a type-generation run against this shim (see
+-- scripts/generate-db-types.sh) does not pick up pgcrypto's functions
+-- (dearmor, gen_salt, ...) as if they belonged to the app's own public
+-- schema. Nothing in the migrations actually calls a pgcrypto function
+-- directly; gen_random_uuid() has been a Postgres core builtin since 13.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 do $$
 begin
