@@ -66,7 +66,7 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
 
   const { data: boards, error: boardsError } = await supabase
     .from("boards")
-    .select("id, name")
+    .select("id, name, published_at")
     .eq("org_id", org.orgId)
     .is("deleted_at", null)
     .order("name");
@@ -115,7 +115,11 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
           <div className="mt-4">
             <BoardPicker
               screenId={screen.id}
-              boards={boards ?? []}
+              boards={(boards ?? []).map((board) => ({
+                id: board.id,
+                name: board.name,
+                published: board.published_at !== null,
+              }))}
               currentBoardId={currentBoardId}
             />
           </div>
