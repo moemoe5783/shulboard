@@ -1,0 +1,18 @@
+<!--
+  Demo asset for the Image widget. Deliberately a test card and not a
+  photograph: three labelled bands make it obvious which part of the picture the
+  focal point kept and which part the crop threw away, which a stock photo would
+  hide. Content, not UI — this is the only place in the repo outside
+  lib/tokens.css that carries colour values, and it carries them as image data.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" width="1600" height="1200">
+  <rect width="1600" height="1200" fill="#1b2a2e"/>
+  <rect y="0"   width="1600" height="400" fill="#1e6b63"/>
+  <rect y="400" width="1600" height="400" fill="#5a6b6e"/>
+  <rect y="800" width="1600" height="400" fill="#8a9799"/>
+  <g fill="#f2f4f3" font-family="system-ui, sans-serif" font-size="72" font-weight="400">
+    <text x="60" y="230">top of the picture</text>
+    <text x="60" y="630">middle</text>
+    <text x="60" y="1030">bottom of the picture</text>
+  </g>
+</svg>
