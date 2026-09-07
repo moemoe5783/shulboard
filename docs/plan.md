@@ -367,6 +367,17 @@ data migration.
   on a shul's photos shouldn't be served publicly.
 - Generate variants on upload: thumb (400px), display (1080px), large (2160px),
   WebP + AVIF. Screens fetch by slot size, not the original.
+  **Serving side already exists and fixes the shape:** `GET
+  /m/<asset_id>/<variant>-<hash>.<ext>` reads a variant out of
+  `assets.variants` (jsonb keyed by variant name), where each entry must carry
+  `storage_path`, `content_hash`, `extension`, `content_type`, `bytes` — the
+  upload pipeline's job is to write exactly that shape, not invent its own.
+  The route serves bytes straight from Storage with the service role (never a
+  signed URL — §3a's reasoning about expiry applies here too), 404s a hash or
+  extension that no longer matches what's on file, and 404s a soft-deleted
+  asset (`deleted_at`) rather than serving it. A bundle only ever embeds one
+  variant per asset today (`display`) because `dataNeeds` carries an
+  `assetId` and nothing yet says which size a widget wants.
 - Per-file progress, resumable for large videos, clear per-file error states.
 - Reordering, captions, bulk delete, bulk move between albums.
 

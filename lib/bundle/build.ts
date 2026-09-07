@@ -3,7 +3,15 @@ import "server-only";
 import { serviceClient } from "@/lib/supabase/service";
 import { assembleBundle, assetIdsFor, type AssetRow } from "./assemble";
 import { hashPayload, payloadBytes } from "./hash";
+import { readAssetVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
+
+/** Which generated derivative a bundle embeds. dataNeeds carries only an
+ *  `assetId` today, not a requested size (widgets/types.ts) — until a widget
+ *  needs to ask for a specific one, "display" (1080px, plan.md §6: "screens
+ *  fetch by slot size, not the original") is the one variant every board
+ *  embeds. */
+const BOARD_ASSET_VARIANT = "display";
 
 /*
  * The build job — docs/plan.md §3a, docs/schema.md §9 and §10.
@@ -200,11 +208,29 @@ async function assemblePayloadFor(
 
   const assets = new Map<string, AssetRow>();
   if (referenced.size > 0) {
+    // Soft-deleted assets never enter the bundle (schema.md §6) — the widget
+    // that referenced one falls back to resolveWidgetAssets leaving it alone,
+    // which is its own empty state, not a build failure over one deleted photo.
     const { data: rows } = await db
       .from("assets")
-      .select("id, variant, content_hash, extension, content_type, bytes")
-      .in("id", [...referenced]);
-    for (const row of rows ?? []) assets.set(row.id, row as AssetRow);
+      .select("id, variants")
+      .in("id", [...referenced])
+      .is("deleted_at", null);
+
+    for (const row of rows ?? []) {
+      const variant = readAssetVariant(row.variants, BOARD_ASSET_VARIANT);
+      // Not processed yet, or generated in a shape this build doesn't
+      // recognise. Either way the widget shows its own empty state.
+      if (!variant) continue;
+      assets.set(row.id, {
+        id: row.id,
+        variant: BOARD_ASSET_VARIANT,
+        content_hash: variant.contentHash,
+        extension: variant.extension,
+        content_type: variant.contentType,
+        bytes: variant.bytes,
+      });
+    }
   }
 
   const content = await resolveContent(db, orgId);

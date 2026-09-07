@@ -25,6 +25,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { mediaProxyPath } from "../lib/bundle/media.ts";
 
 const PORT = Number(process.env.PORT ?? 3212);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -103,7 +104,7 @@ async function stopServer(child) {
 
 /** A bundle in the shape the endpoint serves. Built here rather than imported so
  *  the test states the contract instead of inheriting it. */
-function bundleFixture({ version, hash, title, assetUrl }) {
+function bundleFixture({ version, hash, title, assetUrl, assetId = "a1" }) {
   return {
     bundleVersion: version,
     contentHash: hash,
@@ -145,7 +146,7 @@ function bundleFixture({ version, hash, title, assetUrl }) {
                     locked: false, hidden: false, opacity: 1, groupId: null,
                     styleOverrides: {},
                     config: {
-                      assetId: "a1", src: assetUrl, alt: "Kiddush", fit: "cover",
+                      assetId, src: assetUrl, alt: "Kiddush", fit: "cover",
                       focalX: 0.5, focalY: 0.5, radius: 0,
                     },
                   },
@@ -157,10 +158,29 @@ function bundleFixture({ version, hash, title, assetUrl }) {
     ],
     content: { announcements: [], schedules: [], people: [], events: [], zmanim: {} },
     assets: assetUrl
-      ? [{ id: "a1", url: assetUrl, variant: "display", contentType: "image/svg+xml", bytes: 1024 }]
+      ? [{ id: assetId, url: assetUrl, variant: "display", contentType: "image/svg+xml", bytes: 1024 }]
       : [],
   };
 }
+
+/*
+ * Real media-proxy paths, not /demo/*. The point of moving off /demo/ is that
+ * the thing an offline board caches has to be the thing production actually
+ * serves — a bundle never references a static file under /demo/, only
+ * /m/<id>/<variant>-<hash>.<ext> (lib/bundle/media.ts). There is no live
+ * Supabase project in this environment to back the real route with Storage
+ * bytes, so context A still seeds the cache directly rather than fetching —
+ * but it seeds it keyed by this exact URL, which is what makes it a test of
+ * the real cache-first lookup in public/sw.js instead of a stand-in.
+ */
+const CACHED_ASSET = { id: "a1", variant: "display", content_hash: "cached-hash-1", extension: "svg" };
+const CACHED_ASSET_URL = mediaProxyPath(CACHED_ASSET);
+
+const STEADY_ASSET = { id: "a1", variant: "display", content_hash: "steady-hash", extension: "svg" };
+const STEADY_ASSET_URL = mediaProxyPath(STEADY_ASSET);
+
+const HELD_BACK_ASSET = { id: "a2", variant: "display", content_hash: "held-back-hash", extension: "svg" };
+const HELD_BACK_ASSET_URL = mediaProxyPath(HELD_BACK_ASSET);
 
 // ---------------------------------------------------------------------------
 
@@ -240,14 +260,24 @@ try {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  }, { ...bundleFixture({ version: 7, hash: "cached-hash", title: "Beis Menachem", assetUrl: "/demo/test-card.svg" }), __token: TOKEN });
+  }, { ...bundleFixture({ version: 7, hash: "cached-hash", title: "Beis Menachem", assetUrl: CACHED_ASSET_URL }), __token: TOKEN });
 
   // Warm the asset cache the way the atomic swap does, so the offline board has
-  // its picture.
-  await page.evaluate(async () => {
+  // its picture. Seeded directly with `cache.put` rather than `cache.add` —
+  // there is no live Supabase project behind the real /m/ route in this
+  // environment to fetch from, so this simulates "a screen that had once
+  // fetched successfully," the same stand-in the IndexedDB seed above already
+  // is, but keyed by the real proxy URL the service worker's cache-first
+  // handler actually looks up.
+  await page.evaluate(async (url) => {
     const cache = await caches.open("shulboard-assets-v1");
-    await cache.add("/demo/test-card.svg");
-  });
+    await cache.put(
+      url,
+      new Response("<svg xmlns='http://www.w3.org/2000/svg'/>", {
+        headers: { "content-type": "image/svg+xml" },
+      }),
+    );
+  }, CACHED_ASSET_URL);
 
   // THE CABLE COMES OUT.
   await offlineContext.setOffline(true);
@@ -300,7 +330,7 @@ try {
   const net = await netContext.newPage();
   net.on("pageerror", (e) => check(false, "no page errors", e.message));
 
-  let served = bundleFixture({ version: 1, hash: "hash-one", title: "Version one", assetUrl: "/demo/test-card.svg" });
+  let served = bundleFixture({ version: 1, hash: "hash-one", title: "Version one", assetUrl: STEADY_ASSET_URL, assetId: STEADY_ASSET.id });
   let assetAvailable = true;
   const seenIfNoneMatch = [];
 
@@ -324,7 +354,13 @@ try {
     });
   });
 
-  await netContext.route("**/demo/held-back.svg", async (route) => {
+  // The steady bundle's own asset — real proxy path, mocked here in place of
+  // the Storage-backed bytes there is no live project to serve.
+  await netContext.route(`**${STEADY_ASSET_URL}`, (route) =>
+    route.fulfill({ status: 200, contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" }),
+  );
+
+  await netContext.route(`**${HELD_BACK_ASSET_URL}`, async (route) => {
     if (assetAvailable) await route.fulfill({ status: 200, contentType: "image/svg+xml", body: "<svg xmlns='http://www.w3.org/2000/svg'/>" });
     else await route.abort("failed");
   });
@@ -354,7 +390,7 @@ try {
 
   // A new bundle whose asset cannot be fetched must NOT swap.
   assetAvailable = false;
-  served = bundleFixture({ version: 2, hash: "hash-two", title: "Held back", assetUrl: "/demo/held-back.svg" });
+  served = bundleFixture({ version: 2, hash: "hash-two", title: "Held back", assetUrl: HELD_BACK_ASSET_URL, assetId: HELD_BACK_ASSET.id });
   await net.evaluate(() => window.dispatchEvent(new Event("shulboard:test-poll")));
   await net.reload({ waitUntil: "domcontentloaded" });
   await net.waitForTimeout(1200);
