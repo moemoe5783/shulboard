@@ -127,6 +127,15 @@
   --focus-width: 2px;
   --focus-offset: 2px;
 
+  /* Focus on dark chrome — the editor's toolbar, layers rail and status bar.
+   *
+   * MEASURED: --verdigris on --ink is 2.36:1, under the 3:1 that WCAG 2.2's
+   * focus-appearance criterion asks for and visibly dim in the editor. This mix
+   * is 6.76:1 on --ink and still reads as the same accent rather than
+   * introducing a second focus colour. It is NOT a general replacement: on
+   * --paper it measures 1.99:1, so light surfaces keep --verdigris. */
+  --focus-dark: color-mix(in srgb, var(--verdigris) 45%, var(--paper));
+
   /* The only shadow in the product. Shadows exist for things that genuinely
    * float — menus, popovers, modals, the drag ghost in the editor — and nothing
    * in normal document flow may use this. Named --elevation-* rather than

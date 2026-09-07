@@ -15,4 +15,13 @@
     outline: var(--focus-width) solid var(--verdigris);
     outline-offset: var(--focus-offset);
   }
+
+  /* Dark chrome needs a lighter ring to stay visible — see --focus-dark in
+   * lib/tokens.css for the measurement. Marked per region rather than on the
+   * editor root on purpose: the canvas and the right-click menu are light
+   * surfaces inside that root, and they keep the ring above. */
+  [data-dark-chrome] :focus-visible,
+  [data-dark-chrome]:focus-visible {
+    outline-color: var(--focus-dark);
+  }
 }
