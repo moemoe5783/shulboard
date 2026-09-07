@@ -97,8 +97,12 @@ Only human-entered content (announcements, events, photos) can go stale, and the
   board in the playlist too.
 
 ### 3d. Live updates without refresh
-- Supabase Realtime broadcast on channel `screen:<id>`. Editor publishes
-  `bundle_changed` on save → display refetches and cross-fades.
+- Supabase Realtime broadcast on channel `screen:<id>`. `buildScreenBundle`
+  publishes `bundle_changed` after a build that actually bumps `version` →
+  display refetches and cross-fades. Not on every autosave — a board's draft
+  doesn't touch a screen at all until it's published (docs/schema.md §5's
+  `published_doc`) — so this fires from a publish's own immediate build, or
+  from the cron sweep picking up a queued content change.
 - **The channel is private and authorized per screen, not open to the anon
   key.** The anon key is public and identical for every screen the product
   serves, so subscribing also requires a short-lived JWT from

@@ -12,10 +12,11 @@
     "test:db-types": "bash scripts/check-db-types.sh",
     "gen:db-types": "bash scripts/generate-db-types.sh",
     "test:routes": "node scripts/test-routes.mjs",
-    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display",
+    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display && npm run test:realtime",
     "test:editor": "node scripts/test-editor.mjs",
     "test:widgets": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-widgets.ts",
     "test:display": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-display.mjs",
+    "test:realtime": "node scripts/test-realtime.mjs",
     "test:bundle": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-bundle.ts"
   },
   "dependencies": {
