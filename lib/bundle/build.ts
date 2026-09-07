@@ -227,16 +227,32 @@ async function assemblePayloadFor(
 
   const boardIds = [...new Set(items.map((item) => item.board_id).filter(Boolean))];
 
-  const { data: boards } = boardIds.length
-    ? await db.from("boards").select("id, name, doc").in("id", boardIds)
+  // published_doc, never doc — the draft never reaches a screen. A board that
+  // has never been published has a null published_doc and is excluded here,
+  // so it contributes nothing to this bundle: DisplayBoard.tsx already
+  // handles a playlist item with no matching board entry by showing its
+  // "no board yet" state, which is exactly right for "not published yet"
+  // too.
+  const { data: rawBoards } = boardIds.length
+    ? await db
+        .from("boards")
+        .select("id, name, published_doc")
+        .in("id", boardIds)
+        .not("published_doc", "is", null)
     : { data: [] };
+
+  const boards = (rawBoards ?? []).map((board) => ({
+    id: board.id,
+    name: board.name,
+    doc: board.published_doc,
+  }));
 
   // Two passes over the boards: the first only to learn which assets are
   // referenced, so exactly those rows are fetched rather than every asset the
   // org owns. A shul with two thousand kiddush photographs and one on the board
   // should transfer one row.
   const referenced = new Set<string>();
-  for (const board of boards ?? []) {
+  for (const board of boards) {
     try {
       const { parseBoardDoc } = await import("@/lib/board-doc");
       for (const id of assetIdsFor(parseBoardDoc(board.doc).widgets)) referenced.add(id);
@@ -292,7 +308,7 @@ async function assemblePayloadFor(
     theme: (org?.theme as Record<string, unknown>) ?? {},
     playlist: playlist?.data ? { id: playlist.data.id, name: playlist.data.name } : null,
     playlistItems: items,
-    boards: boards ?? [],
+    boards,
     content,
     assets,
   });

@@ -44,6 +44,18 @@ export const CHROME_BUTTON =
 export const CHROME_BUTTON_ON =
   "bg-verdigris-wash text-verdigris enabled:hover:bg-verdigris-wash";
 
+/**
+ * The one primary action in editor chrome — publish (design.md §4's wireframe:
+ * "Saved [Publish]"). A verdigris fill with light text, the same treatment
+ * Button.tsx's primary variant gives the dashboard, and the fill CHROME_BUTTON_ON
+ * deliberately avoids: that comment draws the line between a toggle's state
+ * (wash) and a genuine action (fill), and publish is the fill side of it.
+ */
+export const CHROME_BUTTON_PRIMARY =
+  "text-cell rounded-control bg-verdigris text-surface inline-flex h-8 shrink-0 items-center " +
+  "justify-center px-3 whitespace-nowrap enabled:hover:bg-verdigris-deep disabled:bg-verdigris/40 " +
+  "disabled:cursor-not-allowed";
+
 /** Metadata on dark chrome. --ink-soft is the dashboard's answer and reads as
  *  mud here; --paper at 60% is the same relationship the other way up. */
 export const CHROME_META = "text-meta text-paper/60";

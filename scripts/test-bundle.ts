@@ -11,7 +11,7 @@
  * Run with: npm run test:bundle
  */
 
-import { canonicalJson, etagFor, etagMatches, hashPayload } from "../lib/bundle/hash.ts";
+import { canonicalJson, etagFor, etagMatches, hashBoardDoc, hashPayload } from "../lib/bundle/hash.ts";
 import { mediaProxyPath, parseVariantFile, readAssetVariant } from "../lib/bundle/media.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -81,6 +81,59 @@ withTime.builtAt = new Date().toISOString();
 check(
   hashPayload(base) !== hashPayload(withTime),
   "a build timestamp WOULD change the hash — which is why it lives in the envelope",
+);
+
+// ---- board doc hashing — the boards list and editor's unpublished-changes
+// state (docs/plan.md's publish model) compares this against a fresh hash of
+// the draft, and it must NOT be a document-equality check: a no-op autosave
+// or a move and a move-back must hash identically, not merely compare equal
+// as objects. ---------------------------------------------------------------
+
+const widget = {
+  id: "w1",
+  type: "title",
+  x: 10,
+  y: 10,
+  w: 20,
+  h: 20,
+  rotation: 0,
+  z: 0,
+  locked: false,
+  hidden: false,
+  opacity: 1,
+  groupId: null,
+  config: { text: "Hi" },
+  styleOverrides: {},
+};
+
+const doc = { schemaVersion: 1, background: {}, themeOverrides: {}, widgets: [widget] } as never;
+const docReordered = {
+  widgets: [widget],
+  themeOverrides: {},
+  background: {},
+  schemaVersion: 1,
+} as never;
+
+check(
+  hashBoardDoc(doc) === hashBoardDoc(docReordered),
+  "a board doc hashes the same regardless of top-level key order",
+);
+
+const resavedUnchanged = JSON.parse(JSON.stringify(doc));
+check(
+  hashBoardDoc(doc) === hashBoardDoc(resavedUnchanged),
+  "an autosave that changed nothing hashes identically to what's published",
+);
+
+const moved = JSON.parse(JSON.stringify(doc));
+moved.widgets[0].x = 50;
+check(hashBoardDoc(doc) !== hashBoardDoc(moved), "moving a widget changes the hash");
+
+const movedBack = JSON.parse(JSON.stringify(moved));
+movedBack.widgets[0].x = 10;
+check(
+  hashBoardDoc(doc) === hashBoardDoc(movedBack),
+  "a move and a move back hashes the same as never having moved — not flagged as a change",
 );
 
 // ---- ETag comparison ------------------------------------------------------

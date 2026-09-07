@@ -12,6 +12,7 @@ import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import type { BoardDoc } from "@/lib/board-doc";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
 import { saveBoardDoc } from "./actions";
+import { PublishControls, type PublishState } from "./PublishControls";
 
 /*
  * The real editor. plan.md §4 and design.md §4, with a database on the other
@@ -41,9 +42,13 @@ export type BoardEditorProps = {
   name: string;
   canvas: { width: number; height: number };
   doc: unknown;
+  /** The board's publish state as of page load — see PublishControls.tsx.
+   *  Kept live afterward by each autosave's result and by publishing or
+   *  discarding directly, never re-fetched. */
+  publishState: PublishState;
 };
 
-export function BoardEditor({ boardId, name, canvas, doc }: BoardEditorProps) {
+export function BoardEditor({ boardId, name, canvas, doc, publishState: initialPublishState }: BoardEditorProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +81,11 @@ export function BoardEditor({ boardId, name, canvas, doc }: BoardEditorProps) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
 
+  // Publish state: seeded from the page load, then kept current by whichever
+  // of three things last touched it — an autosave (only ever moves
+  // pendingChanges, since autosave never publishes), a publish, or a discard.
+  const [publishState, setPublishState] = useState<PublishState>(initialPublishState);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -93,6 +103,9 @@ export function BoardEditor({ boardId, name, canvas, doc }: BoardEditorProps) {
       const result = await saveBoardDoc(boardId, next);
       if (!mountedRef.current) return;
       setSaveState(result.ok ? "saved" : "error");
+      if (result.ok) {
+        setPublishState((previous) => ({ ...previous, pendingChanges: result.pendingChanges }));
+      }
     });
   }, [boardId]);
 
@@ -218,7 +231,24 @@ export function BoardEditor({ boardId, name, canvas, doc }: BoardEditorProps) {
 
   return (
     <div className="bg-ink text-paper font-ui flex h-screen flex-col">
-      <Header name={name} boardId={boardId} saveState={saveState} isSaving={isSaving} />
+      <Header
+        name={name}
+        boardId={boardId}
+        saveState={saveState}
+        isSaving={isSaving}
+        publishState={publishState}
+        onPublished={(result) =>
+          setPublishState({
+            publishedAt: result.publishedAt,
+            screenCount: result.screenCount,
+            pendingChanges: false,
+          })
+        }
+        onDiscarded={(reverted) => {
+          useEditor.getState().load(reverted, canvas);
+          setPublishState((previous) => ({ ...previous, pendingChanges: false }));
+        }}
+      />
       <Toolbar onFit={fit} canvas={canvas} />
 
       <div className="flex min-h-0 flex-1">
@@ -293,11 +323,17 @@ function Header({
   boardId,
   saveState,
   isSaving,
+  publishState,
+  onPublished,
+  onDiscarded,
 }: {
   name: string;
   boardId: string;
   saveState: "idle" | "saving" | "saved" | "error";
   isSaving: boolean;
+  publishState: PublishState;
+  onPublished: (result: { publishedAt: string; screenCount: number }) => void;
+  onDiscarded: (doc: BoardDoc) => void;
 }) {
   const label =
     isSaving || saveState === "saving"
@@ -317,16 +353,24 @@ function Header({
         ← Boards
       </Link>
       <span className="text-cell text-paper min-w-0 truncate font-semibold">{name}</span>
-      {label && (
-        <span
-          className={`${CHROME_META} ml-auto`}
-          role={saveState === "error" ? "alert" : undefined}
-          data-board-save-state={saveState}
-          data-board-id={boardId}
-        >
-          {label}
-        </span>
-      )}
+      <div className="ml-auto flex items-center gap-3">
+        {label && (
+          <span
+            className={CHROME_META}
+            role={saveState === "error" ? "alert" : undefined}
+            data-board-save-state={saveState}
+            data-board-id={boardId}
+          >
+            {label}
+          </span>
+        )}
+        <PublishControls
+          boardId={boardId}
+          state={publishState}
+          onPublished={onPublished}
+          onDiscarded={onDiscarded}
+        />
+      </div>
     </div>
   );
 }

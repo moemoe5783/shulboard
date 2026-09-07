@@ -1,9 +1,25 @@
 import Link from "next/link";
 import { buttonClassName } from "@/components/Button";
+import { BoardDocError, parseBoardDoc } from "@/lib/board-doc";
+import { hashBoardDoc } from "@/lib/bundle/hash";
 import { requireActiveOrg } from "@/lib/orgs";
 import { formatResolution } from "@/lib/screens";
 import { createClient } from "@/lib/supabase/server";
-import { BoardsTable } from "./BoardsTable";
+import { BoardsTable, type PublishStatus } from "./BoardsTable";
+
+/** Never published and published-with-changes both mean "the draft and what's
+ *  live disagree," but the boards list says them differently, same as the
+ *  editor's own PublishControls.tsx. A doc that fails to parse counts as
+ *  pending rather than silently reading as published. */
+function publishStatus(doc: unknown, publishedHash: string | null): PublishStatus {
+  if (publishedHash === null) return "never";
+  try {
+    return hashBoardDoc(parseBoardDoc(doc)) === publishedHash ? "published" : "pending";
+  } catch (cause) {
+    if (cause instanceof BoardDocError) return "pending";
+    throw cause;
+  }
+}
 
 /*
  * The boards list — plan.md §1's "a canvas design (the thing you edit)".
@@ -21,7 +37,7 @@ export default async function BoardsPage() {
 
   const { data: boards, error } = await supabase
     .from("boards")
-    .select("id, name, canvas_width, canvas_height, updated_at")
+    .select("id, name, canvas_width, canvas_height, updated_at, doc, published_hash")
     .eq("org_id", org.orgId)
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
@@ -34,6 +50,7 @@ export default async function BoardsPage() {
     id: board.id,
     name: board.name,
     size: formatResolution(board.canvas_width, board.canvas_height),
+    status: publishStatus(board.doc, board.published_hash),
   }));
 
   return (
