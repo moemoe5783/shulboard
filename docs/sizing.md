@@ -86,6 +86,53 @@ visibly scaling as the handle moves is self-explanatory and needs no label. An
 element in `fixed` mode should show its wrap boundary while resizing so it's
 clear the box is a frame, not a scaler.
 
+### Media: a gap this spec doesn't close
+
+Neither "applies to" list above mentions Image, Video, Gallery, or Collage, and
+that's not an oversight to quietly patch — it's a real gap, and this section
+says so plainly rather than improvising an answer per widget as each one gets
+built.
+
+**Image is a declared no-op, and that's earned rather than an open question.**
+It has a `sizing.mode` for manifest completeness — every widget states one —
+but there's no font size for a mode to drive: `object-fit: cover`/`contain`
+(`imageConfigSchema.fit`, a different, older use of the word "fit") already
+makes the image box-driven, which is the entire job `sizing.mode: 'fit'` does
+for text. Not toggleable, because there's no meaning for `fixed` to have here.
+
+**Video, Gallery, and Collage each need their own answer, decided before any
+of them is built.** They are not Image with extra steps:
+
+- **Video** has an intrinsic aspect ratio and a native duration, neither of
+  which a text element has. Does the box crop it (`object-fit: cover`, like
+  Image) or letterbox it? Does `fit`/`fixed` mean anything here at all, or is
+  this a third category this spec hasn't named?
+- **Gallery** rotates through multiple images on a timer, each with its own
+  aspect ratio. "The box drives the content" is straightforward per-image, but
+  the auto-fill re-roll (plan.md §6) means the content changes on its own
+  schedule, independent of anyone touching the box — closer to §3's content-
+  growth problem than to §2's sizing problem, and this spec's growth rule
+  ("content grows away from its alignment edge") was written for text, not for
+  a photo that fills its frame regardless of edge.
+- **Collage is the one that actually needs deciding, not just noting.** A
+  collage has *internal frames* (plan.md §7: fractional rects within the
+  collage bounds, one per photo), and each frame has its own crop, its own
+  focal point, its own aspect ratio to satisfy. Resizing the collage's outer
+  box doesn't scale a font — it has to either rescale every frame's geometry
+  proportionally or re-run the template-matching algorithm against the new
+  aspect ratio. **This is not a text-scaling problem wearing a photo's
+  clothes, and forcing it through the `fit`/`fixed` vocabulary above would be
+  the wrong abstraction** — a collage's box relationship needs its own section
+  in this document, written when collages are speced from plan.md §7, not
+  improvised three times as Video, Gallery, and Collage each get built and
+  each answer this differently.
+
+Until that section exists, a widget folder for any of these three should not
+assume `sizing.mode: 'fit'`/`'fixed'` means the same thing it means for text —
+treat it as genuinely undecided rather than copying Image's answer, which only
+happens to work for Image because cropping already solved its version of the
+problem.
+
 ---
 
 ## 3. Content growth: where the extra space goes
@@ -214,3 +261,29 @@ If a future session finds a "widget" in editor UI copy, that is a bug in that
 string, not a reason to reopen this. If a future session is tempted to rename
 `WidgetManifest` to `ElementManifest` for consistency with the UI word, don't
 — read this section first.
+
+---
+
+## 7. Known deviations from this spec — decided, not bugs
+
+Two places the implementation doesn't follow this document to the letter.
+Both are deliberate. Recorded here so neither gets "fixed" by a session that
+hasn't read the reasoning, and so a review doesn't re-flag them as gaps.
+
+**Clock stays `white-space: nowrap` in `fixed` mode, not "wrap, then clip"
+per §3's general overflow rule.** A wrapped clock — `7:4` on one line, `5 PM`
+on the next — reads as broken in a way plain text never does, because
+everyone already knows the shape a clock is supposed to have. §3's wrap rule
+is right for prose and wrong for a value with a fixed, familiar format; Clock
+clips instead of wrapping, and no other numeric-format element (Date, Zmanim)
+should wrap either, for the same reason.
+
+**A `fit`-mode element has no fitted size at its very first paint under SSR.**
+`useFitFontSize` measures the real DOM to compute a size, which needs a
+browser; the server has nothing to measure, so a board's first server-rendered
+frame ships before that measurement can run, and the client corrects it a
+frame later once hydrated. This is the same class of gap Clock's own
+`second === null` placeholder already lives with — a value that can only be
+known client-side, rendered as nothing rather than as a guess, for one frame
+— not a new problem `fit` mode introduced so much as a wider surface for one
+that already existed.
