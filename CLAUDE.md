@@ -20,8 +20,12 @@ Visual spec: @docs/design.md
 
 - The widget Renderer is shared by the editor and the display route. Never fork
   it. If it renders differently in the two places, that's a bug.
+- A widget Renderer takes `{config, canvas}` and nothing else. A proposal to add
+  a `surface`, `mode`, or `isEditor` prop is the fork arriving in disguise —
+  refuse it and solve the problem another way.
 - No raw hex, rgb, or Tailwind color classes anywhere outside `lib/tokens.css`.
-  Use the CSS variables.
+  Use the CSS variables. **This governs the application interface, not board
+  content** — see the scope rule below.
 - Every tenant table has `org_id` and an RLS policy, written in the same
   migration as the table. `zmanim_cache` is deliberately shared across orgs and
   has no `org_id` — this is correct, do not "fix" it.
@@ -34,6 +38,19 @@ Visual spec: @docs/design.md
   it — apply the numeric utility anyway (it costs nothing and starts working if
   the face changes), but never rely on it to align a column set in Assistant.
   Numbers inside prose stay in Assistant.
+
+## Scope: chrome versus board content
+
+The design spec governs dashboard chrome. **A board is a user-authored artifact
+and its content is data, not UI.** A board document may use any color, radius or
+font the user chooses — including verdigris, and radii outside the two-value
+scale. Image assets may contain any color.
+
+The chrome rules below — two radii, one accent, weights 400 and 600, no raw hex
+outside `lib/tokens.css` — apply to the application interface and to the
+renderer's own chrome (its empty states, its unknown-widget notice). They never
+apply to what a shul puts on its board. Do not flag a board document, a board
+theme, or an image asset for breaking them.
 
 ## Visual rules — these get violated constantly, check every time
 
