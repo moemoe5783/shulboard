@@ -119,6 +119,11 @@ async function run(label, env) {
       "/screens/new",
       "/screens/00000000-0000-0000-0000-000000000000",
       "/orgs/new",
+      "/boards",
+      "/boards/new",
+      // A different route group from the rest of app/(app) — its own layout,
+      // no nav rail — so it needs its own proof the proxy still reaches it.
+      "/boards/00000000-0000-0000-0000-000000000000",
     ];
     for (const path of protectedPaths) {
       const res = await fetch(BASE + path, { redirect: "manual" });
