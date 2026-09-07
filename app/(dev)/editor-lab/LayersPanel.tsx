@@ -1,7 +1,7 @@
 "use client";
 
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
-import { CHROME_META, CHROME_RULE } from "./chrome";
+import { CHROME_DARK, CHROME_META, CHROME_RULE } from "./chrome";
 
 /*
  * The layers panel — §4b, and the left rail in design.md §4's editor wireframe.
@@ -26,7 +26,10 @@ export function LayersPanel() {
     .sort((a, b) => b.z - a.z);
 
   return (
-    <aside className={`font-ui flex w-50 shrink-0 flex-col border-r ${CHROME_RULE}`}>
+    <aside
+      {...CHROME_DARK}
+      className={`font-ui flex w-50 shrink-0 flex-col border-r ${CHROME_RULE}`}
+    >
       <h2 className={`${CHROME_META} flex h-10 shrink-0 items-center border-b px-3 ${CHROME_RULE}`}>
         Layers
       </h2>
@@ -53,7 +56,11 @@ export function LayersPanel() {
                   }
                   aria-pressed={active}
                   className={`text-cell rounded-control flex h-8 min-w-0 flex-1 items-center gap-2 px-2 text-left ${
-                    active ? "bg-verdigris text-paper" : "text-paper hover:bg-paper/10"
+                    // Active-nav treatment, not a primary fill — same reason as
+                    // the toolbar's toggles. A selected row is a state.
+                    active
+                      ? "bg-verdigris-wash text-verdigris"
+                      : "text-paper hover:bg-paper/10"
                   } ${widget.hidden ? "opacity-50" : ""}`}
                 >
                   <span

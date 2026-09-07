@@ -8,7 +8,7 @@ import { rectToWidget } from "@/lib/editor/geometry";
 import { ContextMenu, type MenuPosition } from "./ContextMenu";
 import { LayersPanel, TONE_FILL, TONES, labelOf, toneOf } from "./LayersPanel";
 import { Toolbar } from "./Toolbar";
-import { CHROME_SURFACE } from "./chrome";
+import { CHROME_DARK, CHROME_SURFACE } from "./chrome";
 
 /*
  * The transform layer, on its own, with nothing else to blame.
@@ -292,7 +292,10 @@ function StatusBar({ count, selected }: { count: number; selected: number }) {
   const history = useEditor((s) => s.history);
 
   return (
-    <div className="font-ui border-paper/15 text-meta text-paper/60 numeric flex h-8 shrink-0 items-center gap-4 border-t px-3">
+    <div
+      {...CHROME_DARK}
+      className="font-ui border-paper/15 text-meta text-paper/60 numeric flex h-8 shrink-0 items-center gap-4 border-t px-3"
+    >
       <span>
         {count} {count === 1 ? "box" : "boxes"}
       </span>
