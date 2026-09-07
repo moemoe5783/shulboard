@@ -11,13 +11,17 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * hash is unchanged updates `built_at` and stops, so over-invalidating never
  * costs a real rebuild, only a no-op query.
  *
- * HOW OFTEN THIS ACTUALLY RUNS IS A HOSTING DECISION, NOT ONE MADE HERE.
- * vercel.json's default is once a day — a Vercel Hobby plan fails the whole
- * deployment if a cron schedule fires more than once daily — so a fresh edit
- * can take up to a day to reach a screen unless the project is on Pro or has
- * a second, external scheduler hitting this route on a tighter cadence. See
- * docs/environment.md's CRON_SECRET section for both options; this route
- * doesn't care which one is calling it, only that the bearer token matches.
+ * HOW OFTEN THIS ACTUALLY RUNS IS A HOSTING DECISION, NOT ONE MADE HERE, AND
+ * NOT ONE VISIBLE ANYWHERE IN THIS REPO. There is no Vercel cron entry —
+ * a Vercel Hobby plan fails the whole deployment if a cron schedule fires
+ * more than once daily, which is exactly the cadence a gabbai fixing a
+ * davening time before Mincha needs. Scheduling is external instead: a
+ * third-party scheduler (cron-job.org as of this writing) hits this route
+ * every 5 minutes with `Authorization: Bearer <CRON_SECRET>`. See
+ * docs/environment.md's CRON_SECRET section for exactly what that means and
+ * what breaks if that external job is ever deleted without a replacement.
+ * This route doesn't care who is calling it, only that the bearer token
+ * matches.
  *
  * A ROUTE RATHER THAN A DAEMON because the deployment target is Vercel, where a
  * cron entry hits a URL. The work is in lib/bundle/build.ts so nothing about it
@@ -35,10 +39,9 @@ export const maxDuration = 60;
 
 /** How many screens one invocation will build. Bounded so a large org cannot
  *  make a single run exceed its wall-clock limit and lose the whole batch.
- *  Worth revisiting if the default once-a-day schedule is ever the only
- *  thing running this: an org queuing more than this many screens between
- *  runs would take multiple days to work through the backlog at one batch
- *  per day, rather than the few minutes a tighter schedule would need. */
+ *  At the external scheduler's 5-minute cadence this drains 120 screens an
+ *  hour — fine today, a real ceiling at real scale. See docs/plan.md's build
+ *  worker note for the arithmetic and when this is worth revisiting. */
 const BATCH = 10;
 
 async function handleBuildRequest(request: Request): Promise<NextResponse> {
