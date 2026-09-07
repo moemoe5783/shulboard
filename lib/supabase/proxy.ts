@@ -30,6 +30,7 @@ const PUBLIC_PREFIXES = [
   "/tokens",
   "/primitives",
   "/editor-lab",
+  "/font-parity",
 ];
 
 function isPublic(pathname: string): boolean {
