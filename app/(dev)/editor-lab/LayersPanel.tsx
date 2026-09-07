@@ -1,6 +1,7 @@
 "use client";
 
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
+import { widgetLabel } from "./labels";
 import { CHROME_DARK, CHROME_META, CHROME_RULE } from "./chrome";
 
 /*
@@ -36,7 +37,7 @@ export function LayersPanel() {
 
       {rows.length === 0 ? (
         <div className="p-3">
-          <p className="text-body text-paper">Add your first box</p>
+          <p className="text-body text-paper">Add your first widget</p>
           <p className={`${CHROME_META} mt-1`}>
             Everything on the board is listed here, front to back.
           </p>
@@ -45,7 +46,7 @@ export function LayersPanel() {
         <ul className="min-h-0 flex-1 overflow-auto p-1">
           {rows.map((widget) => {
             const active = selection.includes(widget.id);
-            const name = labelOf(widget.config, widget.id);
+            const name = widgetLabel(widget);
 
             return (
               <li key={widget.id} className="flex items-center">
@@ -63,10 +64,6 @@ export function LayersPanel() {
                       : "text-paper hover:bg-paper/10"
                   } ${widget.hidden ? "opacity-50" : ""}`}
                 >
-                  <span
-                    aria-hidden
-                    className={`rounded-control h-3 w-3 shrink-0 ${TONE_SWATCH[toneOf(widget.config)]}`}
-                  />
                   <span className="min-w-0 truncate">{name}</span>
                   {widget.groupId && (
                     <span className="text-min text-paper/60 ml-auto shrink-0">grouped</span>
@@ -107,42 +104,4 @@ export function LayersPanel() {
       )}
     </aside>
   );
-}
-
-/*
- * The placeholders carry their label and tone in `config` — the widget's own
- * settings bag, exactly where a real widget's settings will live. So the
- * document these boxes produce already has the shape a real board has.
- *
- * The tones are drawn from the palette's neutrals plus the accent. Not --live,
- * --stale or --offline: those are status colours and never decorative, however
- * convenient five distinguishable swatches would be.
- */
-
-export const TONES = ["ink", "ink-soft", "ink-faint", "verdigris", "verdigris-wash"] as const;
-export type Tone = (typeof TONES)[number];
-
-export const TONE_FILL: Record<Tone, string> = {
-  ink: "bg-ink text-paper",
-  "ink-soft": "bg-ink-soft text-paper",
-  "ink-faint": "bg-ink-faint text-ink",
-  verdigris: "bg-verdigris text-paper",
-  "verdigris-wash": "bg-verdigris-wash text-ink",
-};
-
-const TONE_SWATCH: Record<Tone, string> = {
-  ink: "bg-ink border-paper/15 border",
-  "ink-soft": "bg-ink-soft",
-  "ink-faint": "bg-ink-faint",
-  verdigris: "bg-verdigris",
-  "verdigris-wash": "bg-verdigris-wash",
-};
-
-export function toneOf(config: Record<string, unknown>): Tone {
-  const tone = config.tone;
-  return TONES.includes(tone as Tone) ? (tone as Tone) : "ink";
-}
-
-export function labelOf(config: Record<string, unknown>, fallback: string): string {
-  return typeof config.label === "string" ? config.label : fallback.slice(0, 8);
 }

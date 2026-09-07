@@ -10,7 +10,7 @@ export default async function DisplayPage({ params }: PageProps<"/s/[token]">) {
 
   return (
     <main>
-      <h1>Display</h1>
+      <h1 className="sr-only">Display</h1>
       <DisplayBoot urlToken={token} />
     </main>
   );

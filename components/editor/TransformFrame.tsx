@@ -84,7 +84,7 @@ export function TransformFrame({
   const gridSize = useEditor((s) => s.gridSize);
   const showGrid = useEditor((s) => s.showGrid);
 
-  const select = useEditor((s) => s.select);
+  const selectWidgets = useEditor((s) => s.selectWidgets);
   const applyRects = useEditor((s) => s.applyRects);
   const applyRotation = useEditor((s) => s.applyRotation);
   const duplicateInPlaceAndMove = useEditor((s) => s.duplicateInPlaceAndMove);
@@ -577,13 +577,14 @@ export function TransformFrame({
           }
         }}
         onSelectEnd={(event) => {
-          const ids = expandGroups(
+          // The store expands a group selection, so a click here and a
+          // right-click in the editor lab select the same thing. Having had two
+          // copies of that logic is how they came to disagree.
+          selectWidgets(
             event.selected
               .map((el) => (el as HTMLElement).dataset.widgetId)
               .filter((id): id is string => Boolean(id)),
-            doc.widgets,
           );
-          select(ids);
 
           // A click that becomes a drag hands straight over to Moveable, so
           // press-and-move on an unselected widget moves it in one gesture
@@ -629,31 +630,4 @@ function bestCorrection(
   }
 
   return best;
-}
-
-/**
- * Selecting one member of a group selects the group.
- *
- * The group itself is never a transform target — it is a row in the document
- * carrying the membership and the box. What moves is its members, so that is
- * what the selection names.
- */
-function expandGroups(ids: string[], widgets: { id: string; groupId: string | null }[]): string[] {
-  const byId = new Map(widgets.map((w) => [w.id, w]));
-  const out = new Set<string>();
-
-  for (const id of ids) {
-    const widget = byId.get(id);
-    if (!widget) continue;
-
-    if (widget.groupId) {
-      for (const sibling of widgets) {
-        if (sibling.groupId === widget.groupId) out.add(sibling.id);
-      }
-    } else {
-      out.add(id);
-    }
-  }
-
-  return [...out];
 }

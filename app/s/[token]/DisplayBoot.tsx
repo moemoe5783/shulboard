@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { DisplayBoard } from "./DisplayBoard";
 
 /*
  * Which token this device runs on.
@@ -73,8 +74,14 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
   const token = stored ?? urlToken; // ← the precedence. Swap to make the URL win.
 
   return (
-    <p>
-      Token: {token} (from {stored ? "this device" : "the link"})
-    </p>
+    <>
+      {/* Not on the wall. The board is the whole screen, and a token printed in
+          the corner of a lobby display is both noise and a key on show. It stays
+          in the markup so the boot behaviour is still checkable. */}
+      <span className="sr-only" data-display-token={token}>
+        Token: {token} (from {stored ? "this device" : "the link"})
+      </span>
+      <DisplayBoard />
+    </>
   );
 }
