@@ -12,6 +12,17 @@ import { isSupabaseConfigured, supabaseEnv } from "./env";
  */
 const PUBLIC_PREFIXES = [
   "/s/",
+  // The display's own endpoints. They authenticate with a screen token and the
+  // service role, not a session — sending them to /sign-in would mean a
+  // television in a lobby following a redirect it cannot satisfy. The cron
+  // worker checks a shared secret for the same reason.
+  "/api/screen/",
+  "/api/cron/",
+  // The media proxy: immutable asset paths, no session (schema.md §6).
+  "/m/",
+  // The service worker must be reachable without a session or it can never
+  // register, and its scope is /s/ regardless.
+  "/sw.js",
   SIGN_IN_PATH,
   "/auth/",
   // Dev reference sheets. Remove these when the app ships.
