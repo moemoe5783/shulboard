@@ -84,6 +84,25 @@ export type EditorState = {
   setShowGrid: (on: boolean) => void;
 
   // ---- editing ---------------------------------------------------------
+  /**
+   * Merge `patch` into each target widget's config — the properties panel's
+   * one mutation path.
+   *
+   * Goes through commit() like everything else in this file, so it is live on
+   * the canvas the instant it's called and undoable like any other edit. A
+   * text field therefore gets one undo entry per keystroke rather than one per
+   * editing session — a real but minor rough edge, and a much smaller one than
+   * the alternative: an earlier version of this tried to coalesce keystrokes
+   * into a single command by applying the patch outside commit() while typing
+   * and only running it through commit() on blur, and that is broken by
+   * construction. By the time the blur-time commit ran, get().doc already
+   * held the typed value from the uncommitted preview writes, so diffing the
+   * "old" and "new" widget lists found no difference — isEmptyPatch was true,
+   * commit() returned early, and the entire edit silently never reached the
+   * undo stack at all. One mutation path, always through commit(), is what
+   * keeps that class of bug from coming back.
+   */
+  setWidgetConfig: (ids: string[], patch: Record<string, unknown>, label?: string) => void;
   /** Commit a transform for one or more widgets, in design units. */
   applyRects: (label: string, rects: Record<string, Rect>) => void;
   applyRotation: (label: string, rotations: Record<string, number>) => void;
@@ -121,8 +140,10 @@ export type EditorState = {
   redo: () => void;
 
   /** Replace the document wholesale. Clears history — the stack's patches refer
-   *  to widgets that may not exist in the new document. */
-  load: (doc: unknown) => void;
+   *  to widgets that may not exist in the new document. `canvas` is optional
+   *  because the lab always edits the same 1920×1080 demo document; a real
+   *  board supplies its own canvas_width/canvas_height. */
+  load: (doc: unknown, canvas?: CanvasSize) => void;
 
   // ---- housekeeping ----------------------------------------------------
   /** Drop selected ids whose widgets no longer exist, after a delete or undo. */
@@ -200,6 +221,13 @@ export const useEditor = create<EditorState>((set, get) => {
     setSnapEnabled: (on) => set({ snapEnabled: on }),
     setGridSize: (size) => set({ gridSize: Math.max(1, Math.round(size)) }),
     setShowGrid: (on) => set({ showGrid: on }),
+
+    setWidgetConfig: (ids, patch, label = "Edit properties") => {
+      const chosen = new Set(ids);
+      commit(label, (widgets) =>
+        widgets.map((w) => (chosen.has(w.id) ? { ...w, config: { ...w.config, ...patch } } : w)),
+      );
+    },
 
     applyRects: (label, rects) => {
       const { canvas } = get();
@@ -432,8 +460,14 @@ export const useEditor = create<EditorState>((set, get) => {
       get().pruneSelection();
     },
 
-    load: (input) => {
-      set({ doc: parseBoardDoc(input), loaded: true, history: emptyHistory(), selection: [] });
+    load: (input, canvas) => {
+      set({
+        doc: parseBoardDoc(input),
+        loaded: true,
+        history: emptyHistory(),
+        selection: [],
+        ...(canvas ? { canvas } : null),
+      });
     },
 
     pruneSelection: () => {
