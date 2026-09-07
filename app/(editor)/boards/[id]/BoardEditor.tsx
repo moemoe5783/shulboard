@@ -230,7 +230,15 @@ export function BoardEditor({ boardId, name, canvas, doc, publishState: initialP
   const canvasPx = { width: canvas.width * zoom, height: canvas.height * zoom };
 
   return (
-    <div className="bg-ink text-paper font-ui flex h-screen flex-col">
+    // NO font-ui HERE. This div is an ancestor of the canvas viewport below,
+    // and CLAUDE.md/lib/tokens.css are explicit: chrome opts into Assistant
+    // "on a chrome root — never set globally," because the board renderer
+    // must never inherit a dashboard font. Every chrome piece below (Header,
+    // Toolbar, LayersPanel, PropertiesPanel, StatusBar, ContextMenu) opts in
+    // for itself instead — the same pattern editor-lab/EditorLab.tsx already
+    // uses, which is the one BoardRenderer usage that never had this bug.
+    // See scripts/test-font-parity.mjs for what verifies this holds.
+    <div className="bg-ink text-paper flex h-screen flex-col">
       <Header
         name={name}
         boardId={boardId}
@@ -347,7 +355,7 @@ function Header({
   return (
     <div
       {...CHROME_DARK}
-      className={`flex h-10 shrink-0 items-center gap-3 border-b px-3 ${CHROME_RULE}`}
+      className={`font-ui flex h-10 shrink-0 items-center gap-3 border-b px-3 ${CHROME_RULE}`}
     >
       <Link href="/boards" className={`${CHROME_META} hover:text-paper`}>
         ← Boards
