@@ -161,6 +161,32 @@ so it's worth actually testing after setting it: trigger a run by hand from
 Vercel's dashboard (Project → Cron Jobs → the entry for this path → **Run**)
 and confirm it returns `{"considered": ..., "built": ...}` rather than a 401.
 
+**How often it actually runs.** `vercel.json` schedules this once a day
+(`0 9 * * *`, 9am UTC) rather than the every-few-minutes cadence you'd want
+for "a gabbai fixes a davening time before Mincha and it shows up soon."
+That's not a design choice, it's a **Vercel Hobby plan limit**: a cron
+schedule that fires more than once a day fails the whole deployment on that
+plan, which is what happened the first time this shipped with a five-minute
+schedule. Two ways out, neither of which touches the route itself, since it
+already accepts a call from anyone holding the right bearer token — that's
+exactly what makes both of these possible without a code change:
+
+- **Upgrade to Vercel Pro.** Removes the limit entirely; cron can run as
+  often as once a minute. Bump the schedule in `vercel.json` back down once
+  you're on it.
+- **Add a second, external scheduler** that hits
+  `POST https://<your-domain>/api/cron/build-bundles` with
+  `Authorization: Bearer <CRON_SECRET>` on whatever cadence you want, and
+  leave Vercel's own daily cron running as a fallback. Any free scheduler
+  that can send one HTTP header works — a scheduled GitHub Actions
+  workflow, cron-job.org, EasyCron. Vercel's per-project limit only governs
+  jobs configured in *its own* Cron Jobs feature; it has no way to know or
+  care who else calls the URL.
+
+Until one of those is in place, treat this as a real limitation, not a
+rounding error: a content edit can sit for up to a day before it reaches a
+screen.
+
 ---
 
 ## Setting these up on a real project
@@ -173,10 +199,11 @@ short:
 2. `SUPABASE_SERVICE_ROLE_KEY`, same page, `service_role` `secret`.
 3. `SUPABASE_JWT_SECRET`, same page, JWT Settings tab.
 4. `CRON_SECRET` — invent one, set it in Vercel too. `vercel.json` already
-   declares the cron entry (`*/5 * * * *`, every five minutes — see the
-   comment there for why); Vercel reads it from the repo automatically on
-   deploy and needs no dashboard configuration of its own beyond the
-   environment variable.
+   declares the cron entry (`0 9 * * *`, once a day — see the section above
+   for why it isn't more often on a Hobby plan, and how to add a faster
+   external scheduler without waiting on an upgrade); Vercel reads it from
+   the repo automatically on deploy and needs no dashboard configuration of
+   its own beyond the environment variable.
 
 All five go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
