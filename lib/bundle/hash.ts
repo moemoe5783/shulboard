@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { BoardDoc } from "@/lib/board-doc";
 import type { BundlePayload } from "./types";
 
 /*
@@ -37,6 +38,22 @@ export function hashPayload(payload: BundlePayload): string {
 
 export function payloadBytes(payload: BundlePayload): number {
   return Buffer.byteLength(JSON.stringify(payload), "utf8");
+}
+
+/**
+ * sha256 of a board document's canonical form — the same approach as
+ * hashPayload above, applied to a draft or published `BoardDoc` instead of a
+ * full bundle. This is what `boards.published_hash` stores, and what the
+ * editor and boards list compare a fresh hash of the draft against to show
+ * unpublished-changes state.
+ *
+ * NOT a document-equality check. Two saves of the same content in a
+ * different key order, or a widget moved and moved back, must hash the same
+ * — that's the whole reason this reuses canonicalJson rather than comparing
+ * `doc`s directly.
+ */
+export function hashBoardDoc(doc: BoardDoc): string {
+  return createHash("sha256").update(canonicalJson(doc)).digest("hex");
 }
 
 /**
