@@ -42,17 +42,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<TitleConfig>)
         </select>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Size</span>
-        <input
-          type="number"
-          min={8}
-          max={400}
-          value={config.size}
-          onChange={(event) => onChange({ size: Number(event.target.value) })}
-          className={`${PANEL_CONTROL} numeric`}
-        />
-      </label>
+      {/* No Size field: a title always fits its box (docs/sizing.md §2) — the
+          box is what you drag to make the title bigger or smaller. */}
     </div>
   );
 }

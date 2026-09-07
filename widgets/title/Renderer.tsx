@@ -1,39 +1,48 @@
 "use client";
 
+import { useRef } from "react";
 import type { WidgetRendererProps } from "../types";
-import { boardFontSize } from "@/lib/board-theme";
-import type { TitleConfig } from "./manifest";
-
-/*
- * Shared by the editor and the display route. There is one of these.
- *
- * No colour and no font family: both are inherited from the board root, which
- * takes them from the board document. A widget that set its own would be
- * ignoring the theme the shul chose, and a board of widgets each picking their
- * own type is the ransom note §4d is about.
- */
+import { useFitFontSize } from "../useFitFontSize";
+import { manifest, type TitleConfig } from "./manifest";
 
 export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
   const align =
-    config.align === "center" ? "items-center text-center" : config.align === "right" ? "items-end text-right" : "items-start text-left";
+    config.align === "center"
+      ? "items-center text-center"
+      : config.align === "right"
+        ? "items-end text-right"
+        : "items-start text-left";
+
+  // Title is always `fit` (manifest.ts) — the box is authoritative and the
+  // font size is computed, never read from config. contentRef wraps both
+  // lines so they're measured and fitted together; the title span inherits
+  // the fitted size and the subtitle scales off it in em, so one search sizes
+  // both at once rather than fitting them independently against each other.
+  useFitFontSize(boxRef, contentRef, {
+    minFontSize: manifest.sizing.minFontSize ?? 8,
+    maxFontSize: manifest.sizing.maxFontSize ?? 400,
+    canvasWidth: canvas.width,
+    enabled: true,
+    deps: [config.text, config.subtitle, config.subtitleScale],
+  });
 
   return (
-    <div className={`flex h-full w-full flex-col justify-center gap-[0.4em] ${align}`}>
-      <span
-        className="font-semibold leading-tight"
-        style={{ fontSize: boardFontSize(config.size, canvas.width) }}
-      >
-        {config.text}
-      </span>
+    <div ref={boxRef} className={`flex h-full w-full flex-col justify-center ${align}`}>
+      <div ref={contentRef} className="flex flex-col gap-[0.4em]">
+        <span className="font-semibold leading-tight">{config.text}</span>
 
-      {config.subtitle && (
-        <span
-          className="leading-tight opacity-70"
-          style={{ fontSize: boardFontSize(config.size * config.subtitleScale, canvas.width) }}
-        >
-          {config.subtitle}
-        </span>
-      )}
+        {config.subtitle && (
+          <span
+            className="leading-tight opacity-70"
+            style={{ fontSize: `${config.subtitleScale}em` }}
+          >
+            {config.subtitle}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

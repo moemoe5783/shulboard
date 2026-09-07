@@ -46,6 +46,32 @@ export type DataNeed = {
 /** Design units on the board's canvas, not pixels on a screen. */
 export type WidgetSize = { w: number; h: number };
 
+/**
+ * How a widget's box relates to its content — docs/sizing.md §2.
+ *
+ * `fit`: the box is authoritative and content scales to fill it (a title
+ * "should fill this area"). `fixed`: the declared type size is authoritative
+ * and the box is a boundary/alignment frame, not a scaling factor (a zmanim
+ * table whose type rescales when the box is nudged is worse than one that
+ * doesn't). `minFontSize`/`maxFontSize` are design units, read by `fit`
+ * mode's auto-fit search — see widgets/useFitFontSize.ts.
+ */
+export type SizingMode = "fit" | "fixed";
+
+export type ElementSizing = {
+  /** The manifest's default. A per-instance override lives in that widget's
+   *  own config (see clock/manifest.ts's `sizingMode` field) when
+   *  `userToggleable` is true — the manifest only ever states the default. */
+  mode: SizingMode;
+  /** Whether the properties panel shows the Fit to box / Fixed size toggle
+   *  (docs/sizing.md §2, "The toggle"). False for widgets where only one
+   *  mode is ever defensible, e.g. Title (always fit) or Zmanim (always
+   *  fixed). */
+  userToggleable: boolean;
+  minFontSize?: number;
+  maxFontSize?: number;
+};
+
 export type WidgetManifest<TConfig = Record<string, unknown>> = {
   /** Matches `type` in the board document. Stable forever once shipped. */
   id: string;
@@ -90,6 +116,12 @@ export type WidgetManifest<TConfig = Record<string, unknown>> = {
    * there is one shape to read rather than two.
    */
   dataNeeds: (config: TConfig) => readonly DataNeed[];
+  /**
+   * How this widget's box relates to its content — docs/sizing.md §2.
+   * Required on every manifest so a widget can't ship without a considered
+   * answer; there is no default to silently fall back to.
+   */
+  sizing: ElementSizing;
   /**
    * What to call one instance of this widget in a layers panel.
    *

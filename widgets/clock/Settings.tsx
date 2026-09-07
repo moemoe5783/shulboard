@@ -59,8 +59,14 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ClockConfig>)
           min={8}
           max={400}
           value={config.size}
+          disabled={config.sizingMode === "fit"}
+          title={
+            config.sizingMode === "fit"
+              ? "Set by the box while it's in fit mode — see Sizing above."
+              : undefined
+          }
           onChange={(event) => onChange({ size: Number(event.target.value) })}
-          className={`${PANEL_CONTROL} numeric`}
+          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
         />
       </label>
     </div>

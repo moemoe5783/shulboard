@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, type CSSProperties, type HTMLAttributes } from "react";
+import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import { boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
@@ -98,11 +98,62 @@ function WidgetFrame({
 }) {
   const Renderer = getRenderer(widget.type);
   const { className: extraClassName = "", style: extraStyle, ...rest } = extra ?? {};
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * docs/sizing.md §3: "the renderer must not resize or reposition the box to
+   * fit content... never grow the box." `overflow: hidden` below is what makes
+   * that true regardless of what any widget's own Renderer does inside it —
+   * one place, for every widget present and future, rather than a rule every
+   * widget folder has to remember.
+   *
+   * `data-overflowing` is the editor's warning (docs/sizing.md §3, "flag in
+   * the properties panel"), read externally by
+   * components/editor/useElementOverflow.ts — plain DOM state, not a prop, so
+   * it costs the renderer contract nothing (no `surface`, no `isEditor`).
+   * Computed here on the display route too: harmless and unused there, and
+   * the alternative is a second copy of this check that only runs in the
+   * editor, which is exactly the fork CLAUDE.md forbids.
+   *
+   * Observers, not a poll — plan.md §3e's "no setInterval accumulation" is
+   * about a display route that runs for months, and an observer that only
+   * fires when something actually changed costs nothing while nothing does.
+   * ResizeObserver catches the box being dragged; MutationObserver catches
+   * content changing size without the box moving, including a `fit`-mode
+   * widget's own imperative font-size write (useFitFontSize.ts).
+   */
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+
+    const check = () => {
+      const overflowing = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+      if (el.dataset.overflowing !== String(overflowing)) el.dataset.overflowing = String(overflowing);
+    };
+
+    check();
+    const resize = new ResizeObserver(check);
+    resize.observe(el);
+    const mutate = new MutationObserver(check);
+    mutate.observe(el, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+
+    return () => {
+      resize.disconnect();
+      mutate.disconnect();
+    };
+  }, [widget.config, widget.w, widget.h, canvas.width, canvas.height]);
 
   return (
     <div
+      ref={frameRef}
       {...rest}
-      className={`absolute ${extraClassName}`}
+      className={`absolute overflow-hidden ${extraClassName}`}
       style={{
         left: `${widget.x}%`,
         top: `${widget.y}%`,

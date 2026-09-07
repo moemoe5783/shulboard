@@ -24,4 +24,29 @@
   [data-dark-chrome]:focus-visible {
     outline-color: var(--focus-dark);
   }
+
+  /*
+   * docs/sizing.md §5: the properties panel's alignment <select> rendered
+   * white text on white — invisible. The text color was ours (--paper, via
+   * PANEL_CONTROL); the white was the browser's own default light-mode
+   * chrome for the control, which an explicit background-color does not
+   * reliably reach: Chromium and Firefox paint a native <select>'s dropdown
+   * list from the element's own background/color, so PANEL_CONTROL's switch
+   * from a transparent background to an opaque --ink fixes those two
+   * outright, but Safari's native option list ignores author
+   * background-color/color entirely and always uses its own light-or-dark
+   * system chrome. `color-scheme` is what that system chrome actually reads,
+   * for every native control (select popups, checkboxes, scrollbars) at
+   * once, in every engine — so this is the one declaration that makes the
+   * fix hold across browsers rather than in the two that happen to respect
+   * author styling on a popup. Scoped the same way --focus-dark is, and for
+   * the same reason: inheritance stops at the first plain element with no
+   * data-dark-chrome of its own, so a light popup nested inside dark chrome
+   * (AddWidgetMenu's dropdown, e.g.) is unaffected — it carries no native
+   * form controls for this to touch, but the boundary is deliberate either
+   * way, not incidental.
+   */
+  [data-dark-chrome] {
+    color-scheme: dark;
+  }
 }

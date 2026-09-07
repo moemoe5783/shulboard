@@ -308,8 +308,9 @@ function StatusBar({ count, selected }: { count: number; selected: number }) {
       {...CHROME_DARK}
       className="font-ui border-paper/15 text-meta text-paper/60 numeric flex h-8 shrink-0 items-center gap-4 border-t px-3"
     >
+      {/* "element(s)" — docs/sizing.md §6. "widget" stays the word in code. */}
       <span>
-        {count} {count === 1 ? "widget" : "widgets"}
+        {count} {count === 1 ? "element" : "elements"}
       </span>
       <span>{selected} selected</span>
       <span>

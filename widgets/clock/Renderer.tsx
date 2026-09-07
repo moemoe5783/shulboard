@@ -1,21 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useSecond } from "@/lib/tick";
-import { boardFontSize } from "@/lib/board-theme";
+import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
 import type { WidgetRendererProps } from "../types";
-import type { ClockConfig } from "./manifest";
-
-/*
- * The one widget with a heartbeat, and the reason lib/tick.ts exists.
- *
- * It has no timer of its own. Twelve clocks on a board share one, and it stops
- * when the last unmounts — plan.md §3e, the rule that keeps a display running
- * for months instead of accumulating an interval per board rotation.
- */
+import { useFitFontSize } from "../useFitFontSize";
+import { manifest, type ClockConfig } from "./manifest";
 
 export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
   const second = useSecond();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLSpanElement>(null);
 
   const format = useMemo(
     () =>
@@ -29,24 +24,42 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
     [config.hour12, config.showSeconds, config.timeZone],
   );
 
+  const text = second === null ? " " : format.format(new Date(second * 1000));
+  const isFit = config.sizingMode === "fit";
+
+  // Only searches while in `fit` mode — a `fixed` clock (the default) has
+  // nothing running in the background for the months it sits on a screen.
+  useFitFontSize(boxRef, contentRef, {
+    minFontSize: manifest.sizing.minFontSize ?? 24,
+    maxFontSize: manifest.sizing.maxFontSize ?? 400,
+    canvasWidth: canvas.width,
+    enabled: isFit,
+    deps: [text],
+  });
+
   const align =
     config.align === "center" ? "justify-center" : config.align === "right" ? "justify-end" : "justify-start";
 
   return (
-    <div className={`flex h-full w-full items-center ${align}`}>
-      {/* The numeric utility is what stops the digits jittering as they change.
-          Whether it does anything depends on the face the board document chose —
-          Frank Ruhl Libre has tabular figures, Assistant has none — and the
-          widget applies it either way rather than deciding the face itself. */}
+    <div ref={boxRef} className={`flex h-full w-full items-center ${align}`}>
+      {/*
+        Frank Ruhl Libre, forced, rather than the board's own theme font —
+        docs/sizing.md §4. It's the only face with real tabular figures
+        (design.md's own measurement table: Assistant's tabular-nums spread is
+        unchanged, a measured no-op), and a clock is the one element whose
+        digit count changes every single minute it's on screen. The `numeric`
+        class still has to be applied on top: Frank Ruhl Libre has tabular
+        figures available but doesn't use them without tabular-nums asked for.
+      */}
       <span
+        ref={contentRef}
         className="numeric font-semibold leading-none whitespace-nowrap"
-        style={{ fontSize: boardFontSize(config.size, canvas.width) }}
+        style={{
+          fontFamily: BOARD_FONTS.sefarim,
+          fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width),
+        }}
       >
-        {/* A non-breaking space until the browser has a clock. The server's
-            second would be a different second by the time the markup reached a
-            TV, so rendering it would be a hydration mismatch on every load, and
-            rendering nothing would make the board jump on first paint. */}
-        {second === null ? " " : format.format(new Date(second * 1000))}
+        {text}
       </span>
     </div>
   );
