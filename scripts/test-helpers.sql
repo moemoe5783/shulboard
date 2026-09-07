@@ -97,6 +97,8 @@ create function tests.authenticate_as(uid uuid) returns void language sql as $$
   );
 $$;
 
-grant usage on schema tests to authenticated;
-grant insert, select on tests.log to authenticated;
-grant usage, select on sequence tests.log_id_seq to authenticated;
+-- service_role too: the display's server routes run as it, so the tests that
+-- exercise them have to as well.
+grant usage on schema tests to authenticated, service_role;
+grant insert, select on tests.log to authenticated, service_role;
+grant usage, select on sequence tests.log_id_seq to authenticated, service_role;

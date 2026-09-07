@@ -1,0 +1,273 @@
+import "server-only";
+
+import { serviceClient } from "@/lib/supabase/service";
+import { assembleBundle, assetIdsFor, type AssetRow } from "./assemble";
+import { hashPayload, payloadBytes } from "./hash";
+import type { BundleContent, BundlePayload } from "./types";
+
+/*
+ * The build job — docs/plan.md §3a, docs/schema.md §9 and §10.
+ *
+ * A BACKGROUND JOB. The display route only ever reads `screen_bundles`; nothing
+ * on the request path builds anything. That separation is what makes the next
+ * property possible.
+ *
+ * A FAILED BUILD LEAVES THE PREVIOUS BUNDLE SERVING. The payload is constructed
+ * in memory and hashed, and only then written. Any failure — a widget config
+ * that will not parse, a missing playlist, an out-of-memory — throws before the
+ * write, so the existing row is untouched and every screen polling it keeps
+ * getting the last good bundle with its last good ETag. The display never sees a
+ * partial bundle because a partial bundle is never written.
+ *
+ * VERSION BUMPS ONLY ON REAL CHANGE. §10 makes invalidation deliberately
+ * over-eager — any content write flags every screen in the org — and this is why
+ * that is cheap. A rebuild producing identical content updates `built_at` and
+ * stops: `version` does not move, `payload` is not rewritten, no screen
+ * refetches or cross-fades. The expensive thing was never the rebuild.
+ */
+
+/** How many days of each kind of content the bundle carries (§3a, §3b). */
+const EVENT_LOOKAHEAD_DAYS = 30;
+const ANNIVERSARY_LOOKAHEAD_DAYS = 60;
+const ZMANIM_LOOKAHEAD_DAYS = 90;
+
+export type BuildResult =
+  | { status: "built"; screenId: string; version: number; contentHash: string; durationMs: number }
+  | { status: "unchanged"; screenId: string; version: number; durationMs: number }
+  | { status: "failed"; screenId: string; error: string };
+
+const isoDaysFromNow = (days: number) =>
+  new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/**
+ * Build one screen's bundle and write it if the content actually changed.
+ *
+ * Never throws for an ordinary failure — a build that cannot complete is a
+ * result, not an exception, because the caller is a worker walking a queue and
+ * one bad screen must not stop the other five in the shul.
+ */
+export async function buildScreenBundle(screenId: string): Promise<BuildResult> {
+  const startedAt = Date.now();
+  const db = serviceClient();
+
+  try {
+    const { data: screen, error: screenError } = await db
+      .from("screens")
+      .select(
+        "id, org_id, name, canvas_width, canvas_height, orientation, timezone, hebrew_prefs, playlist_id, rebuild_requested_at",
+      )
+      .eq("id", screenId)
+      .maybeSingle();
+
+    if (screenError) throw new Error(`could not read the screen: ${screenError.message}`);
+    if (!screen) return { status: "failed", screenId, error: "no such screen" };
+
+    /*
+     * THE RACE THAT MATTERS — §10.
+     *
+     * Captured here, at the START of the build, and compared before the flag is
+     * cleared. If somebody edits content while this build is running, the flag
+     * gets a newer timestamp, the comparison fails, the flag stays set and the
+     * screen rebuilds again. Clearing it unconditionally would drop that edit
+     * until the next unrelated change — a stale screen in a lobby with nothing
+     * anywhere reporting an error, which is the exact failure the whole of §3
+     * exists to prevent.
+     */
+    const requestedAt = screen.rebuild_requested_at as string | null;
+
+    const payload = await assemblePayloadFor(db, screen);
+    const contentHash = hashPayload(payload);
+    const durationMs = Date.now() - startedAt;
+
+    // Only version and content_hash. The stored payload is TOASTed and this
+    // comparison never needs it.
+    const { data: existing } = await db
+      .from("screen_bundles")
+      .select("version, content_hash")
+      .eq("screen_id", screenId)
+      .maybeSingle();
+
+    if (existing && existing.content_hash === contentHash) {
+      await db
+        .from("screen_bundles")
+        .update({ built_at: new Date().toISOString(), build_duration_ms: durationMs })
+        .eq("screen_id", screenId);
+
+      await clearRebuildFlag(db, screenId, requestedAt);
+      return { status: "unchanged", screenId, version: existing.version, durationMs };
+    }
+
+    const version = (existing?.version ?? 0) + 1;
+
+    const { error: writeError } = await db.from("screen_bundles").upsert(
+      {
+        screen_id: screenId,
+        org_id: screen.org_id,
+        version,
+        content_hash: contentHash,
+        payload,
+        byte_size: payloadBytes(payload),
+        built_at: new Date().toISOString(),
+        build_duration_ms: durationMs,
+      },
+      { onConflict: "screen_id" },
+    );
+
+    if (writeError) throw new Error(`could not write the bundle: ${writeError.message}`);
+
+    await clearRebuildFlag(db, screenId, requestedAt);
+    return { status: "built", screenId, version, contentHash, durationMs };
+  } catch (cause) {
+    const error = cause instanceof Error ? cause.message : String(cause);
+
+    // The flag stays set, the attempt is counted, and the previous bundle keeps
+    // serving throughout. The dashboard surfaces this; a screen never blanks.
+    await db.rpc("record_bundle_build_failure", { p_screen_id: screenId, p_error: error });
+    return { status: "failed", screenId, error };
+  }
+}
+
+/**
+ * Clear the rebuild flag, but only if nobody has touched it since the build
+ * began. See the note above — this conditional update is the whole mechanism.
+ */
+async function clearRebuildFlag(
+  db: ReturnType<typeof serviceClient>,
+  screenId: string,
+  requestedAt: string | null,
+) {
+  const query = db
+    .from("screens")
+    .update({
+      rebuild_requested_at: null,
+      rebuild_attempts: 0,
+      rebuild_last_error: null,
+      rebuild_last_attempt_at: new Date().toISOString(),
+    })
+    .eq("id", screenId);
+
+  // `is` for the null case: `eq` against null matches nothing in SQL, so a
+  // screen flagged with a null timestamp would never have its flag cleared.
+  const { error } = await (requestedAt === null
+    ? query.is("rebuild_requested_at", null)
+    : query.eq("rebuild_requested_at", requestedAt));
+
+  if (error) throw new Error(`could not clear the rebuild flag: ${error.message}`);
+}
+
+async function assemblePayloadFor(
+  db: ReturnType<typeof serviceClient>,
+  screen: Record<string, unknown>,
+): Promise<BundlePayload> {
+  const orgId = screen.org_id as string;
+  const playlistId = screen.playlist_id as string | null;
+
+  const [{ data: org }, playlist] = await Promise.all([
+    db.from("orgs").select("theme").eq("id", orgId).maybeSingle(),
+    playlistId
+      ? db.from("playlists").select("id, name").eq("id", playlistId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const { data: items } = playlistId
+    ? await db
+        .from("playlist_items")
+        .select("board_id, position, duration_seconds")
+        .eq("playlist_id", playlistId)
+        .order("position")
+    : { data: [] };
+
+  const boardIds = [...new Set((items ?? []).map((item) => item.board_id).filter(Boolean))];
+
+  const { data: boards } = boardIds.length
+    ? await db.from("boards").select("id, name, doc").in("id", boardIds)
+    : { data: [] };
+
+  // Two passes over the boards: the first only to learn which assets are
+  // referenced, so exactly those rows are fetched rather than every asset the
+  // org owns. A shul with two thousand kiddush photographs and one on the board
+  // should transfer one row.
+  const referenced = new Set<string>();
+  for (const board of boards ?? []) {
+    try {
+      const { parseBoardDoc } = await import("@/lib/board-doc");
+      for (const id of assetIdsFor(parseBoardDoc(board.doc).widgets)) referenced.add(id);
+    } catch {
+      // A board that will not parse fails the whole build below, when it is
+      // parsed for real. This pass just skips it.
+    }
+  }
+
+  const assets = new Map<string, AssetRow>();
+  if (referenced.size > 0) {
+    const { data: rows } = await db
+      .from("assets")
+      .select("id, variant, content_hash, extension, content_type, bytes")
+      .in("id", [...referenced]);
+    for (const row of rows ?? []) assets.set(row.id, row as AssetRow);
+  }
+
+  const content = await resolveContent(db, orgId);
+
+  return assembleBundle({
+    screen: screen as never,
+    theme: (org?.theme as Record<string, unknown>) ?? {},
+    playlist: (playlist?.data as { id: string; name: string } | null) ?? null,
+    playlistItems: items ?? [],
+    boards: boards ?? [],
+    content,
+    assets,
+  });
+}
+
+/**
+ * The human-entered content, with the lookahead §3b specifies.
+ *
+ * Only these can go stale offline — everything else the display computes for
+ * itself — and the 30-to-60 day windows mean even they keep rotating for weeks
+ * on a screen that never reconnects.
+ */
+async function resolveContent(
+  db: ReturnType<typeof serviceClient>,
+  orgId: string,
+): Promise<BundleContent> {
+  const [announcements, schedules, people, events, zmanim] = await Promise.all([
+    db
+      .from("announcements")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("position", { ascending: true }),
+    db.from("schedules").select("*").eq("org_id", orgId).order("position", { ascending: true }),
+    db.from("people").select("*").eq("org_id", orgId),
+    db
+      .from("calendar_events")
+      .select("*")
+      .eq("org_id", orgId)
+      .lte("starts_at", isoDaysFromNow(EVENT_LOOKAHEAD_DAYS))
+      .order("starts_at", { ascending: true }),
+    db
+      .from("zmanim_cache")
+      .select("*")
+      .lte("date", isoDaysFromNow(ZMANIM_LOOKAHEAD_DAYS))
+      .gte("date", isoDaysFromNow(-1)),
+  ]);
+
+  const byDate: Record<string, unknown> = {};
+  for (const row of zmanim.data ?? []) byDate[String((row as { date: string }).date)] = row;
+
+  return {
+    announcements: announcements.data ?? [],
+    schedules: schedules.data ?? [],
+    // The anniversary window is applied when the widget renders, from Hebrew
+    // dates the display computes itself — the bundle carries the people.
+    people: people.data ?? [],
+    events: events.data ?? [],
+    zmanim: byDate,
+  };
+}
+
+export const LOOKAHEAD = {
+  events: EVENT_LOOKAHEAD_DAYS,
+  anniversaries: ANNIVERSARY_LOOKAHEAD_DAYS,
+  zmanim: ZMANIM_LOOKAHEAD_DAYS,
+};

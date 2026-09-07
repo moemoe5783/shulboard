@@ -2,8 +2,22 @@ import { z } from "zod";
 import type { WidgetManifest } from "../types";
 
 export const imageConfigSchema = z.object({
-  /** Empty until somebody picks a picture, which is a state the board has to
-   *  survive: a half-built board goes on a wall like any other. */
+  /**
+   * The asset this widget shows, if it has one.
+   *
+   * THE ID IS WHAT THE DOCUMENT STORES; `src` is what the bundle fills in. §6:
+   * widgets bind to albums and never learn where photos came from, and a URL in
+   * the document would be that knowledge written down — it would also go stale
+   * the moment an asset is re-processed, which changes its path by design.
+   */
+  assetId: z.string().max(64).default(""),
+  /**
+   * Resolved by the bundle builder into a media-proxy path, or set directly for
+   * a board that references something outside the asset pipeline.
+   *
+   * Empty until somebody picks a picture, which is a state the board has to
+   * survive: a half-built board goes on a wall like any other.
+   */
   src: z.string().max(2048).default(""),
   alt: z.string().max(300).default(""),
   fit: z.enum(["cover", "contain"]).default("cover"),
@@ -39,6 +53,6 @@ export const manifest: WidgetManifest<ImageConfig> = {
    * Two Image widgets showing the same photograph produce the same need and are
    * fetched and cached once. A widget with nothing chosen yet needs nothing.
    */
-  dataNeeds: (config) => (config.src ? [{ kind: "asset", src: config.src }] : []),
+  dataNeeds: (config) => (config.assetId ? [{ kind: "asset", assetId: config.assetId }] : []),
   instanceLabel: (config) => config.alt || "Image",
 };
