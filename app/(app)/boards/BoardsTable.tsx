@@ -12,10 +12,19 @@ import { renameBoard } from "./actions";
  * a list of records is a table, not a bounded object).
  */
 
+export type PublishStatus = "never" | "published" | "pending";
+
 export type BoardRow = {
   id: string;
   name: string;
   size: string;
+  status: PublishStatus;
+};
+
+const STATUS_LABEL: Record<PublishStatus, string> = {
+  never: "Never published",
+  published: "Published",
+  pending: "Unpublished changes",
 };
 
 const MENU_ITEM =
@@ -146,6 +155,16 @@ export function BoardsTable({ rows }: { rows: BoardRow[] }) {
           renaming={renamingId === board.id}
           onDone={() => setRenamingId(null)}
         />
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      width: "w-44",
+      cell: (board) => (
+        <span className={board.status === "pending" ? "text-stale" : "text-ink-soft"}>
+          {STATUS_LABEL[board.status]}
+        </span>
       ),
     },
     {
