@@ -17,6 +17,7 @@ const PUBLIC_PREFIXES = [
   // Dev reference sheets. Remove these when the app ships.
   "/tokens",
   "/primitives",
+  "/editor-lab",
 ];
 
 function isPublic(pathname: string): boolean {
