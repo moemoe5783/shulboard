@@ -12,8 +12,12 @@ Environment variables: @docs/environment.md
 - `app/(app)/` — authenticated dashboard. Supabase Auth + RLS.
 - `app/s/[token]/` — public display route. No auth. One TV per URL.
 - `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
-  `app/m/[id]/[file]/`, and `app/api/cron/build-bundles/` — the five server
-  routes holding the service-role key. Nowhere else uses it.
+  `app/m/[id]/[file]/`, `app/api/cron/build-bundles/`, and `publishBoard` in
+  `app/(editor)/boards/[id]/actions.ts` — the six places holding the
+  service-role key. The last one is a Server Action, not a route, and it earns
+  the exception by calling the exact same `buildScreenBundle` the cron route
+  does, immediately, for the screens the just-published board reaches, rather
+  than a second copy of the build logic. Nowhere else uses it.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx
 - `lib/tokens.css` — every color, size, and radius in the product
