@@ -34,24 +34,52 @@ export default async function ScreensPage() {
     throw new Error(`Couldn't load the screens: ${error.message}`);
   }
 
-  // Playlists in a second query rather than an embed. The foreign key from
-  // screens is composite — (playlist_id, org_id) — and asking PostgREST to
-  // resolve that relationship is a bet on its inference; two plain queries are
-  // not.
+  // The board each playlist is actually showing, in two plain queries rather
+  // than an embed: the foreign key from screens to playlists is composite —
+  // (playlist_id, org_id) — and asking PostgREST to resolve that relationship
+  // is a bet on its inference. Not the playlist's own name: assignBoard names
+  // an auto-created playlist after the screen's id (screens/actions.ts), and
+  // nothing in the product shows that name anywhere else — showing it here
+  // put a raw UUID in this column instead of the board a gabbai actually
+  // asked for.
   const playlistIds = [...new Set((screens ?? []).map((s) => s.playlist_id).filter(Boolean))];
-  const playlistNames = new Map<string, string>();
+  const boardNameByPlaylist = new Map<string, string>();
 
   if (playlistIds.length > 0) {
-    const { data: playlists, error: playlistError } = await supabase
-      .from("playlists")
-      .select("id, name")
-      .in("id", playlistIds as string[]);
+    const { data: items, error: itemsError } = await supabase
+      .from("playlist_items")
+      .select("playlist_id, board_id")
+      .in("playlist_id", playlistIds as string[])
+      .order("position", { ascending: true });
 
-    if (playlistError) {
-      throw new Error(`Couldn't load what the screens are showing: ${playlistError.message}`);
+    if (itemsError) {
+      throw new Error(`Couldn't load what the screens are showing: ${itemsError.message}`);
     }
-    for (const playlist of playlists ?? []) {
-      playlistNames.set(playlist.id, playlist.name);
+
+    // First item per playlist only — a playlist holds exactly one until
+    // rotation exists (plan.md §1, §6), same assumption BoardPicker.tsx makes.
+    const boardIdByPlaylist = new Map<string, string>();
+    for (const item of items ?? []) {
+      if (!boardIdByPlaylist.has(item.playlist_id)) {
+        boardIdByPlaylist.set(item.playlist_id, item.board_id);
+      }
+    }
+
+    const boardIds = [...new Set(boardIdByPlaylist.values())];
+    if (boardIds.length > 0) {
+      const { data: boards, error: boardsError } = await supabase
+        .from("boards")
+        .select("id, name")
+        .in("id", boardIds);
+
+      if (boardsError) {
+        throw new Error(`Couldn't load what the screens are showing: ${boardsError.message}`);
+      }
+      const boardNames = new Map((boards ?? []).map((b) => [b.id, b.name]));
+      for (const [playlistId, boardId] of boardIdByPlaylist) {
+        const name = boardNames.get(boardId);
+        if (name) boardNameByPlaylist.set(playlistId, name);
+      }
     }
   }
 
@@ -64,7 +92,7 @@ export default async function ScreensPage() {
     name: screen.name,
     location: screen.location_note,
     showing: screen.playlist_id
-      ? (playlistNames.get(screen.playlist_id) ?? "A playlist that was removed")
+      ? (boardNameByPlaylist.get(screen.playlist_id) ?? "Nothing scheduled")
       : "Nothing scheduled",
     status: screenStatus(screen.last_seen_at, now),
     lastSeen: lastSeenLabel(screen.last_seen_at, now),
