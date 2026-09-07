@@ -22,10 +22,14 @@ export const manifest: WidgetManifest<ClockConfig> = {
   isPro: false,
   settingsSchema: clockConfigSchema,
   /**
-   * Nothing is fetched — §3b: the clock is computed in the browser from the
-   * system clock and needs no network, ever. The declaration is here so the
-   * bundle builder knows the screen's zone is worth resolving once for every
-   * widget that wants it rather than per widget.
+   * Nothing is fetched over the network — §3b: the clock is computed in the
+   * browser from the system clock and needs no network, ever. The declaration
+   * says which zone it wants resolved, so twelve clocks all showing the
+   * building's own time resolve it once rather than twelve times.
+   *
+   * null means the device's own zone, which is what a screen hanging in the
+   * building it serves should use. It is a distinct need from a named zone, and
+   * writing it as null rather than "" keeps that distinction legible.
    */
-  dataNeeds: ["timezone"],
+  dataNeeds: (config) => [{ kind: "timezone", timeZone: config.timeZone || null }],
 };

@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // scripts/test-widgets.ts is run by node's type stripping, which needs the
+    // explicit .ts on its import. Safe alongside noEmit: nothing is emitted, so
+    // there is no output whose extensions could be wrong.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

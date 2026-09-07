@@ -36,6 +36,44 @@ everything into identical rounded cards.
 
 ---
 
+## 1b. What this spec governs, and what it does not
+
+**This spec is about chrome.** Everything in it — two radii, one accent, weights
+400 and 600, no raw hex outside `lib/tokens.css`, the type scale, the banned
+list — describes the application a gabbai operates. It describes the control
+desk, not what is on the screens the desk controls.
+
+**A board is a user-authored artifact. Its content is data, not UI.** A board
+document may use any colour, any radius and any font the shul chooses. It may
+use verdigris. It may put a 24px corner on a photograph. It may set type at
+sizes that appear nowhere in the scale above, because it is read from twenty
+feet away in a lit lobby and the scale above was measured for a desktop at arm's
+length. Image assets may contain any colour at all; a photograph is not a
+palette violation.
+
+This is not a loophole, it is the product. §4d says an org picks its own tokens
+and that this is what stops a shul's boards looking like a ransom note. A shul
+whose brass is greener than ours is not doing anything wrong.
+
+Three lines mark the boundary:
+
+- **The board document** — positions, config, `themeOverrides` — is content.
+  Nothing in this spec constrains it.
+- **The renderer's own chrome** is chrome, and this spec does constrain it: the
+  empty state an Image widget shows when no picture is chosen, the notice a
+  board shows for a widget it cannot render. Those are the product speaking, not
+  the shul, and they follow §5 and §6 like any other message.
+- **The editor around the board** — toolbar, layers rail, menus, transform
+  handles — is chrome, all of it.
+
+The one place a raw colour legitimately lives outside `lib/tokens.css` is an
+image asset. `public/demo/test-card.svg` is the current example.
+
+So: do not flag a board document for using verdigris, a widget config for a
+radius outside the scale, or an SVG for containing hex. Those are settled.
+
+---
+
 ## 2. Deliberately avoided
 
 State these as prohibitions in the prompt, because they're the defaults a model

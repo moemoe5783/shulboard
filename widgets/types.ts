@@ -19,18 +19,29 @@ import type { z } from "zod";
 export type WidgetCategory = "time" | "text" | "media" | "content" | "interactive";
 
 /**
- * What a widget needs the bundle builder to fetch for it.
+ * One thing a widget needs the bundle builder to fetch for it.
  *
- * Declarative only for now — nothing reads this yet. It exists from the first
- * widget because §5 makes it the mechanism that stops two calendar widgets
- * pointing at the same Google Calendar from becoming two API calls, and a field
- * added after twenty widgets exist is twenty folders to revisit.
+ * STRUCTURED, NOT A BARE STRING, and the parameters are the whole point. §5
+ * makes this the mechanism that stops two calendar widgets pointing at the same
+ * Google Calendar from becoming two API calls — and `"calendar"` cannot express
+ * that, because two widgets reading different calendars declare the identical
+ * string. `{ kind: "calendar", calendarId }` can: the builder collects every
+ * need on the board, dedupes on the whole object, and fetches each distinct one
+ * once.
  *
- * Deliberately a plain string array rather than a union: a widget declares its
- * own needs, and a union here would mean every new need is an edit to this file.
- * The bundle builder will dedupe on the string.
+ * `kind` is a free string rather than a union, so a new kind of need is a new
+ * widget folder and not an edit to this file. Parameters are scalars, so a need
+ * has a stable identity that can be compared — see dataNeedKey().
+ *
+ * Nothing reads this yet. It carries its parameters now because changing the
+ * shape after twenty widgets exist is twenty folders to revisit.
  */
-export type DataNeed = string;
+export type DataNeed = {
+  /** What kind of thing to fetch. The bundle builder switches on this. */
+  kind: string;
+  /** Everything that makes one need different from another of the same kind. */
+  [parameter: string]: string | number | boolean | null | undefined;
+};
 
 /** Design units on the board's canvas, not pixels on a screen. */
 export type WidgetSize = { w: number; h: number };
@@ -43,6 +54,17 @@ export type WidgetManifest<TConfig = Record<string, unknown>> = {
   /** One line in the add-widget menu, saying what it puts on the board. */
   description: string;
   category: WidgetCategory;
+  /**
+   * Names an icon for the add-widget menu. Optional, and unset on every widget
+   * so far because there is no icon set yet.
+   *
+   * Here from the start rather than added later: at twenty-six entries a menu
+   * distinguished only by name and one line of prose stops working, and a field
+   * introduced at that point is twenty-six folders to revisit. A widget folder
+   * fills it in when the set exists. A NAME, never a path or a component —
+   * a manifest holds no React (see the note above).
+   */
+  icon?: string;
   /** How big it arrives, in design units. */
   defaultSize: WidgetSize;
   /** Gated behind a paid plan (§9, P8). False for all three of these. */
@@ -55,7 +77,19 @@ export type WidgetManifest<TConfig = Record<string, unknown>> = {
    * second list of defaults to fall out of step with the schema.
    */
   settingsSchema: z.ZodType<TConfig>;
-  dataNeeds: readonly DataNeed[];
+  /**
+   * What this widget needs fetching, for one instance of it.
+   *
+   * A FUNCTION OF THE INSTANCE'S CONFIG, not a static list, and it has to be:
+   * which calendar, which album, which asset all live in the config, and a
+   * manifest-level constant cannot see them. The builder walks every widget on
+   * every board, calls this with that widget's config, and dedupes what comes
+   * back — which is exactly the two-widgets-one-API-call behaviour §5 asks for.
+   *
+   * Return [] for a widget that needs nothing. It is still a function, so
+   * there is one shape to read rather than two.
+   */
+  dataNeeds: (config: TConfig) => readonly DataNeed[];
   /**
    * What to call one instance of this widget in a layers panel.
    *

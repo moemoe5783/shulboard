@@ -82,7 +82,10 @@ async function startServer() {
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
     await sleep(500);
-    if (exitCode !== null) throw new Error(`the server exited with ${exitCode}:\n${output}`);
+    if (exitCode !== null) {
+      const hint = /production build/.test(output) ? " Run `npm run build` first." : "";
+      throw new Error(`the server exited with ${exitCode}.${hint}\n${output}`);
+    }
     try {
       await fetch(LAB);
       return child;
