@@ -339,6 +339,10 @@ export type Database = {
           is_template: boolean
           name: string
           org_id: string
+          published_at: string | null
+          published_by: string | null
+          published_doc: Json | null
+          published_hash: string | null
           template_category: string | null
           updated_at: string
           updated_by: string | null
@@ -355,6 +359,10 @@ export type Database = {
           is_template?: boolean
           name: string
           org_id: string
+          published_at?: string | null
+          published_by?: string | null
+          published_doc?: Json | null
+          published_hash?: string | null
           template_category?: string | null
           updated_at?: string
           updated_by?: string | null
@@ -371,6 +379,10 @@ export type Database = {
           is_template?: boolean
           name?: string
           org_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          published_doc?: Json | null
+          published_hash?: string | null
           template_category?: string | null
           updated_at?: string
           updated_by?: string | null

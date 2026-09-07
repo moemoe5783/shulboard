@@ -386,8 +386,11 @@ table.
 | `org_id` | uuid not null | |
 | `name` | text not null | "Weekday board" |
 | `canvas_width` / `canvas_height` | integer not null, default 1920 / 1080 | Real columns, not fields in the document. They are the denominator every percentage in `doc` is measured against, and the dashboard needs to query them to warn when a board's aspect doesn't match the screen it's scheduled on. The document does not repeat them. |
-| `doc` | jsonb not null default `'{}'` | The whole board: widgets, positions, z-order, theme overrides, background. Shape below. |
+| `doc` | jsonb not null default `'{}'` | The draft: widgets, positions, z-order, theme overrides, background. Shape below. What the editor's autosave writes, and only that — a screen never renders this column directly. |
 | `doc_version` | integer not null default 1 | Optimistic concurrency for the 1s-debounced autosave. A save carrying a stale `doc_version` is rejected rather than silently overwriting a second editor. |
+| `published_doc` | jsonb null | What a screen actually shows, through the bundle builder (§10). Same shape as `doc`. Copied from `doc` only by the publish action — never by autosave, never by a trigger. Null means this board has never been published, and it contributes nothing to any bundle: the bundle builder excludes it, the same as a board no playlist item points at. |
+| `published_at` / `published_by` | timestamptz null / uuid null | When and by whom publish last ran. Null `published_at` is "never published," a state the editor and the boards list say differently from "published, with the draft since edited." |
+| `published_hash` | text null | sha256 of `published_doc`'s canonical form — the same `canonicalJson` approach `screen_bundles.content_hash` uses (§9), applied to a board document instead of a full bundle payload. Compared against a fresh hash of the draft to show unpublished-changes state without a document-equality check, which would flag a no-op autosave, or a widget moved and moved back, as a change. Null exactly when `published_doc` is. |
 | `is_template` | boolean not null default false | The templates gallery in P8. |
 | `template_category` | text null | |
 | `created_by` / `updated_by` | uuid null | |
@@ -1154,6 +1157,17 @@ rebuild; it was the refetch, and the hash comparison already prevents that.
   `calendar_events`, `screens`, and `orgs` (for theme changes). Adding a new
   content table means adding the trigger — one line, and its absence is the only
   way to reintroduce staleness.
+- **`boards` is the one exception to "any write, any column."** Its `doc`
+  column is the draft, and the whole point of the publish model (§5) is that
+  nothing an editor does to it reaches a screen — so the 1-second autosave
+  loop must not queue an org-wide rebuild on every keystroke. `boards`'
+  `UPDATE` trigger is therefore row-level with a `WHEN` guard on `name` and
+  `published_doc` only, the same shape `orgs`/`screens` already use below and
+  for the same reason: a column filter and a transition table can't be
+  combined on one trigger definition, so the filtered form gives up the
+  transition table rather than the filter. Its `INSERT`/`DELETE` triggers are
+  still the unfiltered statement-level form — a board nothing points at yet,
+  or any more, is cheap to over-invalidate for either way.
 - The flag is a timestamp, not a counter or a queue row, so a hundred writes in a
   second coalesce into one rebuild for free. No debouncing logic is needed
   anywhere.
