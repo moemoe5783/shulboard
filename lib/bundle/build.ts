@@ -1,10 +1,29 @@
 import "server-only";
 
+import type { Database, Json } from "@/lib/database.types";
 import { serviceClient } from "@/lib/supabase/service";
 import { assembleBundle, assetIdsFor, type AssetRow } from "./assemble";
 import { hashPayload, payloadBytes } from "./hash";
 import { readAssetVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
+
+/** Exactly the columns buildScreenBundle's own select fetches — named so
+ *  assemblePayloadFor's signature is checked against the real `screens`
+ *  schema instead of the `Record<string, unknown>` this used to accept
+ *  (which a `screen as never` cast then forced past the compiler entirely). */
+type ScreenForBuild = Pick<
+  Database["public"]["Tables"]["screens"]["Row"],
+  | "id"
+  | "org_id"
+  | "name"
+  | "canvas_width"
+  | "canvas_height"
+  | "orientation"
+  | "timezone"
+  | "hebrew_prefs"
+  | "playlist_id"
+  | "rebuild_requested_at"
+>;
 
 /** Which generated derivative a bundle embeds. dataNeeds carries only an
  *  `assetId` today, not a requested size (widgets/types.ts) — until a widget
@@ -113,7 +132,12 @@ export async function buildScreenBundle(screenId: string): Promise<BuildResult> 
         org_id: screen.org_id,
         version,
         content_hash: contentHash,
-        payload,
+        // BundlePayload is JSON-safe by construction — canonicalJson
+        // (lib/bundle/hash.ts) already assumes as much to hash it — but its
+        // Record<string, unknown>/unknown[] fields can't be proven so
+        // structurally against the generated `Json` type. This is the one
+        // place that trust transfers into the column's declared shape.
+        payload: payload as unknown as NonNullable<Json>,
         byte_size: payloadBytes(payload),
         built_at: new Date().toISOString(),
         build_duration_ms: durationMs,
@@ -165,19 +189,23 @@ async function clearRebuildFlag(
 
 async function assemblePayloadFor(
   db: ReturnType<typeof serviceClient>,
-  screen: Record<string, unknown>,
+  screen: ScreenForBuild,
 ): Promise<BundlePayload> {
-  const orgId = screen.org_id as string;
-  const playlistId = screen.playlist_id as string | null;
+  const orgId = screen.org_id;
+  const playlistId = screen.playlist_id;
 
   const [{ data: org }, playlist] = await Promise.all([
     db.from("orgs").select("theme").eq("id", orgId).maybeSingle(),
     playlistId
-      ? db.from("playlists").select("id, name").eq("id", playlistId).maybeSingle()
+      ? db
+          .from("playlists")
+          .select("id, name, default_duration_seconds")
+          .eq("id", playlistId)
+          .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
-  const { data: items } = playlistId
+  const { data: rawItems } = playlistId
     ? await db
         .from("playlist_items")
         .select("board_id, position, duration_seconds")
@@ -185,7 +213,19 @@ async function assemblePayloadFor(
         .order("position")
     : { data: [] };
 
-  const boardIds = [...new Set((items ?? []).map((item) => item.board_id).filter(Boolean))];
+  // duration_seconds is nullable on the row — an item with no override runs
+  // for the playlist's own default. Resolving that here, rather than letting
+  // a null ride into the bundle as a board's rotation time, is exactly the
+  // kind of mismatch a generated type catches and `any` could not: a null
+  // duration reaching the display would either freeze on that board forever
+  // or throw computing setTimeout(null * 1000).
+  const defaultDuration = playlist?.data?.default_duration_seconds ?? 30;
+  const items = (rawItems ?? []).map((item) => ({
+    ...item,
+    duration_seconds: item.duration_seconds ?? defaultDuration,
+  }));
+
+  const boardIds = [...new Set(items.map((item) => item.board_id).filter(Boolean))];
 
   const { data: boards } = boardIds.length
     ? await db.from("boards").select("id, name, doc").in("id", boardIds)
@@ -236,10 +276,22 @@ async function assemblePayloadFor(
   const content = await resolveContent(db, orgId);
 
   return assembleBundle({
-    screen: screen as never,
+    screen: {
+      id: screen.id,
+      name: screen.name,
+      canvas_width: screen.canvas_width,
+      canvas_height: screen.canvas_height,
+      orientation: screen.orientation,
+      timezone: screen.timezone,
+      // The CHECK constraint on this column (jsonb_typeof(hebrew_prefs) =
+      // 'object') guarantees the object shape AssembleInput expects; the
+      // generated type only knows it as jsonb in general, which is where
+      // this one cast earns its keep.
+      hebrew_prefs: screen.hebrew_prefs as Record<string, unknown>,
+    },
     theme: (org?.theme as Record<string, unknown>) ?? {},
-    playlist: (playlist?.data as { id: string; name: string } | null) ?? null,
-    playlistItems: items ?? [],
+    playlist: playlist?.data ? { id: playlist.data.id, name: playlist.data.name } : null,
+    playlistItems: items,
     boards: boards ?? [],
     content,
     assets,
