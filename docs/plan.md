@@ -191,9 +191,9 @@ Registry pattern. One folder per widget:
 
 ```
 /widgets/zmanim/
-  manifest.ts     id, name, category, icon, defaultSize, isPro,
-                  settingsSchema (zod), dataNeeds: ['location']
-  Renderer.tsx    shared by editor + display
+  manifest.ts     id, name, description, category, icon?, defaultSize, isPro,
+                  settingsSchema (zod), instanceLabel?, dataNeeds
+  Renderer.tsx    shared by editor + display, takes {config, canvas}
   Settings.tsx    the right-hand panel
 ```
 
@@ -201,7 +201,34 @@ Registry pattern. One folder per widget:
 declared needs, dedupes them, and fetches once. Two calendar widgets pointing at
 the same Google Calendar = one API call.
 
-Adding widget #26 should mean creating one folder and nothing else.
+**A need is structured and carries its parameters.** `{ kind: 'calendar',
+calendarId }`, not `'calendar'` — because the whole behaviour above turns on
+telling two calendars apart, and two widgets reading different calendars declare
+the identical string. `kind` is a free string, so a new kind of need is a new
+widget folder rather than an edit to a shared union; parameters are scalars, so
+a need has an identity that can be compared. Dedupe on the whole need with keys
+sorted, since two widgets may declare the same need in a different order.
+
+**`dataNeeds` is a function of the instance's config, not a constant.** Which
+calendar, which album, which asset all live in the config; a manifest-level list
+cannot see them. The builder walks every widget on every board, calls
+`dataNeeds(widget.config)`, and dedupes what comes back. A widget that needs
+nothing returns `[]` — still a function, so there is one shape to read.
+
+**The Renderer takes `{config, canvas}` and nothing else.** No `surface`, no
+`mode`, no `isEditor`. That prop is the editor/display fork arriving in
+disguise, and §2 is the reason: the editor wraps the renderer in a transform
+frame and suppresses pointer events on its contents, and everything that
+legitimately differs between the two halves is done in that wrapper. See
+CLAUDE.md.
+
+Adding widget #26 should mean creating one folder and nothing else. The registry
+collects `*/manifest.ts` and `*/Renderer.tsx` by resolving the folder at build
+time rather than reading a hand-kept list, so a widget that exists but was left
+out of an array — it works, it is simply absent from the add menu — cannot
+happen. Manifests are collected separately from renderers and hold no React, so
+the bundle builder can read `dataNeeds` on the server without pulling a
+component tree into a server route.
 
 ### Widget list, grouped by data dependency
 

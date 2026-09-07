@@ -31,8 +31,14 @@ export const manifest: WidgetManifest<ImageConfig> = {
   defaultSize: { w: 640, h: 480 },
   isPro: false,
   settingsSchema: imageConfigSchema,
-  /** §3c: the bundle names its assets so the service worker can cache every one
-   *  before the board is allowed to swap to it. */
-  dataNeeds: ["asset"],
+  /**
+   * §3c: the bundle names its assets so the service worker can cache every one
+   * before the board is allowed to swap to it — and the atomic swap depends on
+   * knowing WHICH assets, not just that there are some.
+   *
+   * Two Image widgets showing the same photograph produce the same need and are
+   * fetched and cached once. A widget with nothing chosen yet needs nothing.
+   */
+  dataNeeds: (config) => (config.src ? [{ kind: "asset", src: config.src }] : []),
   instanceLabel: (config) => config.alt || "Image",
 };

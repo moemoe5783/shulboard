@@ -31,6 +31,6 @@ export const manifest: WidgetManifest<TitleConfig> = {
   isPro: false,
   settingsSchema: titleConfigSchema,
   // Nothing to fetch. It says what it is told to say.
-  dataNeeds: [],
+  dataNeeds: () => [],
   instanceLabel: (config) => config.text || "Title",
 };
