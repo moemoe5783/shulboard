@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useCommands } from "./commands";
 
 /*
@@ -20,19 +20,36 @@ export function ContextMenu({
   onClose: () => void;
 }) {
   const groups = useCommands();
+  const ref = useRef<HTMLDivElement>(null);
 
+  /*
+   * Dismiss on a press outside — and only outside.
+   *
+   * THE BUG THIS FIXES. The listener was on document in the capture phase with
+   * no containment check, and the menu relied on an onPointerDown handler on
+   * itself to stop it. That cannot work: capture runs document-first, so the
+   * menu was already unmounted by the time React would have seen the press, the
+   * button was gone before the click completed, and every command in the menu
+   * did nothing at all. It looked like a menu and behaved like a picture of one.
+   *
+   * Capture is still right — a press elsewhere should put the menu away before
+   * that press does anything else — but it has to ask where the press landed.
+   */
   useEffect(() => {
     if (!at) return;
-    const close = () => onClose();
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (ref.current?.contains(event.target as Node)) return;
+      onClose();
+    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
-    // Capture, so a press anywhere puts the menu away before that press does
-    // anything else.
-    document.addEventListener("pointerdown", close, true);
+
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("pointerdown", close, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey);
     };
   }, [at, onClose]);
@@ -41,10 +58,10 @@ export function ContextMenu({
 
   return (
     <div
+      ref={ref}
       role="menu"
       className="rounded-panel border-rule bg-surface font-ui fixed z-50 w-56 border p-1 shadow-menu"
       style={{ left: at.x, top: at.y }}
-      onPointerDown={(event) => event.stopPropagation()}
     >
       {groups.map((group, index) => (
         <div key={group.id} className={index > 0 ? "border-rule mt-1 border-t pt-1" : undefined}>

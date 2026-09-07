@@ -8,6 +8,7 @@ import {
   CHROME_META,
   CHROME_RULE,
 } from "./chrome";
+import { AddWidgetMenu } from "./AddWidgetMenu";
 import { useCommands } from "./commands";
 
 /*
@@ -24,7 +25,13 @@ import { useCommands } from "./commands";
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
-export function Toolbar({ onFit, onAddBox }: { onFit: () => void; onAddBox: () => void }) {
+export function Toolbar({
+  onFit,
+  canvas,
+}: {
+  onFit: () => void;
+  canvas: { width: number; height: number };
+}) {
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
   const snapEnabled = useEditor((s) => s.snapEnabled);
@@ -53,9 +60,7 @@ export function Toolbar({ onFit, onAddBox }: { onFit: () => void; onAddBox: () =
       {...CHROME_DARK}
       className={`font-ui flex h-10 shrink-0 items-center gap-1 border-b px-2 ${CHROME_RULE}`}
     >
-      <button type="button" className={CHROME_BUTTON} onClick={onAddBox}>
-        Add box
-      </button>
+      <AddWidgetMenu canvas={canvas} />
 
       <Divider />
 

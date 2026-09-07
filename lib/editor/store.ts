@@ -70,6 +70,9 @@ export type EditorState = {
 
   // ---- selection -------------------------------------------------------
   select: (ids: string[]) => void;
+  /** Select these, plus every sibling of any group they belong to. What a click
+   *  on the canvas does, wherever the click came from. */
+  selectWidgets: (ids: string[]) => void;
   toggleSelected: (id: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
@@ -178,6 +181,7 @@ export const useEditor = create<EditorState>((set, get) => {
     showGrid: false,
 
     select: (ids) => set({ selection: [...new Set(ids)] }),
+    selectWidgets: (ids) => set({ selection: expandGroups(get().doc.widgets, ids) }),
     toggleSelected: (id) =>
       set((state) => ({
         selection: state.selection.includes(id)
@@ -464,6 +468,39 @@ export const useEditor = create<EditorState>((set, get) => {
 });
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Selecting one member of a group selects the group.
+ *
+ * The group itself is never a transform target — it is a row in the document
+ * carrying the membership and the box. What moves is its members, so that is
+ * what the selection names.
+ *
+ * Exported because two things need it and having had two copies is how the
+ * right-click menu ended up selecting differently from a left click.
+ */
+export function expandGroups(
+  widgets: { id: string; groupId: string | null }[],
+  ids: string[],
+): string[] {
+  const byId = new Map(widgets.map((w) => [w.id, w]));
+  const out = new Set<string>();
+
+  for (const id of ids) {
+    const widget = byId.get(id);
+    if (!widget) continue;
+
+    if (widget.groupId) {
+      for (const sibling of widgets) {
+        if (sibling.groupId === widget.groupId) out.add(sibling.id);
+      }
+    } else {
+      out.add(id);
+    }
+  }
+
+  return [...out];
+}
 
 function normaliseAngle(deg: number): number {
   const wrapped = deg % 360;

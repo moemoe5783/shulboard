@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { boardWidgetSchema, type BoardWidget } from "@/lib/board-doc";
+import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { TransformFrame } from "@/components/editor/TransformFrame";
+import { DEMO_CANVAS, demoBoardDoc } from "@/lib/demo-board";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
-import { rectToWidget } from "@/lib/editor/geometry";
+import { tickListenerCount, useSecond } from "@/lib/tick";
 import { ContextMenu, type MenuPosition } from "./ContextMenu";
-import { LayersPanel, TONE_FILL, TONES, labelOf, toneOf } from "./LayersPanel";
+import { LayersPanel } from "./LayersPanel";
 import { Toolbar } from "./Toolbar";
 import { CHROME_DARK, CHROME_SURFACE } from "./chrome";
 
@@ -29,16 +30,7 @@ import { CHROME_DARK, CHROME_SURFACE } from "./chrome";
  * never reach the renderer by inheritance.
  */
 
-/** Five boxes, in design units on a 1920×1080 canvas. */
-const SEED = [
-  { label: "Zmanim", tone: "ink", x: 120, y: 120, w: 520, h: 360 },
-  { label: "Notices", tone: "verdigris", x: 720, y: 120, w: 700, h: 220 },
-  { label: "Clock", tone: "ink-soft", x: 1500, y: 120, w: 300, h: 300 },
-  { label: "Photo", tone: "ink-faint", x: 720, y: 420, w: 400, h: 480 },
-  { label: "Parsha", tone: "verdigris-wash", x: 1200, y: 520, w: 600, h: 300 },
-] as const;
-
-const CANVAS = { width: 1920, height: 1080 };
+const CANVAS = DEMO_CANVAS;
 const NUDGE_SMALL = 1;
 const NUDGE_LARGE = 10;
 
@@ -65,18 +57,18 @@ export function EditorLab() {
    * the server's markup and the browser's first pass and React would report a
    * hydration mismatch. Nothing on this page is worth server-rendering anyway.
    */
+  /*
+   * The lab seeds from the same document /s/[token] serves.
+   *
+   * That is the check, not a convenience: if the editor and the display ever
+   * render it differently, the difference is visible by opening two tabs, and
+   * the shared-renderer rule stops being a claim in a comment.
+   *
+   * On mount rather than during render — the display route renders this on the
+   * server, and a document built during render would have to agree with it.
+   */
   useEffect(() => {
-    const widgets: BoardWidget[] = SEED.map((box, index) =>
-      boardWidgetSchema.parse({
-        id: crypto.randomUUID(),
-        type: "placeholder",
-        ...rectToWidget({ x: box.x, y: box.y, w: box.w, h: box.h }, CANVAS),
-        z: index,
-        config: { label: box.label, tone: box.tone },
-      }),
-    );
-
-    useEditor.getState().load({ schemaVersion: 1, widgets });
+    useEditor.getState().load(demoBoardDoc());
   }, []);
 
   /** Zoom to fit, which is where the editor opens (§4a). */
@@ -104,24 +96,6 @@ export function EditorLab() {
     // zoom control.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
-
-  const addBox = useCallback(() => {
-    const store = useEditor.getState();
-    const widget = boardWidgetSchema.parse({
-      id: crypto.randomUUID(),
-      type: "placeholder",
-      ...rectToWidget({ x: 760, y: 400, w: 400, h: 280 }, CANVAS),
-      z: store.doc.widgets.length,
-      config: {
-        label: "Box",
-        tone: TONES[store.doc.widgets.length % TONES.length],
-      },
-    });
-
-    // Through the store's command path, so adding a box is undoable like
-    // everything else. load() would have cleared the history instead.
-    store.addWidgets([widget], "Add box");
-  }, []);
 
   /*
    * Keyboard — §4b.
@@ -208,7 +182,7 @@ export function EditorLab() {
 
   return (
     <div className={`flex h-screen flex-col ${CHROME_SURFACE}`}>
-      <Toolbar onFit={fit} onAddBox={addBox} />
+      <Toolbar onFit={fit} canvas={CANVAS} />
 
       <div className="flex min-h-0 flex-1">
         <LayersPanel />
@@ -222,19 +196,47 @@ export function EditorLab() {
           className="bg-ink/88 relative min-w-0 flex-1 overflow-auto"
           onContextMenu={(event) => {
             event.preventDefault();
+
+            /*
+             * A right-click selects what it lands on, the way every editor
+             * does — and the way this one did not.
+             *
+             * Without it the menu opened on whatever happened to be selected
+             * already, which for a first right-click is nothing, so every
+             * command in it was disabled and the menu was decorative. Landing
+             * on empty canvas clears, which is what makes Paste the sensible
+             * thing to reach for there.
+             */
+            /*
+             * The whole stack under the pointer, not event.target.
+             *
+             * A selected widget is covered by the transform layer's own
+             * overlay, which carries no widget id — so reading event.target
+             * meant that right-clicking the one thing you had just selected
+             * looked like right-clicking bare canvas, and cleared the
+             * selection out from under the menu. elementsFromPoint sees past
+             * whatever is floating on top without this file having to know
+             * what that is, which keeps the library behind TransformFrame
+             * where §4c put it.
+             */
+            const id = document
+              .elementsFromPoint(event.clientX, event.clientY)
+              .find((el): el is HTMLElement => el instanceof HTMLElement && "widgetId" in el.dataset)
+              ?.dataset.widgetId;
+            const store = useEditor.getState();
+
+            if (!id) store.clearSelection();
+            else if (!store.selection.includes(id)) store.selectWidgets([id]);
+
             setMenu({ x: event.clientX, y: event.clientY });
           }}
         >
           <div className="w-max p-8">
-            <div
-              ref={canvasRef}
-              className="bg-surface relative"
-              style={{ width: canvasPx.width, height: canvasPx.height }}
-            >
+            <div ref={canvasRef} style={{ width: canvasPx.width, height: canvasPx.height }}>
               {showGrid && (
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute inset-0"
+                  className="pointer-events-none absolute inset-0 z-20"
                   style={{
                     backgroundImage:
                       "linear-gradient(to right, var(--rule) 1px, transparent 1px)," +
@@ -244,36 +246,30 @@ export function EditorLab() {
                 />
               )}
 
-              {doc.widgets
-                .filter((widget) => widget.type !== GROUP_TYPE && !widget.hidden)
-                .map((widget) => (
-                  <div
-                    key={widget.id}
-                    data-widget-id={widget.id}
-                    data-locked={widget.locked ? "true" : undefined}
-                    className={`absolute flex items-start justify-start ${TONE_FILL[toneOf(widget.config)]} ${
-                      widget.locked ? "cursor-not-allowed" : "cursor-move"
-                    }`}
-                    style={{
-                      left: `${widget.x}%`,
-                      top: `${widget.y}%`,
-                      width: `${widget.w}%`,
-                      height: `${widget.h}%`,
-                      transform: `rotate(${widget.rotation}deg)`,
-                      opacity: widget.opacity,
-                      zIndex: widget.z,
-                    }}
-                  >
-                    {/* Sized against the canvas so the label scales with the
-                        zoom, the way real widget type will. */}
-                    <span
-                      className="leading-none"
-                      style={{ padding: 8 * zoom, fontSize: 18 * zoom }}
-                    >
-                      {labelOf(widget.config, widget.id)}
-                    </span>
-                  </div>
-                ))}
+              {/*
+                THE SAME COMPONENT THE DISPLAY ROUTE USES. The editor does not
+                position widgets, style the board, or choose a renderer — it
+                hands BoardRenderer a set of attributes to put on each widget's
+                box and nothing more. There is no editor-side copy of any of
+                this to drift.
+              */}
+              <BoardRenderer
+                doc={doc}
+                canvas={CANVAS}
+                className="h-full w-full"
+                widgetProps={(widget) => ({
+                  "data-widget-id": widget.id,
+                  "data-locked": widget.locked ? "true" : undefined,
+                  // Live content inside a widget would otherwise eat the
+                  // gesture: an <img> starts a native drag, text takes a
+                  // selection. The box still receives the press, so Selecto and
+                  // Moveable work; only its contents stop listening. This is an
+                  // editor concern and it stays outside the renderer.
+                  className: `select-none [&_*]:pointer-events-none ${
+                    widget.locked ? "cursor-not-allowed" : "cursor-move"
+                  }`,
+                })}
+              />
             </div>
           </div>
 
@@ -291,17 +287,36 @@ export function EditorLab() {
 function StatusBar({ count, selected }: { count: number; selected: number }) {
   const history = useEditor((s) => s.history);
 
+  /*
+   * The tick's subscriber count, which is the whole of plan.md §3e made
+   * visible.
+   *
+   * Subscribing here is what makes it readable — the row re-renders on the same
+   * tick the clocks do, so the number is current rather than whatever it was
+   * when the board last changed. That costs one subscriber, which is why the
+   * label says so.
+   *
+   * The number to watch is not how high it goes but whether it comes back down.
+   * A count that climbs as widgets are added and deleted is the leak that kills
+   * a display route left running for a month.
+   */
+  useSecond();
+  const subscribers = tickListenerCount();
+
   return (
     <div
       {...CHROME_DARK}
       className="font-ui border-paper/15 text-meta text-paper/60 numeric flex h-8 shrink-0 items-center gap-4 border-t px-3"
     >
       <span>
-        {count} {count === 1 ? "box" : "boxes"}
+        {count} {count === 1 ? "widget" : "widgets"}
       </span>
       <span>{selected} selected</span>
       <span>
         {history.past.length} undo, {history.future.length} redo
+      </span>
+      <span data-tick-subscribers={subscribers}>
+        {subscribers} on the tick, this row included
       </span>
       <span className="ml-auto">
         Hold ctrl or cmd to suspend snapping. Alt-drag to duplicate. Shift to
