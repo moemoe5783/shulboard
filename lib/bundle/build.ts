@@ -148,6 +148,7 @@ export async function buildScreenBundle(screenId: string): Promise<BuildResult> 
     if (writeError) throw new Error(`could not write the bundle: ${writeError.message}`);
 
     await clearRebuildFlag(db, screenId, requestedAt);
+    await broadcastBundleChanged(db, screenId, version);
     return { status: "built", screenId, version, contentHash, durationMs };
   } catch (cause) {
     const error = cause instanceof Error ? cause.message : String(cause);
@@ -156,6 +157,50 @@ export async function buildScreenBundle(screenId: string): Promise<BuildResult> 
     // serving throughout. The dashboard surfaces this; a screen never blanks.
     await db.rpc("record_bundle_build_failure", { p_screen_id: screenId, p_error: error });
     return { status: "failed", screenId, error };
+  }
+}
+
+/**
+ * Tell the screen's own Realtime channel its bundle changed — docs/plan.md
+ * §3d, and the sender half of what lib/display/realtime.ts has been
+ * listening for since that module was written: the authorization (the JWT
+ * minting route, the RLS policy on realtime.messages) already existed with
+ * nothing on this end ever publishing.
+ *
+ * ONLY CALLED AFTER A REAL VERSION BUMP, never after an "unchanged" rebuild —
+ * schema.md §10 says so explicitly, and it's what keeps over-invalidation
+ * cheap: an org-wide flag touches every screen, but only the ones whose
+ * content actually changed get told to refetch right now.
+ *
+ * httpSend, not send()+subscribe(): this is a serverless build job with no
+ * reason to hold a websocket open, and the Realtime REST broadcast endpoint
+ * is exactly the "publish one message and go" primitive that needs. The
+ * client here is the service-role client (serviceClient()), which is what
+ * authorizes the send — supabase-js falls back to the client's own key as
+ * its access token when there is no session, which is always true for this
+ * client, and 20260908090000_realtime_channel_authorization.sql's own
+ * comment says publishing bypassing RLS this way is the intended design, not
+ * a workaround.
+ *
+ * NEVER ALLOWED TO FAIL THE BUILD. The bundle is already written and correct
+ * at this point; a screen that misses this notice still gets the same
+ * update within 60 seconds from its own unconditional poll
+ * (lib/display/useDisplay.ts) — the exact belt-and-suspenders plan.md §3d
+ * asks for, because a websocket that looks open and says nothing is the
+ * real, silent TV failure mode.
+ */
+async function broadcastBundleChanged(
+  db: ReturnType<typeof serviceClient>,
+  screenId: string,
+  version: number,
+): Promise<void> {
+  const channel = db.channel(`screen:${screenId}`, { config: { private: true } });
+  try {
+    await channel.httpSend("bundle_changed", { version });
+  } catch {
+    // Swallowed on purpose — see the comment above.
+  } finally {
+    await db.removeChannel(channel);
   }
 }
 

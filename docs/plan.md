@@ -97,8 +97,12 @@ Only human-entered content (announcements, events, photos) can go stale, and the
   board in the playlist too.
 
 ### 3d. Live updates without refresh
-- Supabase Realtime broadcast on channel `screen:<id>`. Editor publishes
-  `bundle_changed` on save → display refetches and cross-fades.
+- Supabase Realtime broadcast on channel `screen:<id>`. `buildScreenBundle`
+  publishes `bundle_changed` after a build that actually bumps `version` →
+  display refetches and cross-fades. Not on every autosave — a board's draft
+  doesn't touch a screen at all until it's published (docs/schema.md §5's
+  `published_doc`) — so this fires from a publish's own immediate build, or
+  from the cron sweep picking up a queued content change.
 - **The channel is private and authorized per screen, not open to the anon
   key.** The anon key is public and identical for every screen the product
   serves, so subscribing also requires a short-lived JWT from
@@ -120,6 +124,28 @@ Only human-entered content (announcements, events, photos) can go stale, and the
 - Global error boundary → log + reload rather than white screen.
 - No `setInterval` accumulation: one master rAF/second-tick that all time widgets
   subscribe to.
+
+### 3f. The build worker's throughput — a known limit, not a bug
+
+`GET|POST /api/cron/build-bundles` processes at most `BATCH = 10` screens per
+invocation, oldest-queued first, so one org with a slow rebuild can't blow the
+route's wall-clock budget and starve everyone behind it. An external
+scheduler calls this route every 5 minutes (docs/environment.md's
+`CRON_SECRET` section — there is deliberately no Vercel cron entry for it),
+which drains the queue at 10 screens / 5 min = 2 screens/min = **120
+screens an hour.**
+
+That's fine for the org sizes this product has today and a real ceiling once
+it isn't: **200 screens queued at once — one org publishing to all of them,
+or an org-wide content edit invalidating everyone simultaneously — take
+over an hour to fully drain** (200 / 120 ≈ 1.7 hours), even though any one
+screen's own build takes seconds. Nothing alerts anyone to this; a screen at
+the back of that queue just looks slow to update, with no error anywhere.
+
+Worth revisiting once queue depth is a real, observed problem — raising
+`BATCH`, running invocations concurrently, or per-screen rate limiting
+instead of one global queue — but not before then. Deciding this now would be
+guessing at a scale the product hasn't reached.
 
 ---
 

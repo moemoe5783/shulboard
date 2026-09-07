@@ -135,57 +135,57 @@ feeling a little less snappy than they should.
 
 ## `CRON_SECRET`
 
-**What it is.** A shared secret between Vercel's cron scheduler and
+**What it is.** A shared secret between an external scheduler and
 `POST|GET /api/cron/build-bundles` — the only environment variable here that
-doesn't come from Supabase at all. Vercel automatically sends
-`Authorization: Bearer <CRON_SECRET>` on every cron invocation of a project
-that has an environment variable of exactly this name; the route checks that
-header against its own copy of the same value
-(`app/api/cron/build-bundles/route.ts`).
+doesn't come from Supabase at all. Whoever calls this route sends
+`Authorization: Bearer <CRON_SECRET>`; the route checks that header against
+its own copy of the same value (`app/api/cron/build-bundles/route.ts`).
 
 **Where it comes from.** Nowhere but you. Generate any random string of at
 least 16 characters yourself — a password manager's generator is fine — and
-set it as a plain environment variable in the hosting dashboard. Vercel does
-not create this value automatically; it only forwards whatever you've set
-under this exact name.
+set it as a plain environment variable in the hosting dashboard.
 
 **What breaks without it.** The route fails closed: `!secret` is checked
 before the header comparison, so an unset `CRON_SECRET` refuses every
-request with 401, including Vercel's own legitimate scheduled ones — not a
+request with 401, including the scheduler's own legitimate calls — not a
 smaller version of the feature, the whole build worker never runs. No new
 screen gets its first bundle, and no content edit — a changed announcement,
 a rotated davening time — ever reaches a screen that's already running,
 because nothing rebuilds `screen_bundles` for it. This is the single point
 where forgetting a variable turns into "the product doesn't do anything,"
-so it's worth actually testing after setting it: trigger a run by hand from
-Vercel's dashboard (Project → Cron Jobs → the entry for this path → **Run**)
+so it's worth actually testing after setting it: call the route by hand
+(`curl -X POST https://<your-domain>/api/cron/build-bundles -H "Authorization: Bearer <CRON_SECRET>"`)
 and confirm it returns `{"considered": ..., "built": ...}` rather than a 401.
 
-**How often it actually runs.** `vercel.json` schedules this once a day
-(`0 9 * * *`, 9am UTC) rather than the every-few-minutes cadence you'd want
-for "a gabbai fixes a davening time before Mincha and it shows up soon."
-That's not a design choice, it's a **Vercel Hobby plan limit**: a cron
-schedule that fires more than once a day fails the whole deployment on that
-plan, which is what happened the first time this shipped with a five-minute
-schedule. Two ways out, neither of which touches the route itself, since it
-already accepts a call from anyone holding the right bearer token — that's
-exactly what makes both of these possible without a code change:
+**How often it actually runs — and why that's not visible anywhere else in
+this repo.** Scheduling is entirely external: **cron-job.org calls this
+route every 5 minutes.** `vercel.json` carries no `crons` entry, and nothing
+else in the codebase schedules this route either — search the repo for a
+cron trigger and you will not find one, on purpose, because there isn't one.
+The route itself doesn't know or care who's calling it, only that the
+bearer token matches, so this is invisible from the code and impossible to
+rediscover without this paragraph. If cron-job.org's job is ever deleted,
+disabled, or its account lost, nothing rebuilds `screen_bundles` again —
+existing screens keep serving their last-built bundle indefinitely, silently,
+with nothing in the product surfacing the gap — until someone notices and
+recreates the job.
 
-- **Upgrade to Vercel Pro.** Removes the limit entirely; cron can run as
-  often as once a minute. Bump the schedule in `vercel.json` back down once
-  you're on it.
-- **Add a second, external scheduler** that hits
-  `POST https://<your-domain>/api/cron/build-bundles` with
-  `Authorization: Bearer <CRON_SECRET>` on whatever cadence you want, and
-  leave Vercel's own daily cron running as a fallback. Any free scheduler
-  that can send one HTTP header works — a scheduled GitHub Actions
-  workflow, cron-job.org, EasyCron. Vercel's per-project limit only governs
-  jobs configured in *its own* Cron Jobs feature; it has no way to know or
-  care who else calls the URL.
+That external job is the setup to reproduce if it's ever lost: a scheduled
+task hitting `POST https://<your-domain>/api/cron/build-bundles` with header
+`Authorization: Bearer <CRON_SECRET>` (the same value as this variable) every
+5 minutes. Any scheduler that can send one HTTP header on an interval works —
+cron-job.org, EasyCron, a scheduled GitHub Actions workflow. A **Vercel
+Hobby plan** cron entry was the original approach and is deliberately not
+used: a schedule firing more than once a day fails the whole deployment on
+that plan, which made 5-minute-via-Vercel-cron a non-starter without
+upgrading to Pro. The external scheduler sidesteps that entirely, since
+Vercel's per-project cron limit only governs jobs configured in *its own*
+Cron Jobs feature and has no way to know or care who else calls the URL.
 
-Until one of those is in place, treat this as a real limitation, not a
-rounding error: a content edit can sit for up to a day before it reaches a
-screen.
+At this cadence, a content edit reaches a screen in **around 5 minutes**,
+bounded by `BATCH` (`app/api/cron/build-bundles/route.ts`) if a lot of
+screens are queued at once — see docs/plan.md's note on the build worker for
+the arithmetic on that.
 
 ---
 
@@ -198,12 +198,16 @@ short:
 1. Both `NEXT_PUBLIC_*` values, from Supabase → Project Settings → API.
 2. `SUPABASE_SERVICE_ROLE_KEY`, same page, `service_role` `secret`.
 3. `SUPABASE_JWT_SECRET`, same page, JWT Settings tab.
-4. `CRON_SECRET` — invent one, set it in Vercel too. `vercel.json` already
-   declares the cron entry (`0 9 * * *`, once a day — see the section above
-   for why it isn't more often on a Hobby plan, and how to add a faster
-   external scheduler without waiting on an upgrade); Vercel reads it from
-   the repo automatically on deploy and needs no dashboard configuration of
-   its own beyond the environment variable.
+4. `CRON_SECRET` — invent one, set it in Vercel too. Unlike the other four,
+   setting the variable is not the whole job: nothing in `vercel.json` or
+   anywhere else in the repo calls this route on a schedule, by design (see
+   the section above). A scheduler has to be created separately, outside the
+   codebase — cron-job.org, hitting
+   `POST https://<your-domain>/api/cron/build-bundles` with
+   `Authorization: Bearer <CRON_SECRET>` every 5 minutes. Skipping this step
+   leaves every environment variable configured and the product completely
+   inert: screens get their first bundle never, and content edits never
+   reach a screen that's already running.
 
 All five go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
