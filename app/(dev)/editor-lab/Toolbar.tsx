@@ -1,7 +1,13 @@
 "use client";
 
 import { useEditor } from "@/lib/editor/store";
-import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_META, CHROME_RULE } from "./chrome";
+import {
+  CHROME_BUTTON,
+  CHROME_BUTTON_ON,
+  CHROME_DARK,
+  CHROME_META,
+  CHROME_RULE,
+} from "./chrome";
 import { useCommands } from "./commands";
 
 /*
@@ -11,9 +17,9 @@ import { useCommands } from "./commands";
  * It reads the same command list the right-click menu does, so the two cannot
  * disagree about what is available.
  *
- * No verdigris fill button anywhere: in this view verdigris means "this toggle
- * is on" and "this thing is selected", and a primary action wearing it too
- * would leave three meanings on one colour.
+ * No verdigris fill anywhere in this view. A fill is what a primary action
+ * wears; the switches here are states, so they take the active-nav treatment —
+ * --verdigris-wash behind --verdigris text — and the accent keeps one meaning.
  */
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
@@ -43,7 +49,10 @@ export function Toolbar({ onFit, onAddBox }: { onFit: () => void; onAddBox: () =
   };
 
   return (
-    <div className={`font-ui flex h-10 shrink-0 items-center gap-1 border-b px-2 ${CHROME_RULE}`}>
+    <div
+      {...CHROME_DARK}
+      className={`font-ui flex h-10 shrink-0 items-center gap-1 border-b px-2 ${CHROME_RULE}`}
+    >
       <button type="button" className={CHROME_BUTTON} onClick={onAddBox}>
         Add box
       </button>
