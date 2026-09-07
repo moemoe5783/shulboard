@@ -45,18 +45,22 @@ export async function POST(
     // the diagnostics are a bonus and must never cost us the signal.
   }
 
+  // Every one of these is `default null` in the SQL function, so omitting the
+  // key and sending an explicit JSON null reach Postgres identically — but
+  // the generated RPC args type says "omit" (`?: T`), not "or null", so
+  // `undefined` is what satisfies it without changing what gets sent.
   const { error } = await db.rpc("record_heartbeat", {
     p_screen_id: screen.id,
     p_org_id: screen.org_id,
-    p_bundle_version: body.bundleVersion ?? null,
-    p_board_id: body.boardId ?? null,
-    p_app_version: body.appVersion ?? null,
-    p_user_agent: request.headers.get("user-agent"),
-    p_viewport_width: body.viewportWidth ?? null,
-    p_viewport_height: body.viewportHeight ?? null,
-    p_uptime_seconds: body.uptimeSeconds ?? null,
+    p_bundle_version: body.bundleVersion ?? undefined,
+    p_board_id: body.boardId ?? undefined,
+    p_app_version: body.appVersion ?? undefined,
+    p_user_agent: request.headers.get("user-agent") ?? undefined,
+    p_viewport_width: body.viewportWidth ?? undefined,
+    p_viewport_height: body.viewportHeight ?? undefined,
+    p_uptime_seconds: body.uptimeSeconds ?? undefined,
     p_error_count: body.errorCount ?? 0,
-    p_last_error: body.lastError ?? null,
+    p_last_error: body.lastError ?? undefined,
   });
 
   if (error) return NextResponse.json({ ok: false }, { status: 502 });

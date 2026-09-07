@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 
 /*
  * THE SERVICE-ROLE CLIENT. THE ONLY ONE IN THE PRODUCT.
@@ -21,7 +22,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * its env lazily.
  */
 
-let cached: SupabaseClient | null = null;
+let cached: SupabaseClient<Database> | null = null;
 
 export class ServiceKeyMissingError extends Error {
   constructor() {
@@ -32,14 +33,14 @@ export class ServiceKeyMissingError extends Error {
   }
 }
 
-export function serviceClient(): SupabaseClient {
+export function serviceClient(): SupabaseClient<Database> {
   if (cached) return cached;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new ServiceKeyMissingError();
 
-  cached = createClient(url, key, {
+  cached = createClient<Database>(url, key, {
     // No session, no cookie, no refresh. This client is a server process acting
     // as itself, and persisting anything here would be a shared mutable session
     // across every request the instance handles.
@@ -50,7 +51,7 @@ export function serviceClient(): SupabaseClient {
 }
 
 /** For routes that must answer rather than throw when nothing is configured. */
-export function serviceClientOrNull(): SupabaseClient | null {
+export function serviceClientOrNull(): SupabaseClient<Database> | null {
   try {
     return serviceClient();
   } catch {

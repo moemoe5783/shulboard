@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import type { Database } from "@/lib/database.types";
 import { supabaseEnv } from "./env";
 
 /**
@@ -11,6 +12,8 @@ import { supabaseEnv } from "./env";
  * through RLS exactly like the browser's, and nothing in the dashboard bypasses a
  * policy for convenience. The service-role key belongs only to the display bundle
  * route and its siblings, and appears nowhere in the authenticated app.
+ *
+ * Typed against the generated schema — see client.ts's twin of this comment.
  */
 export async function createClient() {
   // cookies() first, deliberately. Reading it is what marks the route dynamic,
@@ -20,7 +23,7 @@ export async function createClient() {
   const cookieStore = await cookies();
   const { url, anonKey } = supabaseEnv();
 
-  return createServerClient(url, anonKey, {
+  return createServerClient<Database>(url, anonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -119,6 +119,11 @@ async function run(label, env) {
       "/screens/new",
       "/screens/00000000-0000-0000-0000-000000000000",
       "/orgs/new",
+      "/boards",
+      "/boards/new",
+      // A different route group from the rest of app/(app) — its own layout,
+      // no nav rail — so it needs its own proof the proxy still reaches it.
+      "/boards/00000000-0000-0000-0000-000000000000",
     ];
     for (const path of protectedPaths) {
       const res = await fetch(BASE + path, { redirect: "manual" });
@@ -193,6 +198,67 @@ await run("With a dashboard URL pasted in by mistake:", {
   NEXT_PUBLIC_SUPABASE_URL: "https://supabase.com/dashboard/project/abcdef",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-route-tests",
 });
+
+/*
+ * The cron build worker's own authorization — separate from the session
+ * proxy above, because nothing about it goes through a cookie.
+ *
+ * GET is the one that matters: Vercel Cron always invokes the configured path
+ * with a GET request, never POST, and this is what would have shipped a build
+ * worker that Vercel could never actually trigger — every scheduled run 405s,
+ * quietly, with no screen ever rebuilding and nothing in the UI saying why.
+ */
+async function runCronAuthChecks() {
+  console.log("\nThe cron build worker's authorization:");
+
+  const secret = "test-cron-secret-value";
+  const withSecret = await startServer({ ...DUMMY_ENV, CRON_SECRET: secret });
+  try {
+    for (const method of ["GET", "POST"]) {
+      const authorised = await fetch(`${BASE}/api/cron/build-bundles`, {
+        method,
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      // 503, not 401 or 405: past the guard, and the only thing missing is a
+      // database this test run never configures. That is what proves the
+      // guard passed rather than the request failing for some other reason.
+      check(
+        authorised.status === 503,
+        `${method} with the correct bearer token gets past the guard`,
+        `${authorised.status}`,
+      );
+
+      const wrongToken = await fetch(`${BASE}/api/cron/build-bundles`, {
+        method,
+        headers: { authorization: "Bearer not-the-secret" },
+      });
+      check(wrongToken.status === 401, `${method} with the wrong bearer token is refused`, `${wrongToken.status}`);
+
+      const noHeader = await fetch(`${BASE}/api/cron/build-bundles`, { method });
+      check(noHeader.status === 401, `${method} with no Authorization header at all is refused`, `${noHeader.status}`);
+    }
+  } finally {
+    await stopServer(withSecret);
+  }
+
+  // Fail closed: an unset CRON_SECRET must not mean "any request is fine."
+  const withoutSecret = await startServer({ ...DUMMY_ENV, CRON_SECRET: "" });
+  try {
+    const res = await fetch(`${BASE}/api/cron/build-bundles`, {
+      method: "GET",
+      headers: { authorization: "Bearer anything-at-all" },
+    });
+    check(
+      res.status === 401,
+      "with no CRON_SECRET configured, the worker refuses rather than opening up",
+      `${res.status}`,
+    );
+  } finally {
+    await stopServer(withoutSecret);
+  }
+}
+
+await runCronAuthChecks();
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);

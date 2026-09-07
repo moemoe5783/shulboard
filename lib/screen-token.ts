@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 
 /*
  * Resolving a screen's display token to the screen it names.
@@ -25,7 +26,7 @@ export type ScreenTokenResult =
   | { ok: false; reason: "lookup_failed" };
 
 export async function resolveScreenToken(
-  db: SupabaseClient,
+  db: SupabaseClient<Database>,
   token: string,
 ): Promise<ScreenTokenResult> {
   const { data, error } = await db

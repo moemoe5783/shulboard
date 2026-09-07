@@ -134,3 +134,24 @@ export type RegisteredWidget = {
   manifest: WidgetManifest<never>;
   Renderer: WidgetRenderer<never>;
 };
+
+/**
+ * What every widget's Settings.tsx receives — the properties panel's contract
+ * with a widget folder, the same way WidgetRendererProps is BoardRenderer's.
+ *
+ * A Settings component does not touch the store directly; the panel is the
+ * only thing that does, so a multi-selection of the same widget type can
+ * apply one Settings form to all of them without every widget folder knowing
+ * that is possible. `onChange` fires on every change — a keystroke, a
+ * checkbox click — and each call is one undoable edit; see the comment on
+ * setWidgetConfig (lib/editor/store.ts) for why coalescing keystrokes into
+ * one edit turned out to be the wrong thing to build.
+ */
+export type WidgetSettingsProps<TConfig = Record<string, unknown>> = {
+  config: TConfig;
+  onChange: (patch: Partial<TConfig>) => void;
+};
+
+export type WidgetSettingsComponent<TConfig = Record<string, unknown>> = ComponentType<
+  WidgetSettingsProps<TConfig>
+>;

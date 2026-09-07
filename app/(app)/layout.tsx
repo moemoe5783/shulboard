@@ -15,13 +15,13 @@ import { setActiveOrg, signOut } from "./actions";
 // scoped to one person's memberships.
 export const dynamic = "force-dynamic";
 
-// Screens is the only section that has been built. The rest are shown disabled
-// rather than hidden: the rail is the map of the product, and a row that
-// navigates nowhere is worse than one that plainly says "not yet".
+// Screens and Boards are the only sections built so far. The rest are shown
+// disabled rather than hidden: the rail is the map of the product, and a row
+// that navigates nowhere is worse than one that plainly says "not yet".
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", href: "/" },
   { id: "screens", label: "Screens", href: "/screens" },
-  { id: "boards", label: "Boards", href: "/boards", disabled: true },
+  { id: "boards", label: "Boards", href: "/boards" },
   { id: "media", label: "Media", href: "/media", disabled: true },
   { id: "people", label: "People", href: "/people", disabled: true },
   { id: "notices", label: "Notices", href: "/notices", disabled: true },

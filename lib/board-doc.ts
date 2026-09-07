@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Json } from "@/lib/database.types";
 
 /**
  * The board document schema.
@@ -141,6 +142,22 @@ export function parseBoardDoc(input: unknown): BoardDoc {
   }
 
   return doc;
+}
+
+/**
+ * A validated document, as the `boards.doc` jsonb column's generated type
+ * expects it.
+ *
+ * A BoardDoc is JSON-safe by construction — parseBoardDoc validates it with
+ * Zod, and serializeBoardDoc below already assumes it stringifies cleanly —
+ * but its Record<string, unknown> fields (background, themeOverrides, a
+ * widget's own config) cannot be proven so structurally against the generated
+ * `Json` type. This is the one place that trust transfers into the column's
+ * declared shape, the same cast lib/bundle/build.ts makes for
+ * screen_bundles.payload and for the identical reason.
+ */
+export function boardDocAsJson(doc: BoardDoc): NonNullable<Json> {
+  return doc as unknown as NonNullable<Json>;
 }
 
 /**

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requestNow } from "@/lib/clock";
 import { requestOrigin } from "@/lib/origin";
 import { formatResolution, lastSeenLabel, screenStatus, type ScreenStatus } from "@/lib/screens";
+import { BoardPicker } from "./BoardPicker";
 import { DisplayLink } from "./DisplayLink";
 import { ScreenSettings } from "./ScreenSettings";
 
@@ -47,14 +48,31 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
     notFound();
   }
 
-  let showing = "Nothing scheduled";
+  // The board currently assigned — read off the playlist's first item, since
+  // a screen always has at most one item until multi-board rotation exists
+  // (plan.md §1, §6). "Nothing scheduled" and "the playlist was emptied out
+  // from under it" are both just "no item", and look the same from here.
+  let currentBoardId: string | null = null;
   if (screen.playlist_id) {
-    const { data: playlist } = await supabase
-      .from("playlists")
-      .select("name")
-      .eq("id", screen.playlist_id)
+    const { data: item } = await supabase
+      .from("playlist_items")
+      .select("board_id")
+      .eq("playlist_id", screen.playlist_id)
+      .order("position", { ascending: true })
+      .limit(1)
       .maybeSingle();
-    showing = playlist?.name ?? "A playlist that was removed";
+    currentBoardId = item?.board_id ?? null;
+  }
+
+  const { data: boards, error: boardsError } = await supabase
+    .from("boards")
+    .select("id, name")
+    .eq("org_id", org.orgId)
+    .is("deleted_at", null)
+    .order("name");
+
+  if (boardsError) {
+    throw new Error(`Couldn't load the boards: ${boardsError.message}`);
   }
 
   const now = requestNow();
@@ -89,6 +107,21 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
         </section>
 
         <section className="border-rule border-b p-6">
+          <h2 className="text-heading">Board</h2>
+          <p className="text-body text-ink-soft mt-1 max-w-prose">
+            Which design this screen shows. It updates the next time the screen
+            rebuilds, usually within a few minutes.
+          </p>
+          <div className="mt-4">
+            <BoardPicker
+              screenId={screen.id}
+              boards={boards ?? []}
+              currentBoardId={currentBoardId}
+            />
+          </div>
+        </section>
+
+        <section className="border-rule border-b p-6">
           <h2 className="text-heading">Status</h2>
           <dl className="mt-3 flex flex-col gap-2">
             <div className="text-cell flex gap-4">
@@ -97,10 +130,6 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]}`} />
                 <span className="numeric">{lastSeenLabel(screen.last_seen_at, now)}</span>
               </dd>
-            </div>
-            <div className="text-cell flex gap-4">
-              <dt className="text-ink-soft w-32 shrink-0">Showing</dt>
-              <dd>{showing}</dd>
             </div>
             <div className="text-cell flex gap-4">
               <dt className="text-ink-soft w-32 shrink-0">Size</dt>

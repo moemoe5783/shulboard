@@ -130,3 +130,83 @@ export async function deleteScreen(formData: FormData): Promise<void> {
   revalidatePath("/screens");
   redirect("/screens");
 }
+
+/**
+ * Wiring a board to a screen — plan.md §1.
+ *
+ * A screen points at a playlist, never at a board, even for the simplest case:
+ * retrofitting rotation later is the whole reason that decision was made up
+ * front, so "assign a board" has to go through the playlist layer rather than
+ * fake it with a direct screens.board_id this table does not have.
+ *
+ * The playlist is created the first time a screen needs one, named after the
+ * screen's own id rather than something a person would recognise — nothing in
+ * the product shows an auto-created playlist's name yet, and naming it after
+ * the screen instead would risk colliding with playlists_org_name_key the
+ * moment two screens shared a name. Multi-board rotation is a later feature;
+ * until it exists, "assign a board" means "this playlist has exactly one
+ * item," so the item is replaced rather than added to.
+ */
+export async function assignBoard(formData: FormData): Promise<void> {
+  const org = await requireActiveOrg();
+  const screenId = String(formData.get("screenId") ?? "");
+  const boardId = String(formData.get("boardId") ?? "");
+  if (!boardId) return;
+
+  const supabase = await createClient();
+
+  const { data: screen, error: screenError } = await supabase
+    .from("screens")
+    .select("id, playlist_id")
+    .eq("id", screenId)
+    .maybeSingle();
+
+  if (screenError || !screen) {
+    throw new Error(`Couldn't find that screen: ${screenError?.message ?? "not found"}.`);
+  }
+
+  let playlistId = screen.playlist_id;
+
+  if (!playlistId) {
+    const { data: playlist, error: playlistError } = await supabase
+      .from("playlists")
+      .insert({ org_id: org.orgId, name: `Screen ${screen.id}` })
+      .select("id")
+      .single();
+
+    if (playlistError || !playlist) {
+      throw new Error(`Couldn't set up the screen's playlist: ${playlistError?.message ?? "unknown problem"}.`);
+    }
+    playlistId = playlist.id;
+  }
+
+  // Out with whatever this playlist was showing before. §1's rotation is a
+  // later feature; today a playlist holds exactly one item.
+  const { error: clearError } = await supabase
+    .from("playlist_items")
+    .delete()
+    .eq("playlist_id", playlistId);
+  if (clearError) throw new Error(`Couldn't update the playlist: ${clearError.message}`);
+
+  const { error: itemError } = await supabase.from("playlist_items").insert({
+    org_id: org.orgId,
+    playlist_id: playlistId,
+    board_id: boardId,
+    position: 1,
+  });
+  if (itemError) throw new Error(`Couldn't put the board on the playlist: ${itemError.message}`);
+
+  if (screen.playlist_id !== playlistId) {
+    // Screens are admin-only to update (plan.md §8: an editor rotating this
+    // silently blacks out a lobby) — an editor gets exactly this far and then
+    // a clear RLS error naming what happened, rather than a board that looks
+    // assigned but never reaches the screen.
+    const { error: linkError } = await supabase
+      .from("screens")
+      .update({ playlist_id: playlistId })
+      .eq("id", screenId);
+    if (linkError) throw new Error(`Couldn't point the screen at its playlist: ${linkError.message}`);
+  }
+
+  revalidatePath(`/screens/${screenId}`);
+}
