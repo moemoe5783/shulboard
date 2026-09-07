@@ -1,0 +1,74 @@
+/*
+ * The transform layer's chrome — docs/design.md §4, "Editor".
+ *
+ * react-moveable and react-selecto render their own markup and inject their own
+ * stylesheet at runtime. That stylesheet is the reason for the !important below,
+ * and the reason is not laziness: css-styled scopes every rule it injects with a
+ * generated attribute selector, so an unqualified class selector here always
+ * loses the cascade, whatever order the sheets land in.
+ *
+ * The library's own hook for this is the custom property --moveable-color, which
+ * it uses for the selection outline, the handles, the rotate line AND the
+ * alignment guides. Setting one property recolours all four, which is exactly
+ * the coupling wanted: the guides and the outline are the same idea.
+ *
+ * Every value is a token reference or a size from the spec. No raw colour
+ * appears, so CLAUDE.md's rule holds.
+ */
+
+.moveable-control-box {
+  /* Selection outline, handles, and snap guides. Verdigris at 1px —
+   * functional, not pink-because-Figma-is-pink. */
+  --moveable-color: var(--verdigris) !important;
+}
+
+/* 7px squares. Square, not round: a round handle reads as a colour dot, and in
+ * this product a colour dot means a screen's status. The library's default is a
+ * 14px white-ringed circle, which at this density looks like a UI from a
+ * different application. */
+.moveable-control.moveable-direction {
+  width: 7px !important;
+  height: 7px !important;
+  margin-top: -4px !important;
+  margin-left: -4px !important;
+  border: 1px solid var(--verdigris) !important;
+  border-radius: 0 !important;
+  background: var(--surface) !important;
+  box-sizing: border-box !important;
+}
+
+/* The rotate handle stays round — it is a grip, not a resize corner, and the
+ * shape is how you tell them apart without a label. */
+.moveable-control.moveable-rotation-control {
+  width: 9px !important;
+  height: 9px !important;
+  margin-top: -5px !important;
+  margin-left: -5px !important;
+  border: 1px solid var(--surface) !important;
+  background: var(--verdigris) !important;
+}
+
+/* Gap guides — the ones that appear when spacing matches — default to a red the
+ * palette does not contain. */
+.moveable-guideline.moveable-gap {
+  background: var(--verdigris) !important;
+}
+
+/* The marquee. A wash fill, so what is underneath stays readable while the
+ * pointer drags across it. */
+.selecto-selection {
+  background: color-mix(in srgb, var(--verdigris) 12%, transparent) !important;
+  border: 1px solid var(--verdigris) !important;
+}
+
+/* A guide the element is currently snapped to gets `moveable-bold`, which the
+ * library draws at 2px. design.md §4 says 1px: the guide is a statement about
+ * alignment, not an emphasis, and a 2px line at 25% zoom covers eight design
+ * units of the board it is meant to be describing. */
+.moveable-guideline.moveable-bold.moveable-vertical {
+  width: 1px !important;
+}
+
+.moveable-guideline.moveable-bold.moveable-horizontal {
+  height: 1px !important;
+}
