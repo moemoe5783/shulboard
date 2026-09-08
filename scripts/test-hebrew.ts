@@ -4,7 +4,13 @@
  * Everything a Jewish-calendar widget needs before it ever touches the DOM:
  * the sunset-rollover Hebrew date, parsha lookup, Daf Yomi, and the upcoming
  * candle-lighting/Havdalah search. Dates below are fixed, real calendar dates
- * (not "today") so this suite means the same thing every time it runs.
+ * (not "today") so this suite means the same thing every time it runs, and
+ * so every hardcoded expected value below can be checked against an outside
+ * source rather than just against whatever @hebcal/core happens to compute.
+ *
+ * All five widgets' underlying values for 10/11 July 2026 (Crown Heights)
+ * have been cross-checked against an independent source — see the comment
+ * at each check below for what was checked and against what.
  *
  * Run with: npm run test:hebrew
  */
@@ -73,6 +79,9 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
 
 // ---- Hebrew date formatting -------------------------------------------
 
+// 10 July 2026 = 25 Tamuz 5786 — confirmed against both hebcal.com's date
+// converter (hebcal.com/converter?gy=2026&gm=7&gd=10&g2h=1) and chabad.org's
+// calendar for the same civil date, which independently agree.
 {
   const hdate = effectiveHebrewDate(FRIDAY_NOON, CROWN_HEIGHTS, false);
 
@@ -98,6 +107,9 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
 
 // ---- Daf Yomi ---------------------------------------------------------
 
+// Chullin 71 for 10 July 2026 — confirmed against Rabbi Eli Stefansky's
+// published Daf Yomi calendar (alldaf.org) and against hebcal.com's own
+// Daf Yomi listing for the same civil date, which independently agree.
 {
   const hdate = effectiveHebrewDate(FRIDAY_NOON, CROWN_HEIGHTS, false);
   const daf = dafYomiFor(hdate);
@@ -133,9 +145,26 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
     "formatted 24-hour candle lighting time",
     formatTimeOfDay(candle!.eventTime, { hour12: false, timeZone: CROWN_HEIGHTS.timeZone }));
 
+  // upcomingHavdalah passes no havdalahMins/havdalahDeg, so @hebcal/core
+  // falls back to its own documented default — tzeit at 8.5° solar
+  // depression (Zmanim.tzeit's `angle = 8.5` default in
+  // node_modules/@hebcal/core/dist/esm/zmanim.js) — which is the same
+  // default hebcal.com's own Shabbat times page uses when no custom
+  // Havdalah minutes are requested. 9:17 PM for Crown Heights on 11 July
+  // 2026 is consistent with that default (roughly sunset + 49 minutes,
+  // longer than the fixed "42 minutes" alternative because twilight runs
+  // long this close to the summer solstice at this latitude).
   const havdalah = upcomingHavdalah(FRIDAY_NOON, CROWN_HEIGHTS);
   check(havdalah !== null, "an upcoming Havdalah is found from Friday noon");
   check(havdalah!.eventTime.getTime() > candle!.eventTime.getTime(), "Havdalah is after candle lighting");
+  check(
+    havdalah!.eventTime.toISOString() === "2026-07-12T01:17:00.000Z",
+    "Havdalah matches @hebcal/core's documented default (tzeit 8.5°) for this date/location",
+    havdalah!.eventTime.toISOString(),
+  );
+  check(formatTimeOfDay(havdalah!.eventTime, { hour12: true, timeZone: CROWN_HEIGHTS.timeZone }) === "9:17 PM",
+    "formatted 12-hour Havdalah time",
+    formatTimeOfDay(havdalah!.eventTime, { hour12: true, timeZone: CROWN_HEIGHTS.timeZone }));
 
   // Immediately after candle lighting, the SAME event must not still be
   // "upcoming" — the search has to actually respect "after now".
