@@ -29,7 +29,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const NAV_FOOTER: NavItem[] = [
-  { id: "settings", label: "Settings", href: "/settings", disabled: true },
+  { id: "settings", label: "Settings", href: "/settings" },
 ];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
