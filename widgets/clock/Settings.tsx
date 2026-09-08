@@ -52,23 +52,10 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ClockConfig>)
         </select>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Size</span>
-        <input
-          type="number"
-          min={8}
-          max={400}
-          value={config.size}
-          disabled={config.sizingMode === "fit"}
-          title={
-            config.sizingMode === "fit"
-              ? "Set by the box while it's in fit mode — see Sizing above."
-              : undefined
-          }
-          onChange={(event) => onChange({ size: Number(event.target.value) })}
-          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
-        />
-      </label>
+      {/* No Size field here: the properties panel shows it generically, above
+          this form, for every mode (docs/sizing.md's "objective, visible
+          type size... in every sizing mode") — see PropertiesPanel.tsx's
+          TypeSizeField. */}
     </div>
   );
 }

@@ -41,6 +41,34 @@ export function NewOrgForm({ timezones }: { timezones: string[] }) {
         ))}
       </SelectField>
 
+      <div className="flex gap-3">
+        <Field
+          id="latitude"
+          name="latitude"
+          label="Latitude"
+          type="number"
+          step="any"
+          min={-90}
+          max={90}
+          placeholder="40.6694"
+        />
+        <Field
+          id="longitude"
+          name="longitude"
+          label="Longitude"
+          type="number"
+          step="any"
+          min={-180}
+          max={180}
+          placeholder="-73.9422"
+        />
+      </div>
+      <p className="text-meta text-ink-soft -mt-2">
+        Optional for now, but the Hebrew date, candle lighting and Havdalah widgets
+        need it to show a real time rather than nothing — look your shul&rsquo;s up
+        on a map if you don&rsquo;t have it handy.
+      </p>
+
       <div>
         <Button type="submit" variant="primary" disabled={pending}>
           {pending ? "Adding" : "Add shul"}

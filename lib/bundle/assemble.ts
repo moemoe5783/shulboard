@@ -34,6 +34,10 @@ export type AssembleInput = {
     canvas_height: number;
     orientation: string;
     timezone: string | null;
+    /** Already resolved screen-or-org by the caller — see BundlePayload's own
+     *  `latitude`/`longitude` comment. */
+    latitude: number | null;
+    longitude: number | null;
     hebrew_prefs: Record<string, unknown>;
   };
   theme: Record<string, unknown>;
@@ -127,6 +131,8 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
       canvas: { width: input.screen.canvas_width, height: input.screen.canvas_height },
       orientation: input.screen.orientation,
       timezone: input.screen.timezone,
+      latitude: input.screen.latitude,
+      longitude: input.screen.longitude,
       hebrewPrefs: input.screen.hebrew_prefs,
     },
     theme: input.theme,

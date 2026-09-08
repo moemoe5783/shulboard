@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { TransformFrame } from "@/components/editor/TransformFrame";
-import { DEMO_CANVAS, demoBoardDoc } from "@/lib/demo-board";
+import { DEMO_CANVAS, DEMO_LOCATION, demoBoardDoc } from "@/lib/demo-board";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
 import { tickListenerCount, useSecond } from "@/lib/tick";
 import { ContextMenu, type MenuPosition } from "./ContextMenu";
@@ -256,6 +256,7 @@ export function EditorLab() {
               <BoardRenderer
                 doc={doc}
                 canvas={CANVAS}
+                location={DEMO_LOCATION}
                 className="h-full w-full"
                 widgetProps={(widget) => ({
                   "data-widget-id": widget.id,

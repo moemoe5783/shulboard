@@ -357,6 +357,128 @@ try {
     check(/rotate\((?!0deg)/.test(transform), "rotate writes a rotation", transform);
   }
 
+  // ---- corner-drag proportional resize -------------------------------------
+  //
+  // A corner drag constrains to the widget's own aspect ratio while the
+  // pointer stays near its diagonal, and releases the constraint once it
+  // moves well off — Shift forces the constraint regardless of angle, and
+  // Image defaults to it regardless of angle too. Every drag below moves in a
+  // straight line from the handle, so its angle off the diagonal is the same
+  // from the first pixel of movement to the last — there is no ambiguity
+  // about which side of the near/far line the gesture is on.
+  {
+    await page.keyboard.press("Escape");
+    await settle();
+    const selectAt = await centreOf("Beis Menachem");
+    await page.mouse.click(selectAt.x, selectAt.y);
+    await settle();
+
+    // Real screen pixels throughout — not the committed CSS percentages, which
+    // are relative to the canvas's width and height separately and so are not
+    // comparable to each other as a ratio (the canvas itself isn't square).
+    const ratioOf = async () => {
+      const box = await widget("Beis Menachem").boundingBox();
+      return box.width / box.height;
+    };
+
+    // Drag close to, but deliberately not exactly on, the widget's own
+    // diagonal (dy=75 against an exact match of ~48 at this box's ~6.25:1
+    // ratio) with no modifier. Close enough that the constraint should
+    // engage — and specifically, that the *result* comes back at the
+    // widget's original ratio rather than the input drag's own ~4:1, which
+    // is the only way to tell "the constraint engaged" apart from "the drag
+    // just happened to land near that ratio anyway".
+    {
+      const before = await widget("Beis Menachem").boundingBox();
+      const ratioBefore = before.width / before.height;
+      const handle = await page.locator(".moveable-control.moveable-se").first().boundingBox();
+      const dx = 300;
+      const dy = 75;
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2 + dy, { steps: 16 });
+      await page.mouse.up();
+      await settle();
+      const ratioAfter = await ratioOf();
+      check(
+        Math.abs(ratioAfter - ratioBefore) / ratioBefore < 0.05,
+        "corner drag near the diagonal keeps the aspect ratio",
+        `${ratioBefore.toFixed(3)} -> ${ratioAfter.toFixed(3)} (input drag ratio ${(dx / dy).toFixed(3)})`,
+      );
+      await page.keyboard.press("Control+z");
+      await settle();
+    }
+
+    // Drag well off that diagonal (45°, far from this widget's own ~9° shape)
+    // with no modifier — the constraint should release.
+    {
+      const before = await widget("Beis Menachem").boundingBox();
+      const ratioBefore = before.width / before.height;
+      const handle = await page.locator(".moveable-control.moveable-se").first().boundingBox();
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(handle.x + handle.width / 2 + 220, handle.y + handle.height / 2 + 220, { steps: 16 });
+      await page.mouse.up();
+      await settle();
+      const ratioAfter = await ratioOf();
+      check(
+        Math.abs(ratioAfter - ratioBefore) / ratioBefore > 0.15,
+        "corner drag well off the diagonal releases the aspect ratio",
+        `${ratioBefore.toFixed(3)} -> ${ratioAfter.toFixed(3)}`,
+      );
+      await page.keyboard.press("Control+z");
+      await settle();
+    }
+
+    // Shift forces the constraint even on that same far-off-diagonal drag.
+    {
+      const before = await widget("Beis Menachem").boundingBox();
+      const ratioBefore = before.width / before.height;
+      const handle = await page.locator(".moveable-control.moveable-se").first().boundingBox();
+      await page.keyboard.down("Shift");
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(handle.x + handle.width / 2 + 220, handle.y + handle.height / 2 + 220, { steps: 16 });
+      await page.mouse.up();
+      await page.keyboard.up("Shift");
+      await settle();
+      const ratioAfter = await ratioOf();
+      check(
+        Math.abs(ratioAfter - ratioBefore) / ratioBefore < 0.05,
+        "shift at a corner forces the constraint even off the diagonal",
+        `${ratioBefore.toFixed(3)} -> ${ratioAfter.toFixed(3)}`,
+      );
+      await page.keyboard.press("Control+z");
+      await settle();
+    }
+  }
+
+  {
+    // The Image widget defaults to proportional corner drags — same far-off-
+    // diagonal drag as above, no modifier, on the one widget in the demo
+    // board whose type is "image".
+    const image = page.locator("[data-widget-id]").filter({ has: page.locator("img") }).first();
+    await image.click();
+    await settle();
+    const before = await image.boundingBox();
+    const ratioBefore = before.width / before.height;
+    const handle = await page.locator(".moveable-control.moveable-se").first().boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2 + 180, handle.y + handle.height / 2 + 20, { steps: 16 });
+    await page.mouse.up();
+    await settle();
+    const after = await image.boundingBox();
+    const ratioAfter = after.width / after.height;
+    check(
+      Math.abs(ratioAfter - ratioBefore) / ratioBefore < 0.05,
+      "image corner drags are proportional by default",
+      `${ratioBefore.toFixed(3)} -> ${ratioAfter.toFixed(3)}`,
+    );
+    await page.keyboard.press("Control+z");
+    await settle();
+  }
+
   {
     await page.keyboard.press("Escape");
     await settle();

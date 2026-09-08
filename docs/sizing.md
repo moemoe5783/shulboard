@@ -29,8 +29,8 @@ time**, and **where content goes when it changes at run time**.
 
 ## 2. Sizing model
 
-Each element declares a **sizing mode** in its manifest. Two modes, plus a
-user-facing toggle where both make sense.
+Each element declares a **sizing mode** in its manifest. Three modes, plus a
+user-facing toggle where more than one makes sense.
 
 ### `fit` — box drives content
 
@@ -53,26 +53,95 @@ The declared type size is authoritative. The box is a boundary and an alignment
 frame, not a scaling factor. Resizing changes the wrap width and the available
 area, not the type size.
 
-Applies to: Zmanim tables, Class Schedule, Davening Hours, Message Board — any
-element with internal rows that must stay legible and consistent regardless of
-how the box is dragged. A zmanim table whose type rescales when you nudge the box
-is worse than one that doesn't.
+Applies to: Zmanim tables, Class Schedule, Davening Hours — any element whose
+row count is a design-time choice (which zmanim are enabled, which classes are
+listed) that doesn't change on its own between when the gabbai builds the board
+and when a screen shows it. A bounded frame the gabbai deliberately sized is the
+right model here, not one that quietly resizes out from under a layout they
+composed around it.
+
+### `hug` — content drives the box, and the box resizes to match
+
+The declared type size is authoritative, same as `fixed`. But instead of the
+box being an independent boundary that clips whatever doesn't fit, **the box's
+height** resizes to exactly contain the content at that size. Width keeps
+`fixed`'s job — a wrap boundary — because hugging both axes for wrapped text has
+no single right answer (does the box also get narrower? which line decides?),
+and a fixed width is what makes "wrap, then hug the height that took" a coherent
+sentence in the first place.
+
+This is the mode for content whose amount, not whose row design, changes at
+runtime: a shul with three notices posted today and one next week, or a message
+board whose queue drains and refills. `fixed` forces a choice between a box
+sized for the busy week (mostly empty most of the time) and one sized for the
+quiet week (clipping the busy one) — `hug` needs neither choice, because
+**overflow is structurally impossible in this mode rather than something to
+warn about.** The box can't be too small for its content; it's computed from
+it.
+
+**Applies to: Announcements/Notices, Message Board** — both are lists whose
+row count is an editorial decision made independently of the board, on its own
+schedule, exactly the "content whose length changes over time" problem §1
+opens with.
+
+**Clock also offers `hug`, as a non-default option alongside `fit` and
+`fixed`.** This looks like it should reintroduce §1's jitter problem and
+doesn't, because hugging is height-only and a clock is one line: the digit
+count that changes width (`12:00` → `1:00`) never touches height, which is
+exactly the same at any hour. What `hug` buys a clock is narrower than what it
+buys a notice list — not "never overflows" (`fixed` rarely overflows a
+sensibly-sized clock box either) but "the box is never a little too tall or a
+little too short for the line it holds," which `fixed` leaves to however
+carefully the box was dragged. `fixed` stays the default; §7 records why hug
+mode's own overflow check treats a hugged clock's height as unconditionally
+fine rather than measuring it.
 
 ### The toggle
 
-Where both modes are defensible — Clock, Date, Day of Week, Hebrew Date — the
-element exposes a **Fit to box / Fixed size** control in the properties panel.
-The manifest declares which is the default.
+Where more than one mode is defensible — Clock, Date, Day of Week, Hebrew
+Date — the element exposes a **Fit to box / Fixed size / Hug height** control
+in the properties panel. The manifest declares which is the default.
 
 **Clock defaults to `fixed`.** A clock in `fit` mode would rescale its type every
 time the digit count changes, which is the worst possible behavior for the single
 most-watched element on the board.
 
+### An objective, visible type size — every element, every mode
+
+The properties panel shows a **Type size** field for every text-bearing
+element, in board design units, regardless of which mode it's in:
+
+- **`fit`:** the computed result, read live off the rendered box. Read-only —
+  the box is what's authoritative here, so the field is for reading the number,
+  not setting it.
+- **`fixed` and `hug`:** the declared value, editable, and the same field that
+  drives the render.
+
+Before this, `fit`-mode elements (Title) showed no size at all, and a
+`fixed`-mode element's size field (Clock) went disabled-and-stale rather than
+live in `fit` mode — a gabbai could never actually read what size their type
+had landed on. One number, one place, honest in every mode, is the whole
+requirement; this section's own "big enough to read from the back" philosophy
+for `fit` doesn't mean the number shouldn't exist, just that nobody has to
+*think* in it to use `fit` mode.
+
+Generic in the panel itself (`components/editor/PropertiesPanel.tsx`'s
+`TypeSizeField`), not duplicated into each widget's own Settings.tsx, for the
+same reason the Fit/Fixed/Hug toggle already is — every widget that names its
+authoritative field `size` and its mode field `sizingMode` (clock/manifest.ts's
+convention) gets this for free. It shows for a `text`- or `time`-category
+widget; `media` (Image, and later Video/Gallery/Collage) is exactly the
+category §2 already says has no font size for a mode to drive. That's a
+heuristic on `WidgetCategory`, not a manifest flag, because no widget needs a
+flag yet — worth promoting to one the day a `content`-category widget (a
+Zmanim table, with a size per row rather than one scalar) needs a genuinely
+different shape than a single number.
+
 ### Manifest addition
 
 ```ts
 sizing: {
-  mode: 'fit' | 'fixed'
+  mode: 'fit' | 'fixed' | 'hug'
   userToggleable: boolean
   minFontSize?: number   // design units, for fit mode
   maxFontSize?: number
@@ -84,7 +153,9 @@ sizing: {
 An element in `fit` mode should make that legible while resizing — the type
 visibly scaling as the handle moves is self-explanatory and needs no label. An
 element in `fixed` mode should show its wrap boundary while resizing so it's
-clear the box is a frame, not a scaler.
+clear the box is a frame, not a scaler. An element in `hug` mode resizing its
+own height by dragging is a contradiction the editor doesn't yet resolve —
+recorded in §7, "Known deviations," rather than solved here.
 
 ### Media: a gap this spec doesn't close
 
@@ -137,7 +208,7 @@ problem.
 
 ## 3. Content growth: where the extra space goes
 
-Separate problem, separate mechanism. This applies in **both** sizing modes,
+Separate problem, separate mechanism. This applies in **every** sizing mode,
 because content changes after the board is designed and nobody is watching.
 
 ### The rule
@@ -159,6 +230,16 @@ it at run time is what makes a board stay composed as its content changes.
 Implementation is mostly free — the element's box stays fixed and the content is
 positioned inside it by the alignment. The point is that **the renderer must not
 resize or reposition the box to fit content**. Only content moves within the box.
+
+**`hug` mode is the one place the box itself is the thing growing**, and the
+same rule still names the answer: the box grows away from its alignment edge,
+the edge stays put. Today that only ever means the top edge — `hug`-mode
+widgets have no vertical-alignment setting yet, only the horizontal one this
+table was written for, so a hugged box's top simply never moves and height
+grows down, which is what an absolutely positioned box with `height: auto`
+and no `bottom` does on its own. A vertical-alignment control, if one is
+added, generalizes this table's other three rows to a growing box the same
+way it already generalizes them to content within a fixed one.
 
 ### The centered case
 
@@ -183,8 +264,11 @@ longer than its box:
 - **`fit` mode:** scale down to `minFontSize`, then clip with no ellipsis. An
   ellipsis on a lobby screen reads as broken.
 - **`fixed` mode:** wrap, then clip at the box boundary.
-- **Never** grow the box. A board is a designed composition and elements silently
-  resizing would break the layout around them.
+- **`hug` mode:** height can't overflow — that's the mode's whole point (§2).
+  Width still can, same as `fixed`: wrap, then clip at the box's own width.
+- **Never** grow the box in `fit` or `fixed` mode. A board is a designed
+  composition and elements silently resizing would break the layout around
+  them — `hug` mode is the one deliberate exception (§2), and only for height.
 - **Editor warning:** flag in the properties panel when content overflows at
   design time. The gabbai should learn this in the editor, not from a screen in
   the lobby.
@@ -266,8 +350,8 @@ string, not a reason to reopen this. If a future session is tempted to rename
 
 ## 7. Known deviations from this spec — decided, not bugs
 
-Two places the implementation doesn't follow this document to the letter.
-Both are deliberate. Recorded here so neither gets "fixed" by a session that
+Four places the implementation doesn't follow this document to the letter.
+All are deliberate. Recorded here so none gets "fixed" by a session that
 hasn't read the reasoning, and so a review doesn't re-flag them as gaps.
 
 **Clock stays `white-space: nowrap` in `fixed` mode, not "wrap, then clip"
@@ -287,3 +371,29 @@ frame later once hydrated. This is the same class of gap Clock's own
 known client-side, rendered as nothing rather than as a guess, for one frame
 — not a new problem `fit` mode introduced so much as a wider surface for one
 that already existed.
+
+**A `hug`-mode element's height overflow check is skipped, not just usually
+false.** §3's editor warning ("flag in the properties panel") measures a
+box's `scrollHeight` against its `clientHeight`; for a `hug` box those can
+differ by a few pixels from line-height and glyph-metrics rounding alone in
+an auto-height flex box, with nothing actually clipped — a false warning on a
+widget that looks completely fine. The height that check would flag can
+never genuinely overflow when it's computed from that exact content in the
+first place, so the check can only produce noise, never a true positive; it's
+skipped rather than tuned, and width — which `hug` does not hug — still gets
+the real check.
+
+**A `hug`-mode element's own height resize handles do nothing durable.** The
+box's rendered height is computed from its content at the declared type size
+(`components/board/BoardRenderer.tsx`), not read from the document's stored
+`h` — so a corner or edge drag that changes height commits a new `h` to the
+document exactly as it would for any other widget, and the very next render
+throws that value away and recomputes the hugged height anyway. Harmless
+(nothing is lost that mattered) but also pointless from where the person
+dragging is standing, and the selection outline itself is drawn from that
+same stored, soon-to-be-ignored `h`, so it can visibly disagree with the
+rendered box between the drag and the widget's next real edit. Worth an
+editor affordance — disabling the height handles for a `hug`-mode widget,
+the way most design tools do for an axis they auto-size — once a `hug`-mode
+widget actually ships and someone hits this by hand rather than by reading
+the code; not before.

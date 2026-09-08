@@ -10,6 +10,7 @@ import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { TransformFrame } from "@/components/editor/TransformFrame";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import type { BoardDoc } from "@/lib/board-doc";
+import type { BoardLocation } from "@/lib/board-location";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
 import { saveBoardDoc } from "./actions";
 import { PublishControls, type PublishState } from "./PublishControls";
@@ -42,13 +43,24 @@ export type BoardEditorProps = {
   name: string;
   canvas: { width: number; height: number };
   doc: unknown;
+  /** The org's own coordinates, for previewing candle lighting, Havdalah and
+   *  sunset-rollover widgets — see page.tsx's own comment on why the org
+   *  rather than any one screen. `null` when the org hasn't set a location. */
+  location: BoardLocation | null;
   /** The board's publish state as of page load — see PublishControls.tsx.
    *  Kept live afterward by each autosave's result and by publishing or
    *  discarding directly, never re-fetched. */
   publishState: PublishState;
 };
 
-export function BoardEditor({ boardId, name, canvas, doc, publishState: initialPublishState }: BoardEditorProps) {
+export function BoardEditor({
+  boardId,
+  name,
+  canvas,
+  doc,
+  location,
+  publishState: initialPublishState,
+}: BoardEditorProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -230,7 +242,15 @@ export function BoardEditor({ boardId, name, canvas, doc, publishState: initialP
   const canvasPx = { width: canvas.width * zoom, height: canvas.height * zoom };
 
   return (
-    <div className="bg-ink text-paper font-ui flex h-screen flex-col">
+    // NO font-ui HERE. This div is an ancestor of the canvas viewport below,
+    // and CLAUDE.md/lib/tokens.css are explicit: chrome opts into Assistant
+    // "on a chrome root — never set globally," because the board renderer
+    // must never inherit a dashboard font. Every chrome piece below (Header,
+    // Toolbar, LayersPanel, PropertiesPanel, StatusBar, ContextMenu) opts in
+    // for itself instead — the same pattern editor-lab/EditorLab.tsx already
+    // uses, which is the one BoardRenderer usage that never had this bug.
+    // See scripts/test-font-parity.mjs for what verifies this holds.
+    <div className="bg-ink text-paper flex h-screen flex-col">
       <Header
         name={name}
         boardId={boardId}
@@ -290,6 +310,7 @@ export function BoardEditor({ boardId, name, canvas, doc, publishState: initialP
               <BoardRenderer
                 doc={liveDoc}
                 canvas={canvas}
+                location={location}
                 className="h-full w-full"
                 widgetProps={(widget) => ({
                   "data-widget-id": widget.id,
@@ -347,7 +368,7 @@ function Header({
   return (
     <div
       {...CHROME_DARK}
-      className={`flex h-10 shrink-0 items-center gap-3 border-b px-3 ${CHROME_RULE}`}
+      className={`font-ui flex h-10 shrink-0 items-center gap-3 border-b px-3 ${CHROME_RULE}`}
     >
       <Link href="/boards" className={`${CHROME_META} hover:text-paper`}>
         ← Boards
