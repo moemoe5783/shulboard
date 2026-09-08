@@ -28,6 +28,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const TITLE_ID = "11111111-1111-4111-8111-111111111111";
 const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
 const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
+const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
 
 const results = [];
 function check(ok, label, detail = "") {
@@ -147,6 +148,7 @@ try {
       ["Title (fit, non-toggleable)", TITLE_ID],
       ["Clock (fixed)", CLOCK_FIXED_ID],
       ["Clock (fit)", CLOCK_FIT_ID],
+      ["Hebrew date", HEBREW_DATE_ID],
     ]) {
       const editor = await widgetFont(page, "editor", id);
       const display = await widgetFont(page, "display", id);
