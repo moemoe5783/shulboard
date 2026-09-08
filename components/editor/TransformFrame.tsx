@@ -8,6 +8,7 @@ import Moveable, {
   type OnDragStart,
   type OnResize,
   type OnResizeGroup,
+  type OnResizeStart,
   type OnRotate,
   type OnRotateGroup,
 } from "react-moveable";
@@ -68,6 +69,73 @@ type Frame = {
   rotate: number;
 };
 
+/** What a corner-drag gesture needs to remember to judge "near the diagonal". */
+type CornerResizeInfo = {
+  /** Pointer position, in page pixels, when the gesture began. */
+  clientX: number;
+  clientY: number;
+  /** react-moveable's direction vector for the handle grabbed, e.g. [-1, -1]
+   *  for the nw corner. Both components are non-zero for a corner. */
+  direction: [number, number];
+  rotate: number;
+  /** The widget's own aspect ratio at gesture start, in design units — its
+   *  diagonal, as a vector, is what a proportional drag stays parallel to. */
+  startW: number;
+  startH: number;
+  /** Image defaults to proportional and never leaves it, so its gesture skips
+   *  the angle check entirely rather than being "near" a permissive cone. */
+  isImage: boolean;
+};
+
+// A corner drag engages the aspect-ratio constraint once the pointer's angle
+// off the widget's own diagonal is within ENTER, and releases it only once the
+// angle grows past EXIT — a small gap so the mode doesn't flicker right at the
+// boundary. "release ... if it moves well off it" is the EXIT half of that.
+const CORNER_RATIO_ENTER_RAD = (18 * Math.PI) / 180;
+const CORNER_RATIO_EXIT_RAD = (30 * Math.PI) / 180;
+
+/**
+ * Is the pointer, since a corner-drag gesture began, still close enough to the
+ * widget's own diagonal to treat the drag as proportional?
+ *
+ * The drag vector is rotated into the widget's own (unrotated) axes, then
+ * turned into a "growth" vector — positive along each axis exactly when that
+ * axis is growing, for whichever corner is being dragged — so a drag toward
+ * the corner and a drag away from it (shrinking) are both measured the same
+ * way. The angle compared against the diagonal is undirected (`Math.abs` on
+ * the dot product before `acos`), because shrinking straight back along the
+ * diagonal is exactly as proportional as growing along it.
+ */
+function isNearDiagonal(
+  info: CornerResizeInfo,
+  clientX: number,
+  clientY: number,
+  currentlyActive: boolean,
+): boolean {
+  const dx = clientX - info.clientX;
+  const dy = clientY - info.clientY;
+  const rad = (-info.rotate * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const localDx = dx * cos - dy * sin;
+  const localDy = dx * sin + dy * cos;
+  const growthX = info.direction[0] * localDx;
+  const growthY = info.direction[1] * localDy;
+
+  const dragMagnitude = Math.hypot(growthX, growthY);
+  const diagonalMagnitude = Math.hypot(info.startW, info.startH);
+  // Too little movement to judge an angle from yet — hold the current mode
+  // rather than snap to "off diagonal" on the first pixel of every drag.
+  if (dragMagnitude < 1 || diagonalMagnitude === 0) return currentlyActive;
+
+  const cosTheta = Math.min(
+    1,
+    Math.abs(growthX * info.startW + growthY * info.startH) / (dragMagnitude * diagonalMagnitude),
+  );
+  const theta = Math.acos(cosTheta);
+  return theta <= (currentlyActive ? CORNER_RATIO_EXIT_RAD : CORNER_RATIO_ENTER_RAD);
+}
+
 const SNAP_THRESHOLD_PX = 6;
 
 export function TransformFrame({
@@ -94,10 +162,17 @@ export function TransformFrame({
   const framesRef = useRef(new Map<string, Frame>());
   const altDragRef = useRef(false);
   const pointerDownRef = useRef(false);
+  const cornerResizeRef = useRef<CornerResizeInfo | null>(null);
+  const diagonalActiveRef = useRef(false);
 
   const [targets, setTargets] = useState<HTMLElement[]>([]);
   const [guidelines, setGuidelines] = useState<HTMLElement[]>([]);
   const [modifiers, setModifiers] = useState({ shift: false, meta: false });
+  // Whether a corner drag currently in progress should keep its aspect ratio.
+  // Shift always forces this (below); absent Shift it tracks whether the
+  // pointer is near the widget's own diagonal (see isNearDiagonal), except for
+  // Image, which starts — and stays — proportional for the whole gesture.
+  const [cornerRatioActive, setCornerRatioActive] = useState(false);
 
   const widgetsById = useMemo(
     () => new Map(doc.widgets.map((widget) => [widget.id, widget])),
@@ -460,9 +535,12 @@ export function TransformFrame({
         draggable
         resizable
         rotatable
-        // Shift keeps the aspect ratio while resizing (§4b). It also constrains
-        // the drag axis; the two never happen at once, so one key does both.
-        keepRatio={modifiers.shift}
+        // Shift keeps the aspect ratio while resizing (§4b), at an edge or a
+        // corner alike, and it also constrains the drag axis; the two never
+        // happen at once, so one key does both. At a corner, absent Shift,
+        // cornerRatioActive is the live "pointer is near the diagonal" (or
+        // "this is an Image") signal computed in onResize below.
+        keepRatio={modifiers.shift || cornerRatioActive}
         renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
         rotationPosition="top"
         // Ctrl or Cmd held turns snapping off for as long as it is held.
@@ -503,8 +581,34 @@ export function TransformFrame({
         }
         onDragGroup={({ events }: OnDragGroup) => events.forEach(onDragOne)}
         onDragGroupEnd={({ targets: group }) => endGesture(group as HTMLElement[], "move")}
-        onResizeStart={({ target }) => beginGesture([target as HTMLElement], false)}
-        onResize={({ target, width, height, drag }: OnResize) => {
+        onResizeStart={({ target, direction, clientX, clientY }: OnResizeStart) => {
+          beginGesture([target as HTMLElement], false);
+          const el = target as HTMLElement;
+          const id = el.dataset.widgetId;
+          const frame = id ? framesRef.current.get(id) : undefined;
+          const isCorner = direction[0] !== 0 && direction[1] !== 0;
+          diagonalActiveRef.current = false;
+
+          if (frame && isCorner) {
+            const isImage = widgetsById.get(id ?? "")?.type === "image";
+            cornerResizeRef.current = {
+              clientX,
+              clientY,
+              direction: [direction[0], direction[1]],
+              rotate: frame.rotate,
+              startW: frame.start.w,
+              startH: frame.start.h,
+              isImage,
+            };
+            // For Image, corner drags are proportional by default — no angle
+            // to check, it never leaves this mode for the gesture.
+            setCornerRatioActive(isImage);
+          } else {
+            cornerResizeRef.current = null;
+            setCornerRatioActive(false);
+          }
+        }}
+        onResize={({ target, width, height, drag, clientX, clientY }: OnResize) => {
           const el = target as HTMLElement;
           const frame = framesRef.current.get(el.dataset.widgetId ?? "");
           if (!frame) return;
@@ -513,9 +617,31 @@ export function TransformFrame({
           frame.tx = drag.beforeTranslate[0];
           frame.ty = drag.beforeTranslate[1];
           paint(el);
+
+          const info = cornerResizeRef.current;
+          if (info && !info.isImage) {
+            const active = isNearDiagonal(info, clientX, clientY, diagonalActiveRef.current);
+            if (active !== diagonalActiveRef.current) {
+              diagonalActiveRef.current = active;
+              setCornerRatioActive(active);
+            }
+          }
         }}
-        onResizeEnd={({ target }) => endGesture([target as HTMLElement], "resize")}
-        onResizeGroupStart={({ targets: group }) => beginGesture(group as HTMLElement[], false)}
+        onResizeEnd={({ target }) => {
+          endGesture([target as HTMLElement], "resize");
+          cornerResizeRef.current = null;
+          diagonalActiveRef.current = false;
+          setCornerRatioActive(false);
+        }}
+        onResizeGroupStart={({ targets: group }) => {
+          beginGesture(group as HTMLElement[], false);
+          // Group resize keeps its existing Shift-only behaviour — the
+          // diagonal/Image defaulting above is scoped to a single widget's own
+          // aspect ratio, which a multi-selection bounding box doesn't have.
+          cornerResizeRef.current = null;
+          diagonalActiveRef.current = false;
+          setCornerRatioActive(false);
+        }}
         onResizeGroup={({ events }: OnResizeGroup) =>
           events.forEach(({ target, width, height, drag }) => {
             const el = target as HTMLElement;
