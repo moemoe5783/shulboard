@@ -3,10 +3,20 @@
  * scripts/test-hebrew.ts's pure computation tests. That suite proves the
  * math; this proves the widgets actually put it on screen: real Hebrew and
  * English text, correct `dir`/`lang` on the Hebrew half, and that toggling a
- * format option in the properties panel actually changes what renders.
+ * format option in the properties panel actually changes what renders —
+ * including, for Havdalah, that picking a different shitah in the real
+ * panel changes the actual rendered clock time to the value already
+ * verified by hand against a published source (scripts/test-hebrew.ts's own
+ * Havdalah section documents which).
  *
  * Drives /editor-lab, which seeds every widget with the real dataflow (the
  * shared tick, the demo location from lib/demo-board.ts) short of a database.
+ * The page's clock is frozen (Playwright's `page.clock`) to the exact
+ * Friday/location scripts/test-hebrew.ts's own Havdalah table was verified
+ * against, before anything on the page has a chance to read the real
+ * `Date.now()` — lib/tick.ts's tick starts from whatever `Date.now()` reads
+ * the moment its module first evaluates, so the freeze has to be in place
+ * before that first navigation, not applied to it afterwards.
  *
  * NOT covered here: the "no location configured" empty state
  * (widgets/hebrew/EmptyLocation.tsx). editor-lab always has a demo location
@@ -111,6 +121,13 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
   page.on("pageerror", (error) => check(false, "no page errors", error.message));
 
+  // Same Friday scripts/test-hebrew.ts's FRIDAY_NOON uses (25 Tamuz 5786,
+  // Crown Heights) — frozen before the first navigation so lib/tick.ts's
+  // module-load-time `Date.now()` read, and every widget's Hebrew date/
+  // Havdalah computation after it, land on the exact date that suite's own
+  // hand-verified values apply to.
+  await page.clock.setFixedTime(new Date("2026-07-10T16:00:00.000Z"));
+
   await page.goto(LAB, { waitUntil: "networkidle" });
   await page.waitForSelector("[data-widget-id]");
 
@@ -200,6 +217,59 @@ try {
   check(gematriaText !== latinText, "switching numerals to latin changes the rendered date",
     `${gematriaText} -> ${latinText}`);
   check(/\d/.test(latinText), "latin numerals actually show arabic digits", latinText);
+
+  // ---- Havdalah: shitah override, driven through the REAL properties panel
+  //
+  // widgets/havdalah's config carries "transliterated" here (see
+  // font-parity's own comment on HAVDALAH_ID), so the widget's whole
+  // textContent is plain ASCII and a clock-time regex is all reading the
+  // rendered time back needs — no Hebrew line to skip over.
+
+  const HAVDALAH_ID = "66666666-6666-4666-8666-666666666666";
+  const panelHavdalah = editorHalf().locator(`[data-widget-id="${HAVDALAH_ID}"]`);
+  await panelHavdalah.click();
+  await settle();
+
+  const renderedTime = async () => {
+    const text = (await panelHavdalah.textContent()) ?? "";
+    return text.match(/\d{1,2}:\d{2}\s?[AP]M/)?.[0] ?? null;
+  };
+  const shitahSelect = () => page.locator("label", { hasText: "Shitah" }).locator("select");
+  const minutesField = () => page.locator("label", { hasText: "Minutes after sunset" }).locator("input");
+
+  // The table scripts/test-hebrew.ts's own Havdalah section already
+  // verified by hand against hebcal.com for this exact Friday and location
+  // (Crown Heights, lib/demo-board.ts's DEMO_LOCATION) — reused here rather
+  // than re-derived, since the point of this test is that the real panel
+  // reaches the real computation, not a second check of the computation
+  // itself.
+  const SHITAH_TIMES = {
+    tzeis_3_stars: "9:17 PM",
+    tzeis_medium_stars: "9:07 PM",
+    tzeis_72: "9:40 PM",
+  };
+
+  for (const [shitah, expected] of Object.entries(SHITAH_TIMES)) {
+    await shitahSelect().selectOption(shitah);
+    await settle();
+    check((await renderedTime()) === expected, `shitah "${shitah}" renders ${expected}`, await renderedTime());
+    check(await minutesField().isDisabled(), `minutes field is disabled for shitah "${shitah}"`);
+  }
+
+  // Custom: the field enables, its own default (50) renders a distinct
+  // time, and editing it changes the render again — to exactly what
+  // "tzeis_72" rendered above, since 72 fixed minutes is 72 fixed minutes
+  // regardless of which option asked for it.
+  await shitahSelect().selectOption("custom");
+  await settle();
+  check(!(await minutesField().isDisabled()), "minutes field enables for shitah \"custom\"");
+  check((await renderedTime()) === "9:18 PM", "custom defaults to 50 minutes, matching the hand-verified table",
+    await renderedTime());
+
+  await minutesField().fill("72");
+  await settle();
+  check((await renderedTime()) === SHITAH_TIMES.tzeis_72,
+    "custom at 72 minutes renders the same time as shitah \"tzeis_72\"", await renderedTime());
 
   console.log("");
 } finally {

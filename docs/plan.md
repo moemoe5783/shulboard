@@ -306,7 +306,7 @@ their wall, and these three genuinely differ by a minute or two.
 | Hebcal | Official REST API + `@hebcal/core` JS lib | Free | Only one that runs client-side. Default. |
 | MyZmanim | Official REST/SOAP, `api.myzmanim.com`, User+Key | $15/mo/10 locations, $40/mo/100, then $0.10 each | Requires internal `LocationID`. **Decided: ZIP-level only** — resolve via `searchPostal` at onboarding and cache the LocationID on the org. Street-address and shul-specific lookups are manual through their mobile app; don't build for them, and don't market address-level precision. |
 | Chabad.org | **No official API.** Unofficial JSON endpoint (MIT TS client on npm, server-side only, no CORS). Official route is iCal + embed codes at chabad.org/candlelighting | Free | Undocumented, unsupported, no ToS. Can break without notice — needs a fallback path. |
-| Manual | You | — | Per-zman override or fixed offset. |
+| Manual | You | — | Per-zman override or fixed offset. **Not the same thing as widgets/havdalah's own `shitah: "custom"` option** — that's this same idea at the grain of one widget's one zman, shipped ahead of this whole provider layer because Havdalah needed it now. A shul's zmanim profile as a whole still has no Manual provider to pick; when this section is built, decide whether Havdalah's `custom` becomes an instance of it or stays its own thing. |
 
 **Canonical zman IDs.** Providers name things differently (`tzeit7083deg` /
 `Shkiah` / etc.), so define your own vocabulary and write a thin adapter per
@@ -315,7 +315,14 @@ provider that maps into it:
 `alos_72`, `alos_16.1deg`, `misheyakir`, `netz`, `sof_zman_shma_gra`,
 `sof_zman_shma_mga`, `sof_zman_tfila_gra`, `sof_zman_tfila_mga`, `chatzos`,
 `mincha_gedola`, `mincha_ketana`, `plag_hamincha`, `shkia`, `tzeis_3_stars`,
-`tzeis_72`, `candle_lighting`, `shabbos_ends`, `chatzos_laila`
+`tzeis_medium_stars`, `tzeis_72`, `candle_lighting`, `shabbos_ends`,
+`chatzos_laila`
+
+`tzeis_medium_stars` (7.0833°, "3 medium stars") is not aspirational like the
+rest of this list — it already ships, as one of the four options in
+widgets/havdalah's own shitah setting (`lib/hebrew/candle-times.ts`), reusing
+this same id ahead of the provider layer existing to serve it from an actual
+source.
 
 **Capability matrix.** Each provider declares which canonical IDs it supplies.
 The settings UI greys out unavailable ones — never render a blank row on a
