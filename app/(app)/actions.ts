@@ -34,9 +34,31 @@ export async function createOrg(
 
   const name = String(formData.get("name") ?? "").trim();
   const timezone = String(formData.get("timezone") ?? "").trim();
+  const latitudeRaw = String(formData.get("latitude") ?? "").trim();
+  const longitudeRaw = String(formData.get("longitude") ?? "").trim();
 
   if (!name) return { error: "Give the shul a name." };
   if (!timezone) return { error: "Pick a timezone." };
+
+  // Both or neither. One without the other is worse than neither — a
+  // half-set coordinate pair would let candle lighting and the Hebrew-date
+  // widgets think they're configured and compute nonsense.
+  if (Boolean(latitudeRaw) !== Boolean(longitudeRaw)) {
+    return { error: "Enter both latitude and longitude, or leave both blank." };
+  }
+
+  let latitude: number | null = null;
+  let longitude: number | null = null;
+  if (latitudeRaw && longitudeRaw) {
+    latitude = Number(latitudeRaw);
+    longitude = Number(longitudeRaw);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+      return { error: "Latitude has to be a number between -90 and 90." };
+    }
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      return { error: "Longitude has to be a number between -180 and 180." };
+    }
+  }
 
   const base = slugify(name) || "shul";
   const supabase = await createClient();
@@ -59,7 +81,7 @@ export async function createOrg(
     // the policy passes. Slugs are globally unique, so this identifies the row.
     const { error } = await supabase
       .from("orgs")
-      .insert({ name, slug, timezone, created_by: user.id });
+      .insert({ name, slug, timezone, latitude, longitude, created_by: user.id });
 
     if (!error) {
       const { data, error: readError } = await supabase
