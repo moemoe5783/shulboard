@@ -23,10 +23,15 @@ export function Renderer({ config, canvas }: WidgetRendererProps<HavdalahConfig>
   const now = second === null ? null : new Date(second * 1000);
 
   // Same "re-search every tick, keyed on the primitive second" shape as
-  // Candle Lighting's own widget — see that Renderer's comment.
+  // Candle Lighting's own widget — see that Renderer's comment. shitah and
+  // customMinutes change which Havdalah event comes back (a later shitah can
+  // even change which Shabbos/Yom Tov boundary is "next"), so both are deps.
   const event = useMemo(
-    () => (second !== null && location ? upcomingHavdalah(new Date(second * 1000), location) : null),
-    [second, location],
+    () =>
+      second !== null && location
+        ? upcomingHavdalah(new Date(second * 1000), location, config.shitah, config.customMinutes)
+        : null,
+    [second, location, config.shitah, config.customMinutes],
   );
 
   const isFit = config.sizingMode === "fit";

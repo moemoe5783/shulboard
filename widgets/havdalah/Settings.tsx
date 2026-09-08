@@ -63,6 +63,34 @@ export function Settings({ config, onChange }: WidgetSettingsProps<HavdalahConfi
           <option value="right">Right</option>
         </select>
       </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Shitah</span>
+        <select
+          value={config.shitah}
+          onChange={(event) => onChange({ shitah: event.target.value as HavdalahConfig["shitah"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="tzeis_3_stars">Hebcal default (3 small stars)</option>
+          <option value="tzeis_medium_stars">3 medium stars (~42 min)</option>
+          <option value="tzeis_72">Rabbeinu Tam (72 min)</option>
+          <option value="custom">Custom minutes after sunset</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Minutes after sunset</span>
+        <input
+          type="number"
+          min={1}
+          max={180}
+          value={config.customMinutes}
+          disabled={config.shitah !== "custom"}
+          title={config.shitah !== "custom" ? "Only used when shitah is Custom." : undefined}
+          onChange={(event) => onChange({ customMinutes: Number(event.target.value) })}
+          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
+        />
+      </label>
     </div>
   );
 }
