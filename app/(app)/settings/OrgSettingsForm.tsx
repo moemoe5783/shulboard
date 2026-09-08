@@ -78,9 +78,9 @@ export function OrgSettingsForm({
           />
         </div>
         <p className="text-meta text-ink-soft -mt-2">
-          The Hebrew date, candle lighting and Havdalah widgets need this to
-          show a real time rather than nothing — look your shul&rsquo;s up on
-          a map if you don&rsquo;t have it handy.
+          The Hebrew date and candle lighting widgets need this to show a
+          real time rather than nothing — look your shul&rsquo;s up on a map
+          if you don&rsquo;t have it handy.
         </p>
       </fieldset>
 

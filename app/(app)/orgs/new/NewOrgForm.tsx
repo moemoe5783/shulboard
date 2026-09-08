@@ -64,8 +64,8 @@ export function NewOrgForm({ timezones }: { timezones: string[] }) {
         />
       </div>
       <p className="text-meta text-ink-soft -mt-2">
-        Optional for now, but the Hebrew date, candle lighting and Havdalah widgets
-        need it to show a real time rather than nothing — look your shul&rsquo;s up
+        Optional for now, but the Hebrew date and candle lighting widgets need
+        it to show a real time rather than nothing — look your shul&rsquo;s up
         on a map if you don&rsquo;t have it handy.
       </p>
 

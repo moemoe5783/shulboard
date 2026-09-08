@@ -61,8 +61,8 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
 
   // A board isn't tied to one screen — it can sit on several playlists across
   // several screens, each with its own coordinates (screens.sql) — so there is
-  // no single "right" screen to preview candle lighting, Havdalah or a
-  // sunset-rollover Hebrew date against here. The org's own location is the
+  // no single "right" screen to preview candle lighting or a sunset-rollover
+  // Hebrew date against here. The org's own location is the
   // best available stand-in, same tier the bundle build falls back to
   // (lib/bundle/build.ts) when a screen hasn't set its own.
   const { data: orgLocation } = await supabase

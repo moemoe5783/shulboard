@@ -19,9 +19,8 @@ export const DEMO_CANVAS = { width: 1920, height: 1080 };
  * Crown Heights, Brooklyn — plan.md §5c's own recurring example ("twenty
  * Crown Heights shuls share the same rows"), so a demo page using this
  * matches the numbers a reviewer reading that section would expect. Real
- * coordinates, not a rounded placeholder: candle lighting and Havdalah are
- * genuinely sensitive to a few hundredths of a degree near a shul's actual
- * corner.
+ * coordinates, not a rounded placeholder: candle lighting is genuinely
+ * sensitive to a few hundredths of a degree near a shul's actual corner.
  */
 export const DEMO_LOCATION = {
   latitude: 40.6694,

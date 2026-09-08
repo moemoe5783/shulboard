@@ -39,7 +39,6 @@ export const TITLE_ID = "11111111-1111-4111-8111-111111111111";
 export const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
 export const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
 export const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
-export const HAVDALAH_ID = "66666666-6666-4666-8666-666666666666";
 
 function buildDoc(font: BoardFont): BoardDoc {
   return parseBoardDoc({
@@ -85,19 +84,6 @@ function buildDoc(font: BoardFont): BoardDoc {
         h: 18,
         z: 3,
         config: { script: "both", numerals: "gematria", align: "left", sizingMode: "fixed" },
-      },
-      {
-        // scripts/test-hebrew-widgets.mjs's own Havdalah shitah checks —
-        // transliterated, so its rendered text is plain digits/letters with
-        // no Hebrew line to strip out when reading back the clock time.
-        id: HAVDALAH_ID,
-        type: "havdalah",
-        x: 65,
-        y: 4,
-        w: 30,
-        h: 30,
-        z: 4,
-        config: { script: "transliterated", align: "left", sizingMode: "fixed", shitah: "tzeis_3_stars" },
       },
     ],
   });

@@ -5,8 +5,10 @@ import { civilDateInZone } from "./civil-day.ts";
 import { toHebcalLocation } from "./hebcal-location.ts";
 
 /*
- * The next candle lighting and the next Havdalah — for the widgets that
- * count down to them.
+ * The next candle lighting — Candle Lighting's own countdown widget — and
+ * the next Havdalah, computed the same way but not currently rendered by
+ * anything (see the note above havdalahShitahSchema below for why this is
+ * kept rather than deleted).
  *
  * Generated through `HebrewCalendar.calendar({candlelighting: true, ...})`
  * rather than a hand-rolled `sunsetOffset(-18)`: the library already knows
@@ -20,26 +22,38 @@ import { toHebcalLocation } from "./hebcal-location.ts";
  */
 
 /**
+ * NOT WIRED TO ANY WIDGET RIGHT NOW — this is not dead code, it's early.
+ * havdalahShitahSchema/havdalahCustomMinutesSchema below, havdalahOffsetFor(),
+ * and upcomingHavdalah()'s own shitah/customMinutes parameters were built for
+ * a standalone Havdalah widget. That widget shipped, got exactly this shitah
+ * override, and was then removed: Havdalah is being folded into the Zmanim
+ * provider layer (plan.md §5c) rather than staying its own widget. Kept
+ * because it's already the right shape for that layer's Hebcal provider
+ * adapter — mapping a canonical zman id to the `{havdalahDeg}`/
+ * `{havdalahMins}` shape `HebrewCalendar.calendar()` expects is exactly what
+ * a Hebcal adapter has to do. When that work starts, call this rather than
+ * re-deriving it; plan.md §5c points back here.
+ *
  * Which definition of nightfall ends Havdalah — plan.md §5c's canonical zman
  * vocabulary (`tzeis_3_stars`, `tzeis_72`) reused for two of these four
  * options rather than inventing separate names, so this lines up with the
- * zmanim provider work when it lands instead of needing to be reconciled with
+ * rest of the zmanim provider work instead of needing to be reconciled with
  * it later. The other two aren't a §5c id yet: `tzeis_medium_stars` is named
  * to match that list's own pattern (a plain name alongside a degree-named
- * zman like `alos_16.1deg`) rather than left for the zmanim work to invent
- * separately, and `custom` is this widget's own spelling of §5c's "Manual —
+ * zman like `alos_16.1deg`) rather than left for that work to invent
+ * separately, and `custom` is this schema's own spelling of §5c's "Manual —
  * per-zman override or fixed offset" provider.
  *
  * `tzeis_3_stars` (8.5°) is @hebcal/core's own default — see
  * `Zmanim.tzeit`'s `angle = 8.5` in `node_modules/@hebcal/core/dist/esm/
- * zmanim.js` — and it's what this widget silently used before this type
- * existed. It stays the default here: verified against hebcal.com's own
- * published Havdalah time for Crown Heights (scripts/test-hebrew.ts), and
- * it's also the methodology chabad.org's own zmanim engine documents. It is
- * NOT necessarily what a given Chabad shul's actual practice is — many,
- * Crown Heights included, treat Havdalah later than this astronomical
- * minimum in practice, which is the whole reason the other three options
- * exist.
+ * zmanim.js` — and it's what the removed Havdalah widget silently used
+ * before this type existed. It stays the default here: verified against
+ * hebcal.com's own published Havdalah time for Crown Heights
+ * (scripts/test-hebrew.ts's own history), and it's also the methodology
+ * chabad.org's own zmanim engine documents. It is NOT necessarily what a
+ * given Chabad shul's actual practice is — many, Crown Heights included,
+ * treat Havdalah later than this astronomical minimum in practice, which is
+ * the whole reason the other three options exist.
  */
 export const havdalahShitahSchema = z
   .enum(["tzeis_3_stars", "tzeis_medium_stars", "tzeis_72", "custom"])
@@ -111,9 +125,11 @@ export function upcomingCandleLighting(now: Date, location: BoardLocation): Cand
   return earliestAfter(upcomingEvents(now, location), now, isCandleLighting);
 }
 
-// Defaults match havdalahShitahSchema/havdalahCustomMinutesSchema's own
-// `.default()`s, for the callers below that don't carry a widget config —
-// scripts/test-hebrew.ts's pre-existing calls among them.
+// Unused today — see the NOT WIRED TO ANY WIDGET note above
+// havdalahShitahSchema. Defaults match that schema's and
+// havdalahCustomMinutesSchema's own `.default()`s, so a future caller that
+// doesn't have a widget config handy yet (a migration path, a quick script)
+// gets the same behavior a bare `upcomingHavdalah(now, location)` always has.
 export function upcomingHavdalah(
   now: Date,
   location: BoardLocation,
