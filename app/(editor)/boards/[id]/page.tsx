@@ -59,12 +59,30 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
 
   const screenIds = await screensShowingBoard(supabase, board.org_id, board.id);
 
+  // A board isn't tied to one screen — it can sit on several playlists across
+  // several screens, each with its own coordinates (screens.sql) — so there is
+  // no single "right" screen to preview candle lighting, Havdalah or a
+  // sunset-rollover Hebrew date against here. The org's own location is the
+  // best available stand-in, same tier the bundle build falls back to
+  // (lib/bundle/build.ts) when a screen hasn't set its own.
+  const { data: orgLocation } = await supabase
+    .from("orgs")
+    .select("latitude, longitude, timezone")
+    .eq("id", board.org_id)
+    .maybeSingle();
+
+  const location =
+    typeof orgLocation?.latitude === "number" && typeof orgLocation.longitude === "number"
+      ? { latitude: orgLocation.latitude, longitude: orgLocation.longitude, timeZone: orgLocation.timezone }
+      : null;
+
   return (
     <BoardEditor
       boardId={board.id}
       name={board.name}
       canvas={{ width: board.canvas_width, height: board.canvas_height }}
       doc={board.doc}
+      location={location}
       publishState={{
         publishedAt: board.published_at,
         screenCount: screenIds.length,

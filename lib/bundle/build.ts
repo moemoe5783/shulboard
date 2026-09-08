@@ -20,6 +20,8 @@ type ScreenForBuild = Pick<
   | "canvas_height"
   | "orientation"
   | "timezone"
+  | "latitude"
+  | "longitude"
   | "hebrew_prefs"
   | "playlist_id"
   | "rebuild_requested_at"
@@ -81,7 +83,7 @@ export async function buildScreenBundle(screenId: string): Promise<BuildResult> 
     const { data: screen, error: screenError } = await db
       .from("screens")
       .select(
-        "id, org_id, name, canvas_width, canvas_height, orientation, timezone, hebrew_prefs, playlist_id, rebuild_requested_at",
+        "id, org_id, name, canvas_width, canvas_height, orientation, timezone, latitude, longitude, hebrew_prefs, playlist_id, rebuild_requested_at",
       )
       .eq("id", screenId)
       .maybeSingle();
@@ -240,7 +242,7 @@ async function assemblePayloadFor(
   const playlistId = screen.playlist_id;
 
   const [{ data: org }, playlist] = await Promise.all([
-    db.from("orgs").select("theme").eq("id", orgId).maybeSingle(),
+    db.from("orgs").select("theme, timezone, latitude, longitude").eq("id", orgId).maybeSingle(),
     playlistId
       ? db
           .from("playlists")
@@ -336,6 +338,15 @@ async function assemblePayloadFor(
 
   const content = await resolveContent(db, orgId);
 
+  // Screen overrides org, same tier order the schema comments on both tables
+  // describe (screens.sql, orgs.sql) and the same pattern §5c already
+  // establishes for the zmanim provider — a screen only carries these columns
+  // at all for the shul with two buildings on two different blocks; every
+  // other screen leaves them null and inherits the org's.
+  const timezone = screen.timezone ?? org?.timezone ?? null;
+  const latitude = screen.latitude ?? org?.latitude ?? null;
+  const longitude = screen.longitude ?? org?.longitude ?? null;
+
   return assembleBundle({
     screen: {
       id: screen.id,
@@ -343,7 +354,9 @@ async function assemblePayloadFor(
       canvas_width: screen.canvas_width,
       canvas_height: screen.canvas_height,
       orientation: screen.orientation,
-      timezone: screen.timezone,
+      timezone,
+      latitude,
+      longitude,
       // The CHECK constraint on this column (jsonb_typeof(hebrew_prefs) =
       // 'object') guarantees the object shape AssembleInput expects; the
       // generated type only knows it as jsonb in general, which is where

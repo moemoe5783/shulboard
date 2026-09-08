@@ -10,6 +10,7 @@ import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { TransformFrame } from "@/components/editor/TransformFrame";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import type { BoardDoc } from "@/lib/board-doc";
+import type { BoardLocation } from "@/lib/board-location";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
 import { saveBoardDoc } from "./actions";
 import { PublishControls, type PublishState } from "./PublishControls";
@@ -42,13 +43,24 @@ export type BoardEditorProps = {
   name: string;
   canvas: { width: number; height: number };
   doc: unknown;
+  /** The org's own coordinates, for previewing candle lighting, Havdalah and
+   *  sunset-rollover widgets — see page.tsx's own comment on why the org
+   *  rather than any one screen. `null` when the org hasn't set a location. */
+  location: BoardLocation | null;
   /** The board's publish state as of page load — see PublishControls.tsx.
    *  Kept live afterward by each autosave's result and by publishing or
    *  discarding directly, never re-fetched. */
   publishState: PublishState;
 };
 
-export function BoardEditor({ boardId, name, canvas, doc, publishState: initialPublishState }: BoardEditorProps) {
+export function BoardEditor({
+  boardId,
+  name,
+  canvas,
+  doc,
+  location,
+  publishState: initialPublishState,
+}: BoardEditorProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -298,6 +310,7 @@ export function BoardEditor({ boardId, name, canvas, doc, publishState: initialP
               <BoardRenderer
                 doc={liveDoc}
                 canvas={canvas}
+                location={location}
                 className="h-full w-full"
                 widgetProps={(widget) => ({
                   "data-widget-id": widget.id,

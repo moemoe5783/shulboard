@@ -24,12 +24,19 @@ export function DisplayBoard({ bundle }: { bundle: BundleEnvelope }) {
   if (!board) return <WaitingForBoard reason="This screen has no board yet." />;
 
   const canvas = bundle.screen.canvas;
+  // Both null, or both real — the bundle resolves screen-then-org already
+  // (lib/bundle/build.ts), so there's no partial coordinate to guard against.
+  const location =
+    bundle.screen.latitude !== null && bundle.screen.longitude !== null && bundle.screen.timezone
+      ? { latitude: bundle.screen.latitude, longitude: bundle.screen.longitude, timeZone: bundle.screen.timezone }
+      : null;
 
   return (
     <div className="bg-ink flex h-screen w-screen items-center justify-center overflow-hidden">
       <BoardRenderer
         doc={board.doc}
         canvas={canvas}
+        location={location}
         style={{
           aspectRatio: `${canvas.width} / ${canvas.height}`,
           width: `min(100vw, calc(100vh * ${canvas.width} / ${canvas.height}))`,

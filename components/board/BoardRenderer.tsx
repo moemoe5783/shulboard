@@ -1,6 +1,7 @@
 "use client";
 
 import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
+import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import { boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
@@ -42,6 +43,15 @@ export type BoardRendererProps = {
   widgetProps?: (widget: BoardWidget) => HTMLAttributes<HTMLDivElement> & Record<string, unknown>;
   className?: string;
   style?: CSSProperties;
+  /**
+   * Where this board is being shown — the screen's own coordinates in the
+   * display route, the org's in the editor (a board isn't tied to one screen,
+   * so there is no single "right" screen to preview against; see
+   * lib/board-location.tsx). `null`/omitted for a context with no location at
+   * all (a demo page, an org that hasn't set one yet) — location-dependent
+   * widgets are responsible for their own empty state in that case.
+   */
+  location?: BoardLocation | null;
 };
 
 /** Widget types the document may contain that are not widgets. A group is a row
@@ -54,31 +64,35 @@ export function BoardRenderer({
   widgetProps,
   className = "",
   style,
+  location = null,
 }: BoardRendererProps) {
   return (
-    <div
-      className={`relative overflow-hidden ${className}`}
-      style={{
-        // The container every board length is measured against. `cqw` resolves
-        // to the nearest container ancestor, so this must be the only one
-        // between the board root and a widget — otherwise a widget's type would
-        // silently start scaling against the widget instead of the board.
-        containerType: "size",
-        ...boardRootStyle(doc),
-        ...style,
-      }}
-    >
-      {doc.widgets
-        .filter((widget) => !widget.hidden && !NON_RENDERING_TYPES.has(widget.type))
-        .map((widget) => (
-          <WidgetFrame
-            key={widget.id}
-            widget={widget}
-            canvas={canvas}
-            extra={widgetProps?.(widget)}
-          />
-        ))}
-    </div>
+    <BoardLocationProvider location={location}>
+      <div
+        className={`relative overflow-hidden ${className}`}
+        style={{
+          // The container every board length is measured against. `cqw`
+          // resolves to the nearest container ancestor, so this must be the
+          // only one between the board root and a widget — otherwise a
+          // widget's type would silently start scaling against the widget
+          // instead of the board.
+          containerType: "size",
+          ...boardRootStyle(doc),
+          ...style,
+        }}
+      >
+        {doc.widgets
+          .filter((widget) => !widget.hidden && !NON_RENDERING_TYPES.has(widget.type))
+          .map((widget) => (
+            <WidgetFrame
+              key={widget.id}
+              widget={widget}
+              canvas={canvas}
+              extra={widgetProps?.(widget)}
+            />
+          ))}
+      </div>
+    </BoardLocationProvider>
   );
 }
 
