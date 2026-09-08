@@ -53,10 +53,14 @@ export type WidgetSize = { w: number; h: number };
  * "should fill this area"). `fixed`: the declared type size is authoritative
  * and the box is a boundary/alignment frame, not a scaling factor (a zmanim
  * table whose type rescales when the box is nudged is worse than one that
- * doesn't). `minFontSize`/`maxFontSize` are design units, read by `fit`
- * mode's auto-fit search — see widgets/useFitFontSize.ts.
+ * doesn't) — content that doesn't fit clips. `hug`: the declared type size is
+ * authoritative, same as `fixed`, but the box's height resizes to exactly
+ * contain the content at that size instead of clipping it — width stays the
+ * box's own boundary, same wrap role it has in `fixed`. `minFontSize`/
+ * `maxFontSize` are design units, read by `fit` mode's auto-fit search — see
+ * widgets/useFitFontSize.ts.
  */
-export type SizingMode = "fit" | "fixed";
+export type SizingMode = "fit" | "fixed" | "hug";
 
 export type ElementSizing = {
   /** The manifest's default. A per-instance override lives in that widget's

@@ -5,6 +5,7 @@ import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import { boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
+import type { SizingMode } from "@/widgets/types";
 
 /*
  * A board document, rendered. ONE OF THESE, FOR BOTH HALVES OF THE APP.
@@ -101,6 +102,26 @@ function WidgetFrame({
   const frameRef = useRef<HTMLDivElement>(null);
 
   /*
+   * docs/sizing.md §2, the `hug` mode: the box resizes to fit the content at
+   * the declared type size, height only — width keeps its usual job as a wrap
+   * boundary, the same role it has in `fixed`. Read generically off the
+   * widget's own config rather than through WidgetManifest, because this file
+   * has no per-widget config type to narrow to; every widget that offers
+   * `hug`/`fixed` names this field `sizingMode`, the same convention
+   * clock/manifest.ts already established.
+   *
+   * `height: "auto"` is the entire mechanism. An absolutely positioned box
+   * with a declared `top` sizes to its content's natural height and the top
+   * edge doesn't move — docs/sizing.md §3's "grows away from its alignment
+   * edge" for the top case, for free, because that's just how CSS lays out an
+   * auto-height absolute box. No ResizeObserver, no measurement loop, and
+   * `overflow: hidden` below stays harmless: content can never exceed a box
+   * sized to exactly contain it. This is what makes overflow structurally
+   * impossible in this mode rather than something to warn about.
+   */
+  const sizingMode = (widget.config as { sizingMode?: SizingMode }).sizingMode;
+
+  /*
    * docs/sizing.md §3: "the renderer must not resize or reposition the box to
    * fit content... never grow the box." `overflow: hidden` below is what makes
    * that true regardless of what any widget's own Renderer does inside it —
@@ -121,13 +142,23 @@ function WidgetFrame({
    * ResizeObserver catches the box being dragged; MutationObserver catches
    * content changing size without the box moving, including a `fit`-mode
    * widget's own imperative font-size write (useFitFontSize.ts).
+   *
+   * A `hug` box's height check is skipped, not just usually-false: an
+   * auto-height flex box can measure a few px of scrollHeight past its own
+   * clientHeight from line-height/glyph-metrics rounding alone, with nothing
+   * actually clipped — the height that would flag can never genuinely
+   * overflow when it's computed from that exact content, so checking it can
+   * only produce a false warning, never a true one. Width isn't hugged
+   * (docs/sizing.md §2), so it still gets the real check.
    */
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
 
     const check = () => {
-      const overflowing = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+      const overflowingWidth = el.scrollWidth > el.clientWidth + 1;
+      const overflowingHeight = sizingMode !== "hug" && el.scrollHeight > el.clientHeight + 1;
+      const overflowing = overflowingWidth || overflowingHeight;
       if (el.dataset.overflowing !== String(overflowing)) el.dataset.overflowing = String(overflowing);
     };
 
@@ -147,7 +178,7 @@ function WidgetFrame({
       resize.disconnect();
       mutate.disconnect();
     };
-  }, [widget.config, widget.w, widget.h, canvas.width, canvas.height]);
+  }, [widget.config, widget.w, widget.h, canvas.width, canvas.height, sizingMode]);
 
   return (
     <div
@@ -158,7 +189,7 @@ function WidgetFrame({
         left: `${widget.x}%`,
         top: `${widget.y}%`,
         width: `${widget.w}%`,
-        height: `${widget.h}%`,
+        height: sizingMode === "hug" ? "auto" : `${widget.h}%`,
         transform: `rotate(${widget.rotation}deg)`,
         opacity: widget.opacity,
         zIndex: widget.z,

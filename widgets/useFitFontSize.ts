@@ -51,6 +51,23 @@ function resolveDesignPx(designUnits: number, canvasWidth: number, reference: HT
   return Number.isFinite(resolved) ? resolved : designUnits;
 }
 
+/**
+ * The inverse of `resolveDesignPx`: how many design units a real pixel size
+ * corresponds to, right now, in this box.
+ *
+ * docs/sizing.md's properties-panel requirement needs the fitted size back in
+ * design units — the same units `config.size` is in for `fixed`/`hug` mode, so
+ * the field reads the same regardless of which mode produced the number. A
+ * probe at a known design size gives the current px-per-design-unit rate
+ * without duplicating `boardLength`'s cqw math or needing to know the zoom
+ * level this box happens to be rendered at.
+ */
+function resolveDesignUnits(px: number, canvasWidth: number, reference: HTMLElement): number {
+  const PROBE_DESIGN_UNITS = 100;
+  const probePx = resolveDesignPx(PROBE_DESIGN_UNITS, canvasWidth, reference);
+  return probePx > 0 ? (px / probePx) * PROBE_DESIGN_UNITS : px;
+}
+
 export function useFitFontSize(
   boxRef: RefObject<HTMLElement | null>,
   contentRef: RefObject<HTMLElement | null>,
@@ -99,6 +116,14 @@ export function useFitFontSize(
         else hi = mid;
       }
       content.style.fontSize = `${lo}px`;
+
+      // docs/sizing.md: the properties panel shows an objective, read-only
+      // type size in fit mode. Plain DOM state, not a prop back through
+      // WidgetRendererProps — the panel is editor-only and the renderer
+      // contract is shared with the display route, which has no panel to
+      // feed. Read by components/editor/useElementFontSize.ts, the same
+      // pattern BoardRenderer's own `data-overflowing` already uses.
+      box.dataset.fittedSize = String(Math.round(resolveDesignUnits(lo, canvasWidth, box)));
     };
 
     search();

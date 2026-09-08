@@ -42,8 +42,11 @@ export function Settings({ config, onChange }: WidgetSettingsProps<TitleConfig>)
         </select>
       </label>
 
-      {/* No Size field: a title always fits its box (docs/sizing.md §2) — the
-          box is what you drag to make the title bigger or smaller. */}
+      {/* No Size field here: a title always fits its box (docs/sizing.md §2) —
+          the box is what you drag to make the title bigger or smaller. The
+          properties panel still shows the computed type size, read-only,
+          generically above this form — see PropertiesPanel.tsx's
+          TypeSizeField. */}
     </div>
   );
 }

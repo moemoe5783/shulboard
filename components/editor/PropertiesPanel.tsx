@@ -3,13 +3,14 @@
 import { createElement } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
-import { PANEL_LABEL } from "@/components/editor/panelControls";
+import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
+import { useElementFontSize } from "@/components/editor/useElementFontSize";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardWidget } from "@/lib/board-doc";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
 import { getManifest } from "@/widgets/manifests";
 import { getSettings } from "@/widgets/settings";
-import type { SizingMode } from "@/widgets/types";
+import type { SizingMode, WidgetManifest } from "@/widgets/types";
 
 /*
  * The properties panel — design.md §4's right rail, 264px, the same geometry
@@ -87,7 +88,7 @@ function Body({
   // Every selected widget shares a type, so its config shape is the same one —
   // the first stands in for all of them, and a field only reads back "mixed"
   // if a caller wanted that, which no widget's settings ask for yet.
-  const config = selected[0].config as { sizingMode?: SizingMode };
+  const config = selected[0].config as { sizingMode?: SizingMode; size?: number };
 
   return (
     <>
@@ -104,6 +105,15 @@ function Body({
           <SizingToggle
             mode={config.sizingMode ?? manifest.sizing.mode}
             onChange={(mode) => setWidgetConfig(ids, { sizingMode: mode })}
+          />
+        )}
+
+        {manifest && isTextSized(manifest) && (
+          <TypeSizeField
+            widgetId={selected[0].id}
+            mode={config.sizingMode ?? manifest.sizing.mode}
+            size={config.size}
+            onChange={(size) => setWidgetConfig(ids, { size })}
           />
         )}
 
@@ -135,10 +145,10 @@ function Body({
 }
 
 /**
- * The Fit to box / Fixed size control — docs/sizing.md §2, "The toggle."
- * Generic, in the panel itself, rather than duplicated into every
+ * The Fit to box / Fixed size / Hug height control — docs/sizing.md §2, "The
+ * toggle." Generic, in the panel itself, rather than duplicated into every
  * userToggleable widget's own Settings.tsx: the manifest is what decides
- * whether it shows, and every widget that opts in gets it for free by
+ * whether it shows, and every widget that opts in gets all three for free by
  * writing `sizingMode` into its config schema.
  */
 function SizingToggle({
@@ -156,6 +166,7 @@ function SizingToggle({
           [
             { value: "fit" as const, label: "Fit to box" },
             { value: "fixed" as const, label: "Fixed size" },
+            { value: "hug" as const, label: "Hug height" },
           ]
         ).map((option) => (
           <button
@@ -172,5 +183,75 @@ function SizingToggle({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * A widget counts as "text-sized" — worth showing a type-size field for — when
+ * its category is one docs/sizing.md actually writes about type filling or
+ * declaring a size: `text` and `time`. Not a manifest flag, because no widget
+ * needs one yet; `media` (Image, and later Video/Gallery/Collage) is exactly
+ * the category docs/sizing.md §2 already carves out as having no font size for
+ * a mode to drive. This heuristic is fine for the two widgets that exist
+ * today — worth promoting to an explicit manifest field the day a `content`-
+ * category widget (a Zmanim table, with a size per row rather than one
+ * scalar) needs a genuinely different shape than a single number.
+ */
+function isTextSized(manifest: WidgetManifest<never>): boolean {
+  return manifest.category === "text" || manifest.category === "time";
+}
+
+/**
+ * An objective, visible type size — docs/sizing.md's properties-panel
+ * requirement, in board design units in every sizing mode. In `fit` mode
+ * it's the computed result, read live off the DOM and shown read-only,
+ * because the box is what's authoritative there; the field exists so an
+ * author can *read* the number, not set it. In `fixed`/`hug` it's the
+ * declared value driving the render, so it's the editable field this used to
+ * be per-widget (e.g. clock/Settings.tsx's old "Size" field) before every
+ * mode needed the same treatment in one place.
+ */
+function TypeSizeField({
+  widgetId,
+  mode,
+  size,
+  onChange,
+}: {
+  widgetId: string;
+  mode: SizingMode;
+  size: number | undefined;
+  onChange: (size: number) => void;
+}) {
+  // Only meaningful in fit mode, but calling the hook unconditionally keeps
+  // Rules of Hooks simple — reading it here costs nothing when unused.
+  const fitted = useElementFontSize(widgetId);
+
+  if (mode === "fit") {
+    return (
+      <label className="mb-3 flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Type size</span>
+        <input
+          type="number"
+          disabled
+          value={fitted ?? ""}
+          title="Set by the box in fit mode — drag the box to change it."
+          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <label className="mb-3 flex flex-col gap-1">
+      <span className={PANEL_LABEL}>Type size</span>
+      <input
+        type="number"
+        min={8}
+        max={400}
+        value={size ?? ""}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className={`${PANEL_CONTROL} numeric`}
+      />
+    </label>
   );
 }
