@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { ACTIVE_ORG_COOKIE, getMemberships, requireUser } from "@/lib/orgs";
+import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, requireUser } from "@/lib/orgs";
 import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,6 +16,36 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
+}
+
+/**
+ * Both-or-neither latitude/longitude, in range — shared by org creation and
+ * the settings form, so the two never drift into disagreeing about what a
+ * valid coordinate pair is.
+ *
+ * A half-set pair is worse than neither: candle lighting and the Hebrew-date
+ * widgets would think they're configured and compute nonsense (plan.md §3b).
+ */
+function parseLocationFields(formData: FormData): { latitude: number | null; longitude: number | null } | { error: string } {
+  const latitudeRaw = String(formData.get("latitude") ?? "").trim();
+  const longitudeRaw = String(formData.get("longitude") ?? "").trim();
+
+  if (Boolean(latitudeRaw) !== Boolean(longitudeRaw)) {
+    return { error: "Enter both latitude and longitude, or leave both blank." };
+  }
+  if (!latitudeRaw && !longitudeRaw) {
+    return { latitude: null, longitude: null };
+  }
+
+  const latitude = Number(latitudeRaw);
+  const longitude = Number(longitudeRaw);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return { error: "Latitude has to be a number between -90 and 90." };
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return { error: "Longitude has to be a number between -180 and 180." };
+  }
+  return { latitude, longitude };
 }
 
 export type CreateOrgState = { error?: string };
@@ -34,31 +64,13 @@ export async function createOrg(
 
   const name = String(formData.get("name") ?? "").trim();
   const timezone = String(formData.get("timezone") ?? "").trim();
-  const latitudeRaw = String(formData.get("latitude") ?? "").trim();
-  const longitudeRaw = String(formData.get("longitude") ?? "").trim();
 
   if (!name) return { error: "Give the shul a name." };
   if (!timezone) return { error: "Pick a timezone." };
 
-  // Both or neither. One without the other is worse than neither — a
-  // half-set coordinate pair would let candle lighting and the Hebrew-date
-  // widgets think they're configured and compute nonsense.
-  if (Boolean(latitudeRaw) !== Boolean(longitudeRaw)) {
-    return { error: "Enter both latitude and longitude, or leave both blank." };
-  }
-
-  let latitude: number | null = null;
-  let longitude: number | null = null;
-  if (latitudeRaw && longitudeRaw) {
-    latitude = Number(latitudeRaw);
-    longitude = Number(longitudeRaw);
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-      return { error: "Latitude has to be a number between -90 and 90." };
-    }
-    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-      return { error: "Longitude has to be a number between -180 and 180." };
-    }
-  }
+  const location = parseLocationFields(formData);
+  if ("error" in location) return { error: location.error };
+  const { latitude, longitude } = location;
 
   const base = slugify(name) || "shul";
   const supabase = await createClient();
@@ -117,6 +129,55 @@ export async function createOrg(
   }
 
   return { error: "That name kept colliding. Try a slightly different one." };
+}
+
+export type UpdateOrgSettingsState = { error?: string; saved?: boolean };
+
+/**
+ * Updates the active org's name, timezone and coordinates — the one place
+ * these can be changed after signup. Location especially: candle lighting,
+ * Havdalah and the Hebrew/Daf-Yomi widgets are wrong without it (plan.md
+ * §3b), and org creation is otherwise the only place that ever asked.
+ *
+ * The RLS policy on `orgs` already requires admin to update the row; this
+ * check is defence in depth so a non-admin gets the same sentence-case
+ * error the form would show for any other failure, rather than a raw
+ * Postgres permission message.
+ */
+export async function updateOrgSettings(
+  _previous: UpdateOrgSettingsState,
+  formData: FormData,
+): Promise<UpdateOrgSettingsState> {
+  const org = await requireActiveOrg();
+  if (!hasRoleAtLeast(org.role, "admin")) {
+    return { error: "Only an owner or admin can change shul settings." };
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  const timezone = String(formData.get("timezone") ?? "").trim();
+
+  if (!name) return { error: "Give the shul a name." };
+  if (!timezone) return { error: "Pick a timezone." };
+
+  const location = parseLocationFields(formData);
+  if ("error" in location) return { error: location.error };
+  const { latitude, longitude } = location;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("orgs")
+    .update({ name, timezone, latitude, longitude })
+    .eq("id", org.orgId);
+
+  if (error) {
+    return { error: `That didn't save: ${error.message}. Check the fields and try again.` };
+  }
+
+  // The nav rail shows the org's name and every page under this layout reads
+  // its own fresh copy of the row, so a rename or a timezone change should
+  // not need a hard reload to show up.
+  revalidatePath("/", "layout");
+  return { saved: true };
 }
 
 /**
