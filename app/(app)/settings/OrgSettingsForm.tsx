@@ -119,9 +119,9 @@ export function OrgSettingsForm({
 
             It wrote orgs.zmanim_location_id, and its purpose was Chabad's
             locationtype=1 — their own opaque internal city numbering, for a
-            shul with no US ZIP. Nothing can use it: lib/zmanim/chabad-adapter
-            .ts only ever sends the locationtype resolveChabadLocation hands
-            it, and every path a gabbai can reach resolves to =2 (a ZIP).
+            shul with no US ZIP. Nothing can use it: lib/zmanim/chabad-embed
+            .ts hardcodes locationtype=2, and every path a gabbai can reach
+            resolves to a ZIP anyway.
             There was also no way for a gabbai to tell the two kinds of
             number apart, so the field collected ZIPs — which resolve as
             city ids, silently asking Chabad for the wrong place if the ZIP

@@ -1,5 +1,5 @@
 import "server-only";
-import { fetchChabadZmanim } from "./chabad-adapter";
+import { fetchChabadEmbed } from "./chabad-embed.ts";
 import type { ChabadLocation } from "./location";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
@@ -7,6 +7,10 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * Warming one (chabad, location) pair into `zmanim_cache` — plan.md §5c's
  * "warm 90 days ahead on a cron; bundle reads from cache only, never calls
  * a provider inline."
+ *
+ * Reads Chabad.org's PUBLISHED candle-lighting embed (chabad-embed.ts),
+ * which is what Chabad.org pointed at when asked. The old Get_Zmanim JSON
+ * reader is kept but no longer called from here — see chabad-adapter.ts.
  *
  * EXTRACTED SO THERE IS ONE COPY. Two things warm this cache: the daily
  * cron (app/api/cron/warm-zmanim/route.ts) and the "Fetch now" button in
@@ -27,10 +31,24 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * does with its own client.
  */
 
-/** Chabad's own endpoint decides nothing here; 90 days is plan.md §5c's
- *  figure, and it is what makes an unplugged screen able to come back on
- *  its own within three months (§3b). */
+/** 90 days is plan.md §5c's figure, and it is what makes an unplugged
+ *  screen able to come back on its own within three months (§3b). */
 const WARM_DAYS_AHEAD = 90;
+
+/**
+ * The embed's own unit of coverage is weeks, not days — `weeks=4` returned
+ * 13 entries spanning 24 days in the captured fixture, so this is
+ * `ceil(90 / 7)` and nothing cleverer.
+ *
+ * WHETHER THE ENDPOINT HONOURS 13 IS UNVERIFIED — only weeks=4 has been
+ * observed live. Nothing here assumes it does: whatever comes back is
+ * cached, the span is logged, and any date the response doesn't cover
+ * falls through to §5c's Hebcal path with the "showing calculated times"
+ * indicator. So a cap below 13 degrades the window rather than breaking
+ * it, and shows up in the log as a short `lastDate` instead of as a
+ * silently thin cache.
+ */
+const WARM_WEEKS = Math.ceil(WARM_DAYS_AHEAD / 7);
 
 export type WarmOutcome =
   | {
@@ -73,28 +91,33 @@ export async function warmChabadLocation(
   const db = serviceClientOrNull();
   if (!db) return { status: "failed", error: "Supabase isn't configured on this deployment." };
 
-  const today = new Date();
-  const startDate = today.toISOString().slice(0, 10);
-  const endDate = new Date(today.getTime() + WARM_DAYS_AHEAD * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-
+  // No explicit date range: the embed takes `weeks` and decides its own
+  // window from today, which is why WARM_DAYS_AHEAD only survives above as
+  // the input to WARM_WEEKS.
   try {
-    const { times, rawResponseByDate } = await fetchChabadZmanim({
+    const { times, raw, location, entries, firstDate, lastDate } = await fetchChabadEmbed({
       locationId: target.locationId,
-      locationType: target.locationType,
-      startDate,
-      endDate,
+      weeks: WARM_WEEKS,
       timeZone: target.timezone,
     });
 
-    const rows = Object.keys(rawResponseByDate).map((date) => ({
+    // One row per date the response actually carried a value for. Unlike
+    // the JSON endpoint, the embed only returns candle-lighting and
+    // Shabbos-end days at all — there are no ordinary weekdays in it to
+    // write empty rows for, so the row count IS the useful-day count.
+    //
+    // `raw_response` gets the whole untouched body on every row rather
+    // than a per-date slice: the embed is one document covering the range,
+    // it does not decompose into per-day payloads, and at ~6KB for four
+    // weeks the duplication is cheaper than losing the ability to see what
+    // was served.
+    const rows = Object.keys(times).map((date) => ({
       provider: "chabad" as const,
       location_id: target.cacheKey,
       date,
       timezone: target.timezone,
-      times: times[date] ?? {},
-      raw_response: rawResponseByDate[date] as never,
+      times: times[date],
+      raw_response: raw as never,
       fetched_at: new Date().toISOString(),
     }));
 
@@ -104,6 +127,20 @@ export async function warmChabadLocation(
         .upsert(rows, { onConflict: "provider,location_id,date" });
       if (error) throw new Error(error.message);
     }
+
+    console.info(
+      "[chabad-embed] " +
+        JSON.stringify({
+          cacheKey: target.cacheKey,
+          weeks: WARM_WEEKS,
+          location,
+          entries,
+          firstDate,
+          lastDate,
+          rows: rows.length,
+          bytes: raw.length,
+        }),
+    );
 
     const daysWithCandleLighting = Object.values(times).filter((day) => day.candle_lighting).length;
     return {

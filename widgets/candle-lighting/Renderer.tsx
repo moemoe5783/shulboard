@@ -60,6 +60,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
     resolution && {
       time: resolution.time,
       fellBackToHebcal: resolution.fellBackToHebcal,
+      source: resolution.source,
       // A Hebcal-produced value carries its own event name (a Yom Tov's,
       // not just "Candle lighting"); a value read out of Chabad's cache
       // doesn't, so it gets the generic label. Note this makes a
@@ -100,7 +101,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   }
   if (!now || !resolved) return null;
 
-  const { label, time: eventTime, fellBackToHebcal } = resolved;
+  const { label, time: eventTime, fellBackToHebcal, source } = resolved;
   const time = formatTimeOfDay(eventTime, { hour12: config.hour12, timeZone: location.timeZone });
   const countdown = formatCountdown(eventTime.getTime() - now.getTime());
 
@@ -152,35 +153,57 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         )}
       </div>
 
-      {fellBackToHebcal && <CalculatedTimesNotice canvas={canvas} />}
+      {/* Mutually exclusive by construction: a fallback value is Hebcal's,
+          so `source` is never "chabad" when `fellBackToHebcal` is true.
+          They share the corner and can never collide there. */}
+      {fellBackToHebcal && <CornerNotice canvas={canvas}>Showing calculated times</CornerNotice>}
+      {source === "chabad" && <CornerNotice canvas={canvas}>Times by Chabad.org</CornerNotice>}
     </div>
   );
 }
 
 /**
- * plan.md §5c: "surface a subtle 'showing calculated times' indicator rather
- * than failing silently, since a wrong zman is worse than a flagged one."
- * Shown only when the screen's provider is Chabad and its cache had nothing
- * for the date about to happen, so this time is Hebcal's computation
- * standing in — never on hebcal or manual, which are the computed path by
- * configuration rather than by failure.
+ * The one corner of this widget that is the PRODUCT speaking, not the shul.
  *
- * This is the RENDERER'S OWN CHROME, not board content — design.md §1b's
- * middle bullet, the same category as EmptyLocation and BoardRenderer's
- * unknown-widget notice. So it follows the chrome rules: one radius from
- * the two-value scale (`rounded-control`), weight 400, sentence case, no
- * raw color. It borrows `currentColor` rather than naming a token colour
- * for the one reason those siblings do — a board's theme sets its own text
- * colour on any ground it likes, and a fixed `--ink` here would be
+ * Two messages use it, never both at once:
+ *
+ * - "Showing calculated times" — plan.md §5c: "surface a subtle indicator
+ *   rather than failing silently, since a wrong zman is worse than a
+ *   flagged one." Shown when the screen's provider is Chabad and its cache
+ *   had nothing for the date about to happen, so this time is Hebcal's
+ *   computation standing in.
+ * - "Times by Chabad.org" — the attribution condition on Chabad.org's
+ *   published candle-lighting embed, whose own markup carries a "Shabbat
+ *   Times Powered by Chabad.org" link (lib/zmanim/chabad-embed.ts). This
+ *   is a licence term, not decoration.
+ *
+ * WHY IT LIVES INSIDE THE WIDGET, per instance, rather than once per board:
+ * it travels with the data it credits. A board showing two zmanim widgets
+ * from different sources credits each correctly, and the credit disappears
+ * on its own the moment the value stops being Chabad's — which is exactly
+ * what happens on a fallback. A single board-level credit would be wrong
+ * in both of those cases and would put product chrome somewhere the shul
+ * cannot move it.
+ *
+ * NOT USER-REMOVABLE, and there is deliberately no config flag to hide it.
+ * The board document is the shul's to author (design.md §1b), but this is
+ * not part of it — a shul cannot license away Chabad.org's condition by
+ * unticking a box, and an editor-only credit would breach it precisely
+ * where the publication happens, on the screen.
+ *
+ * This is the renderer's own chrome, so it follows CLAUDE.md's chrome
+ * rules — one radius from the two-value scale, weight 400, sentence case,
+ * no raw colour. It borrows `currentColor` for the same reason
+ * EmptyLocation and the unknown-widget notice do: a board sets its own
+ * text colour on any ground it likes, and a fixed `--ink` here would be
  * invisible on half of them.
  *
- * Inlined in this file rather than extracted: one caller, and CLAUDE.md's
- * own preference. Absolutely positioned, deliberately — `useFitFontSize`
- * measures `contentRef` against `boxRef`, so anything added to the normal
- * flow would shrink the time itself and change every existing board's
- * rendering the moment a cache went cold.
+ * Absolutely positioned, deliberately — `useFitFontSize` measures
+ * `contentRef` against `boxRef`, so anything in the normal flow would
+ * shrink the time itself the moment a cache went cold or a provider
+ * changed.
  */
-function CalculatedTimesNotice({ canvas }: { canvas: { width: number } }) {
+function CornerNotice({ canvas, children }: { canvas: { width: number }; children: string }) {
   return (
     <span
       className="rounded-control border-current/25 pointer-events-none absolute right-0 bottom-0 border font-regular whitespace-nowrap opacity-60"
@@ -189,7 +212,7 @@ function CalculatedTimesNotice({ canvas }: { canvas: { width: number } }) {
         padding: `${boardLength(2, canvas.width)} ${boardLength(6, canvas.width)}`,
       }}
     >
-      Showing calculated times
+      {children}
     </span>
   );
 }

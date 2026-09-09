@@ -1,19 +1,31 @@
 import "server-only";
+import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
 
 /*
- * Chabad.org's undocumented zmanim endpoint, read into this project's own
- * `{iso, display}` vocabulary — plan.md §5c / §10.4.
+ * Chabad.org's undocumented Get_Zmanim endpoint, read into this project's
+ * own `{iso, display}` vocabulary — plan.md §5c.
  *
- * UNOFFICIAL. NO ToS. PROVISIONAL. There is no published contract for this
- * endpoint — plan.md §10.4 names the conversation with Chabad.org that
- * hasn't happened yet, covering this exact access. This module exists so
- * the infrastructure is ready the day that conversation resolves, not as a
- * claim that scraping it today is settled or permitted. It is gated off by
- * default (ZMANIM_CHABAD_ENABLED, docs/environment.md) for exactly this
- * reason — this comment is documentation, not the gate itself; nothing
- * here checks it, because a runtime check on a comment is theater. Whoever
- * flips the flag on is the one who has had that conversation, or decided
- * not to wait for it.
+ * NOT WIRED TO ANYTHING. THIS IS NOT DEAD CODE, AND IT IS NOT THE CANDLE
+ * LIGHTING PATH ANY MORE.
+ *
+ * plan.md §10.4's conversation happened. Asked directly, Chabad.org
+ * pointed at their PUBLISHED candle-lighting embed rather than at this
+ * endpoint, so candle lighting now goes through `chabad-embed.ts` — a
+ * supported, public integration surface with an attribution condition —
+ * and nothing calls this module. That closes §10.4 for candle lighting.
+ *
+ * It is kept, rather than deleted, because it remains the only source
+ * anyone has found for Chabad-sourced zmanim BEYOND candle lighting: alos,
+ * netz, the shma and tfila deadlines, shkia, tzeis — the thirteen types
+ * the captured JSON response carries on every day. That is a separate,
+ * still-unresolved conversation (plan.md §5c): the published alternative
+ * is a zmanim RSS feed that returns one day only, with no date parameter,
+ * so it cannot fill a 90-day cache. Until that is settled, this endpoint
+ * stays undocumented and unsanctioned and this module stays uncalled —
+ * wiring it back up is a decision about permission, not a refactor.
+ *
+ * `ZMANIM_CHABAD_ENABLED` (docs/environment.md) still gates the whole
+ * Chabad provider, embed included.
  *
  * THE RESPONSE SHAPE BELOW IS CONFIRMED, not reconstructed — checked by
  * hand against a real 4-day response for ZIP 33710 (Thu 9/10/2026 through
@@ -80,55 +92,6 @@ function parseDisplayDate(value: unknown): { year: number; month: number; day: n
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
   if (!match) return null;
   return { month: Number(match[1]), day: Number(match[2]), year: Number(match[3]) };
-}
-
-/** "7:22 PM" -> {hour: 19, minute: 22}. `Zman` is a plain rendered time of
- *  day, nothing more — no date, no timezone marker. */
-function parseZmanTime(value: unknown): { hour: number; minute: number } | null {
-  if (typeof value !== "string") return null;
-  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value.trim());
-  if (!match) return null;
-  const minute = Number(match[2]);
-  let hour = Number(match[1]) % 12;
-  if (/pm/i.test(match[3])) hour += 12;
-  if (hour > 23 || minute > 59) return null;
-  return { hour, minute };
-}
-
-/**
- * A wall-clock date and time in a specific IANA zone, as the UTC instant it
- * actually refers to — the exact inverse of lib/hebrew/civil-day.ts's
- * `civilDateInZone` (Date -> wall-clock parts in a zone), needed here
- * because this project has no library for the reverse direction.
- *
- * The standard offset-by-round-trip technique: guess the instant by
- * treating the wall-clock numbers as if they were already UTC, ask
- * `Intl.DateTimeFormat` what wall-clock time that guess actually displays
- * as in the target zone, and shift the guess by the difference. One pass
- * is enough here — the zone's offset from UTC is constant across the few
- * minutes this could be off by on a first guess, so a second pass could
- * only change the answer at a DST transition falling in that exact
- * window, which candle lighting never does (DST changes happen at 2 AM,
- * not at sunset).
- */
-function zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date {
-  const guess = Date.UTC(year, month - 1, day, hour, minute);
-
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(guess));
-
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  const shownAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-
-  return new Date(guess - (shownAsUtc - guess));
 }
 
 /**
