@@ -43,7 +43,7 @@ export type BoardEditorProps = {
   name: string;
   canvas: { width: number; height: number };
   doc: unknown;
-  /** The org's own coordinates, for previewing candle lighting, Havdalah and
+  /** The org's own coordinates, for previewing candle lighting and
    *  sunset-rollover widgets — see page.tsx's own comment on why the org
    *  rather than any one screen. `null` when the org hasn't set a location. */
   location: BoardLocation | null;

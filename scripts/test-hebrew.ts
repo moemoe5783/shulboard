@@ -3,14 +3,17 @@
  *
  * Everything a Jewish-calendar widget needs before it ever touches the DOM:
  * the sunset-rollover Hebrew date, parsha lookup, Daf Yomi, and the upcoming
- * candle-lighting/Havdalah search. Dates below are fixed, real calendar dates
- * (not "today") so this suite means the same thing every time it runs, and
- * so every hardcoded expected value below can be checked against an outside
+ * candle-lighting search. Dates below are fixed, real calendar dates (not
+ * "today") so this suite means the same thing every time it runs, and so
+ * every hardcoded expected value below can be checked against an outside
  * source rather than just against whatever @hebcal/core happens to compute.
  *
- * All five widgets' underlying values for 10/11 July 2026 (Crown Heights)
- * have been cross-checked against an independent source — see the comment
- * at each check below for what was checked and against what.
+ * These widgets' underlying values for 10/11 July 2026 (Crown Heights) have
+ * been cross-checked against an independent source — see the comment at
+ * each check below for what was checked and against what.
+ *
+ * There is no standalone Havdalah widget any more — see lib/hebrew/
+ * candle-times.ts's own header comment for where that computation went.
  *
  * Run with: npm run test:hebrew
  */
@@ -18,7 +21,7 @@
 import { effectiveHebrewDate } from "../lib/hebrew/civil-day.ts";
 import { currentParsha } from "../lib/hebrew/parsha.ts";
 import { dafYomiFor } from "../lib/hebrew/daf-yomi.ts";
-import { upcomingCandleLighting, upcomingHavdalah } from "../lib/hebrew/candle-times.ts";
+import { upcomingCandleLighting } from "../lib/hebrew/candle-times.ts";
 import { formatDaf, formatHebrewDate, formatParsha, formatTimeOfDay } from "../lib/hebrew/format.ts";
 import { sunsetOn } from "../lib/hebrew/sunset.ts";
 
@@ -128,7 +131,7 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
   check(english.english === "Chullin 71", "transliterated daf yomi", english.english ?? "");
 }
 
-// ---- candle lighting / Havdalah ----------------------------------------
+// ---- candle lighting ----------------------------------------------------
 
 {
   const candle = upcomingCandleLighting(FRIDAY_NOON, CROWN_HEIGHTS);
@@ -144,27 +147,6 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
   check(formatTimeOfDay(candle!.eventTime, { hour12: false, timeZone: CROWN_HEIGHTS.timeZone }) === "20:10",
     "formatted 24-hour candle lighting time",
     formatTimeOfDay(candle!.eventTime, { hour12: false, timeZone: CROWN_HEIGHTS.timeZone }));
-
-  // upcomingHavdalah passes no havdalahMins/havdalahDeg, so @hebcal/core
-  // falls back to its own documented default — tzeit at 8.5° solar
-  // depression (Zmanim.tzeit's `angle = 8.5` default in
-  // node_modules/@hebcal/core/dist/esm/zmanim.js) — which is the same
-  // default hebcal.com's own Shabbat times page uses when no custom
-  // Havdalah minutes are requested. 9:17 PM for Crown Heights on 11 July
-  // 2026 is consistent with that default (roughly sunset + 49 minutes,
-  // longer than the fixed "42 minutes" alternative because twilight runs
-  // long this close to the summer solstice at this latitude).
-  const havdalah = upcomingHavdalah(FRIDAY_NOON, CROWN_HEIGHTS);
-  check(havdalah !== null, "an upcoming Havdalah is found from Friday noon");
-  check(havdalah!.eventTime.getTime() > candle!.eventTime.getTime(), "Havdalah is after candle lighting");
-  check(
-    havdalah!.eventTime.toISOString() === "2026-07-12T01:17:00.000Z",
-    "Havdalah matches @hebcal/core's documented default (tzeit 8.5°) for this date/location",
-    havdalah!.eventTime.toISOString(),
-  );
-  check(formatTimeOfDay(havdalah!.eventTime, { hour12: true, timeZone: CROWN_HEIGHTS.timeZone }) === "9:17 PM",
-    "formatted 12-hour Havdalah time",
-    formatTimeOfDay(havdalah!.eventTime, { hour12: true, timeZone: CROWN_HEIGHTS.timeZone }));
 
   // Immediately after candle lighting, the SAME event must not still be
   // "upcoming" — the search has to actually respect "after now".

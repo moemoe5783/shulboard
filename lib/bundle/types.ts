@@ -77,8 +77,8 @@ export type BundlePayload = {
     /** The screen's own coordinates if it has them, else the org's, else
      *  null — resolved once at build time (lib/bundle/build.ts) so the
      *  display never has to know there were two tiers to fall back through.
-     *  Candle lighting, Havdalah and a sunset-rollover Hebrew date are wrong
-     *  without this (plan.md §3b). */
+     *  Candle lighting and a sunset-rollover Hebrew date are wrong without
+     *  this (plan.md §3b). */
     latitude: number | null;
     longitude: number | null;
     hebrewPrefs: Record<string, unknown>;

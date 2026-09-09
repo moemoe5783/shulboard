@@ -5,9 +5,9 @@ import { createContext, useContext, type ReactNode } from "react";
 /*
  * Where a board is being shown — plan.md §3b: "Clock, date, Hebrew date,
  * parsha, daf yomi, candle lighting... computed in the browser from lat/long +
- * system clock." Candle lighting, Havdalah, and a sunset-rollover Hebrew date
- * all need real coordinates; nothing about them can be computed from the
- * screen's timezone alone.
+ * system clock." Candle lighting and a sunset-rollover Hebrew date both need
+ * real coordinates; nothing about them can be computed from the screen's
+ * timezone alone.
  *
  * A CONTEXT, NOT A WIDGET PROP. widgets/types.ts's WidgetRendererProps is
  * `{config, canvas}` and nothing else — CLAUDE.md is explicit that adding a
@@ -26,10 +26,10 @@ import { createContext, useContext, type ReactNode } from "react";
 export type BoardLocation = {
   latitude: number;
   longitude: number;
-  /** Olson tzid, e.g. "America/New_York" — sunset, candle lighting and
-   *  Havdalah all have to be computed in the location's own zone, never the
-   *  viewing device's, or an editor open in a different city renders the
-   *  wrong moment. */
+  /** Olson tzid, e.g. "America/New_York" — sunset and candle lighting both
+   *  have to be computed in the location's own zone, never the viewing
+   *  device's, or an editor open in a different city renders the wrong
+   *  moment. */
   timeZone: string;
 };
 

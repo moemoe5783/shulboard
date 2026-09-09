@@ -135,9 +135,9 @@ export type UpdateOrgSettingsState = { error?: string; saved?: boolean };
 
 /**
  * Updates the active org's name, timezone and coordinates — the one place
- * these can be changed after signup. Location especially: candle lighting,
- * Havdalah and the Hebrew/Daf-Yomi widgets are wrong without it (plan.md
- * §3b), and org creation is otherwise the only place that ever asked.
+ * these can be changed after signup. Location especially: candle lighting
+ * and the Hebrew-date/Daf-Yomi widgets are wrong without it (plan.md §3b),
+ * and org creation is otherwise the only place that ever asked.
  *
  * The RLS policy on `orgs` already requires admin to update the row; this
  * check is defence in depth so a non-admin gets the same sentence-case
