@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { updateOrgSettings, type UpdateOrgSettingsState } from "../actions";
@@ -10,6 +10,10 @@ export function OrgSettingsForm({
   timezone,
   latitude,
   longitude,
+  zmanimProvider,
+  postalCode,
+  zmanimLocationId,
+  chabadEnabled,
   timezones,
   canEdit,
 }: {
@@ -17,6 +21,10 @@ export function OrgSettingsForm({
   timezone: string;
   latitude: number | null;
   longitude: number | null;
+  zmanimProvider: string;
+  postalCode: string | null;
+  zmanimLocationId: string | null;
+  chabadEnabled: boolean;
   timezones: string[];
   canEdit: boolean;
 }) {
@@ -24,6 +32,9 @@ export function OrgSettingsForm({
     updateOrgSettings,
     {},
   );
+  // Local only, to decide whether the Chabad location field shows — every
+  // other field here stays an uncontrolled input, same as before this one.
+  const [provider, setProvider] = useState(zmanimProvider);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -82,6 +93,39 @@ export function OrgSettingsForm({
           real time rather than nothing — look your shul&rsquo;s up on a map
           if you don&rsquo;t have it handy.
         </p>
+
+        <SelectField
+          id="zmanimProvider"
+          name="zmanimProvider"
+          label="Zmanim source"
+          defaultValue={zmanimProvider}
+          onChange={(event) => setProvider(event.target.value)}
+          hint="What candle lighting and other zmanim widgets calculate from, unless a widget picks its own."
+        >
+          <option value="hebcal">Hebcal</option>
+          {chabadEnabled && <option value="chabad">Chabad.org</option>}
+          <option value="manual">Manual</option>
+        </SelectField>
+
+        <Field
+          id="postalCode"
+          name="postalCode"
+          label="ZIP code"
+          defaultValue={postalCode ?? ""}
+          placeholder="11213"
+          hint="US only. Chabad.org resolves its own times from this — no separate lookup needed."
+        />
+
+        {provider === "chabad" && (
+          <Field
+            id="zmanimLocationId"
+            name="zmanimLocationId"
+            label="Chabad.org location"
+            defaultValue={zmanimLocationId ?? ""}
+            placeholder="370"
+            hint="Only needed without a US ZIP above. Copy the number from your own chabad.org candle-lighting page URL (…/locationId/<this>/locationType/…)."
+          />
+        )}
       </fieldset>
 
       {canEdit ? (

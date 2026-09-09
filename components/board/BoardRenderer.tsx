@@ -2,6 +2,7 @@
 
 import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
 import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
+import { BoardZmanimProvider, type BoardZmanim } from "@/lib/board-zmanim";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import { boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
@@ -52,6 +53,12 @@ export type BoardRendererProps = {
    * widgets are responsible for their own empty state in that case.
    */
   location?: BoardLocation | null;
+  /** The board's zmanim provider config — lib/board-zmanim.tsx. Omitted
+   *  wherever nothing resolves it (editor-lab, font-parity, any page that
+   *  doesn't carry a real org/screen) falls back to that module's own
+   *  hebcal default, which is what every one of those pages already
+   *  behaves as. */
+  zmanim?: BoardZmanim | null;
 };
 
 /** Widget types the document may contain that are not widgets. A group is a row
@@ -65,33 +72,36 @@ export function BoardRenderer({
   className = "",
   style,
   location = null,
+  zmanim = null,
 }: BoardRendererProps) {
   return (
     <BoardLocationProvider location={location}>
-      <div
-        className={`relative overflow-hidden ${className}`}
-        style={{
-          // The container every board length is measured against. `cqw`
-          // resolves to the nearest container ancestor, so this must be the
-          // only one between the board root and a widget — otherwise a
-          // widget's type would silently start scaling against the widget
-          // instead of the board.
-          containerType: "size",
-          ...boardRootStyle(doc),
-          ...style,
-        }}
-      >
-        {doc.widgets
-          .filter((widget) => !widget.hidden && !NON_RENDERING_TYPES.has(widget.type))
-          .map((widget) => (
-            <WidgetFrame
-              key={widget.id}
-              widget={widget}
-              canvas={canvas}
-              extra={widgetProps?.(widget)}
-            />
-          ))}
-      </div>
+      <BoardZmanimProvider zmanim={zmanim}>
+        <div
+          className={`relative overflow-hidden ${className}`}
+          style={{
+            // The container every board length is measured against. `cqw`
+            // resolves to the nearest container ancestor, so this must be the
+            // only one between the board root and a widget — otherwise a
+            // widget's type would silently start scaling against the widget
+            // instead of the board.
+            containerType: "size",
+            ...boardRootStyle(doc),
+            ...style,
+          }}
+        >
+          {doc.widgets
+            .filter((widget) => !widget.hidden && !NON_RENDERING_TYPES.has(widget.type))
+            .map((widget) => (
+              <WidgetFrame
+                key={widget.id}
+                widget={widget}
+                canvas={canvas}
+                extra={widgetProps?.(widget)}
+              />
+            ))}
+        </div>
+      </BoardZmanimProvider>
     </BoardLocationProvider>
   );
 }

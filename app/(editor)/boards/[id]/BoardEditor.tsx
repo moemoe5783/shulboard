@@ -11,6 +11,7 @@ import { TransformFrame } from "@/components/editor/TransformFrame";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import type { BoardDoc } from "@/lib/board-doc";
 import type { BoardLocation } from "@/lib/board-location";
+import type { BoardZmanim } from "@/lib/board-zmanim";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
 import { saveBoardDoc } from "./actions";
 import { PublishControls, type PublishState } from "./PublishControls";
@@ -47,6 +48,12 @@ export type BoardEditorProps = {
    *  sunset-rollover widgets — see page.tsx's own comment on why the org
    *  rather than any one screen. `null` when the org hasn't set a location. */
   location: BoardLocation | null;
+  /** The org's resolved zmanim provider config, same "org stands in for
+   *  any one screen" reasoning as `location` above — see page.tsx.
+   *  Omitted (not just `null`) falls back to lib/board-zmanim.tsx's own
+   *  hebcal default, which every pre-existing caller of this component
+   *  effectively already was. */
+  zmanim?: BoardZmanim | null;
   /** The board's publish state as of page load — see PublishControls.tsx.
    *  Kept live afterward by each autosave's result and by publishing or
    *  discarding directly, never re-fetched. */
@@ -59,6 +66,7 @@ export function BoardEditor({
   canvas,
   doc,
   location,
+  zmanim,
   publishState: initialPublishState,
 }: BoardEditorProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -311,6 +319,7 @@ export function BoardEditor({
                 doc={liveDoc}
                 canvas={canvas}
                 location={location}
+                zmanim={zmanim}
                 className="h-full w-full"
                 widgetProps={(widget) => ({
                   "data-widget-id": widget.id,

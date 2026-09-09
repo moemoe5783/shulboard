@@ -140,6 +140,26 @@ export function formatEventLabel(
   return { hebrew, english };
 }
 
+/**
+ * The same "Candle lighting" label as `formatEventLabel`, for a candle
+ * lighting time that didn't come from a `CandleLightingEvent` — Chabad's
+ * cached value is a plain `{iso, display}` pair (zmanim_cache.times) with
+ * no hebcal Event object to call `.renderBrief()` on. The label text is
+ * provider-independent — it names the concept, not the source of the time
+ * — so this reaches the same translation table `renderBrief` itself reads
+ * from (`Locale.lookupTranslation`, the same mechanism `formatDaf` already
+ * uses for tractate names) rather than hardcoding a translated string of
+ * its own to keep in sync with @hebcal/core's.
+ */
+export function formatCandleLightingLabel(opts: { script: HebrewScript; nekudos: boolean }): ScriptedText {
+  const english = opts.script !== "hebrew" ? "Candle lighting" : null;
+  const hebrew =
+    opts.script !== "transliterated"
+      ? (Locale.lookupTranslation("Candle lighting", hebrewLocale(opts.nekudos)) ?? "Candle lighting")
+      : null;
+  return { hebrew, english };
+}
+
 /** A clock-style time of day, in a specific zone — candle lighting and
  *  Havdalah both need exactly this, formatted the same way Clock formats
  *  its own display (Intl, not the library's own locale-formatted string,
