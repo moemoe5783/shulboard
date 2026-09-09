@@ -15,13 +15,45 @@ import "server-only";
  * flips the flag on is the one who has had that conversation, or decided
  * not to wait for it.
  *
- * The exact response shape below (Days / TimeGroups / Items, which item is
- * candle lighting) is reconstructed from a third-party open-source client
- * for this same endpoint (`chabad-org-zmanim` on npm) rather than from a
- * live call — this sandbox cannot reach chabad.org. VERIFY AGAINST ONE REAL
- * RESPONSE before this ever runs against a real shul. `rawResponse` is
- * stored untouched specifically so a shape mismatch is diagnosable after
- * the fact rather than a silent empty `times`.
+ * THE RESPONSE SHAPE BELOW IS CONFIRMED, not reconstructed — checked by
+ * hand against a real 4-day response for ZIP 33710 (Thu 9/10/2026 through
+ * Sun 9/13/2026, spanning an ordinary Thursday and Erev/both days of Rosh
+ * Hashanah), test/fixtures/chabad-zmanim-33710-sep2026.json, exercised by
+ * scripts/test-chabad-adapter.ts. Two things that real response corrected
+ * from an earlier, unverified version of this file:
+ *
+ * 1. The match key is `item.ZmanType`, an exact machine-readable enum
+ *    (`"CandleLighting"`), not a substring guess over `Name`/`Caption`/
+ *    `Title`/`Type`. The fixture's own 9/12 entry — `Title: "Candle
+ *    Lighting after"`, `ZmanType: "ShabbatEndTime"`,
+ *    `FootnoteType: "LightCandlesAfter"` — is exactly the item a
+ *    substring-on-Title match would have wrongly matched: it is the
+ *    second night of a two-day Yom Tov, when candles are lit only after
+ *    nightfall from an existing flame, not the regular pre-sunset
+ *    candle-lighting `CandleLighting` items carry. Matching on `ZmanType`
+ *    excludes it by construction. THIS EXCLUSION IS DELIBERATE, not a gap
+ *    discovered later: this adapter does not attempt second-night/
+ *    "light after" candle lighting at all yet. See isCandleLightingItem's
+ *    own comment.
+ * 2. `item.Date` is not a timestamp — every item within one day shares
+ *    the identical `/Date(...)/` value regardless of that item's own time
+ *    of day (confirmed: every item on 9/11 carries `/Date(1789099200000)/`
+ *    whether it's a 5:59 AM or an 8:05 PM zman), and it isn't even the
+ *    same value as that day's own `GmtDate`. It cannot be used to build
+ *    the instant. The real instant is built from three things instead:
+ *    the calendar date, from the DAY's own `DisplayDate` ("9/11/2026" —
+ *    unambiguous and per-day, unlike the shared, GMT-anchored `Date`/
+ *    `GmtDate` fields); the time of day, parsed out of the item's own
+ *    `Zman` string ("7:22 PM" — a plain rendered time, not a date at
+ *    all); and the org/screen's own stored IANA timezone, already a
+ *    parameter to this function. Chabad's `LocationDetails` field (e.g.
+ *    "-5 GMT | DST in effect") was deliberately NOT used for this: it is
+ *    one fixed offset for the whole response, with no per-day breakdown,
+ *    so a request spanning a DST transition has no way to tell from that
+ *    field alone which of its days the offset actually applies to. The
+ *    org/screen's own IANA timezone (which already knows its own DST
+ *    rules for any date) is the only one of the three inputs reliable
+ *    enough to use for this.
  */
 
 const ENDPOINT = "https://www.chabad.org/webservices/zmanim/zmanim/Get_Zmanim";
@@ -39,33 +71,78 @@ export type ChabadZmanimResult = {
   rawResponseByDate: Record<string, unknown>;
 };
 
-/**
- * ASP.NET's own JSON date encoding, e.g. `/Date(1730937600000)/` — a plain
- * `Date.parse` silently returns `Invalid Date` on this, which is why
- * plan.md's ask calls this unwrap out specifically rather than trusting a
- * generic parser to handle it.
- */
-function parseAspNetDate(value: unknown): Date | null {
+/** "9/11/2026" -> {year, month, day}. The per-DAY calendar date — see this
+ *  file's header comment on why this, and not either of the two
+ *  GMT-anchored `Date`/`GmtDate` fields, is what the instant is built
+ *  from. */
+function parseDisplayDate(value: unknown): { year: number; month: number; day: number } | null {
   if (typeof value !== "string") return null;
-  const match = /\/Date\((-?\d+)\)\//.exec(value);
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
   if (!match) return null;
-  const ms = Number(match[1]);
-  return Number.isFinite(ms) ? new Date(ms) : null;
+  return { month: Number(match[1]), day: Number(match[2]), year: Number(match[3]) };
 }
 
-/** Loose on purpose: the exact property names below are the unverified part
- *  of this file (see the header comment). Every item in a TimeGroup is
- *  checked against a handful of plausible label fields and a
- *  case-insensitive "candle" match, rather than one hardcoded key, so a
- *  small naming difference in the real payload doesn't produce a silently
- *  empty result the first time this actually runs. */
+/** "7:22 PM" -> {hour: 19, minute: 22}. `Zman` is a plain rendered time of
+ *  day, nothing more — no date, no timezone marker. */
+function parseZmanTime(value: unknown): { hour: number; minute: number } | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value.trim());
+  if (!match) return null;
+  const minute = Number(match[2]);
+  let hour = Number(match[1]) % 12;
+  if (/pm/i.test(match[3])) hour += 12;
+  if (hour > 23 || minute > 59) return null;
+  return { hour, minute };
+}
+
+/**
+ * A wall-clock date and time in a specific IANA zone, as the UTC instant it
+ * actually refers to — the exact inverse of lib/hebrew/civil-day.ts's
+ * `civilDateInZone` (Date -> wall-clock parts in a zone), needed here
+ * because this project has no library for the reverse direction.
+ *
+ * The standard offset-by-round-trip technique: guess the instant by
+ * treating the wall-clock numbers as if they were already UTC, ask
+ * `Intl.DateTimeFormat` what wall-clock time that guess actually displays
+ * as in the target zone, and shift the guess by the difference. One pass
+ * is enough here — the zone's offset from UTC is constant across the few
+ * minutes this could be off by on a first guess, so a second pass could
+ * only change the answer at a DST transition falling in that exact
+ * window, which candle lighting never does (DST changes happen at 2 AM,
+ * not at sunset).
+ */
+function zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date {
+  const guess = Date.UTC(year, month - 1, day, hour, minute);
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(guess));
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const shownAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+
+  return new Date(guess - (shownAsUtc - guess));
+}
+
+/**
+ * Exact match on `ZmanType`, nothing looser. See this file's header
+ * comment for the real response that replaced an earlier substring guess
+ * over `Name`/`Caption`/`Title`/`Type`, and for why this deliberately
+ * excludes "Candle Lighting after" (`ZmanType: "ShabbatEndTime"`,
+ * `FootnoteType: "LightCandlesAfter"`) — the second-night candle lighting
+ * of a two-day Yom Tov, lit after nightfall from an existing flame rather
+ * than before sunset. That case is known and excluded by this exact match,
+ * not missed: this adapter does not attempt it yet.
+ */
 function isCandleLightingItem(item: Record<string, unknown>): boolean {
-  const label = String(item.Name ?? item.Caption ?? item.Title ?? item.Type ?? "");
-  return /candle/i.test(label);
-}
-
-function itemTime(item: Record<string, unknown>): Date | null {
-  return parseAspNetDate(item.Time ?? item.Zman ?? item.DateTime);
+  return item.ZmanType === "CandleLighting";
 }
 
 function formatDisplay(date: Date, timeZone: string): string {
@@ -81,13 +158,14 @@ function formatDisplay(date: Date, timeZone: string): string {
  * One (chabad, location) pair's zmanim for the given date range, ready to
  * upsert into `zmanim_cache` one row per date.
  *
- * `timeZone` is needed only to render `display` the way this project's own
- * `formatTimeOfDay` would (lib/hebrew/format.ts) — plan §5c's "never
- * re-round or recompute provider output" is about the *value*, not its
- * string rendering, and Chabad's own rendered string isn't necessarily
- * reachable from this endpoint's raw items the way it is from their HTML
- * pages, so this project renders it instead of inventing a second display
- * convention.
+ * `timeZone` is the org/screen's own stored IANA zone — used both to build
+ * the actual instant (see this file's header comment) and to render
+ * `display` the way this project's own `formatTimeOfDay` would
+ * (lib/hebrew/format.ts). Plan §5c's "never re-round or recompute provider
+ * output" is about the *value*, not its string rendering, and Chabad's own
+ * rendered string isn't reachable from this endpoint's raw items the way
+ * it is from their HTML pages, so this project renders it instead of
+ * inventing a second display convention.
  */
 export async function fetchChabadZmanim(input: {
   locationId: string;
@@ -119,9 +197,9 @@ export async function fetchChabadZmanim(input: {
 
   for (const day of days) {
     const dayRecord = day as Record<string, unknown>;
-    const dayDate = parseAspNetDate(dayRecord.Date);
-    if (!dayDate) continue;
-    const isoDate = dayDate.toISOString().slice(0, 10);
+    const calendarDate = parseDisplayDate(dayRecord.DisplayDate);
+    if (!calendarDate) continue;
+    const isoDate = `${calendarDate.year}-${String(calendarDate.month).padStart(2, "0")}-${String(calendarDate.day).padStart(2, "0")}`;
 
     rawResponseByDate[isoDate] = day;
 
@@ -133,10 +211,19 @@ export async function fetchChabadZmanim(input: {
       for (const rawItem of items) {
         const item = rawItem as Record<string, unknown>;
         if (!isCandleLightingItem(item)) continue;
-        const time = itemTime(item);
+        const time = parseZmanTime(item.Zman);
         if (!time) continue;
+
+        const instant = zonedTimeToUtc(
+          calendarDate.year,
+          calendarDate.month,
+          calendarDate.day,
+          time.hour,
+          time.minute,
+          input.timeZone,
+        );
         times[isoDate] ??= {};
-        times[isoDate].candle_lighting = { iso: time.toISOString(), display: formatDisplay(time, input.timeZone) };
+        times[isoDate].candle_lighting = { iso: instant.toISOString(), display: formatDisplay(instant, input.timeZone) };
       }
     }
   }
