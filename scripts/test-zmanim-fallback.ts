@@ -50,11 +50,13 @@ const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710
 const FIXTURE = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
 
 const originalFetch = globalThis.fetch;
+// `.text()`, not `.json()` — the adapter parses the body itself so it can
+// report the byte length in its diagnostic log.
 globalThis.fetch = (async () => ({
   ok: true,
   status: 200,
   statusText: "OK",
-  json: async () => FIXTURE,
+  text: async () => JSON.stringify(FIXTURE),
 })) as unknown as typeof fetch;
 const { times: CACHE } = await fetchChabadZmanim({
   locationId: "33710",
