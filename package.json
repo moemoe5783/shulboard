@@ -25,7 +25,8 @@
     "test:font-parity": "node scripts/test-font-parity.mjs",
     "test:bundle": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-bundle.ts",
     "test:geocoding": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-geocoding.ts",
-    "probe:chabad": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad.ts"
+    "probe:chabad": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad.ts",
+    "probe:chabad-embed": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad-embed.ts"
   },
   "dependencies": {
     "@hebcal/core": "^6.9.2",
