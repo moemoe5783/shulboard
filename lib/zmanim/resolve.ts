@@ -1,32 +1,139 @@
+import type { CandleLightingEvent } from "@hebcal/core";
+import type { BoardLocation } from "@/lib/board-location";
+// Relative and extensioned, the way lib/hebrew's own modules import each
+// other (candle-times.ts's `./civil-day.ts`): this is the one non-type
+// import here, and it has to resolve under plain `node` for
+// scripts/test-zmanim-fallback.ts, which has no bundler to read tsconfig's
+// `@/` alias.
+import { upcomingCandleLighting } from "../hebrew/candle-times.ts";
 import type { ChabadZman } from "./chabad-adapter";
 
 /*
- * Reading a cached Chabad zmanim dict the same way lib/hebrew/candle-times.ts
- * reads @hebcal/core — client-safe, no fetch, no server-only import (only
- * the type from chabad-adapter.ts, erased at compile time).
+ * plan.md §5c's fallback chain — "requested provider → cache → Hebcal
+ * (client-side, always works) → last known good" — for the one zman that
+ * has a provider today, `candle_lighting`.
  *
- * candle-lighting/Renderer.tsx is the only caller today: the widget already
- * has "now" and the board's resolved zmanim dict (lib/board-location.tsx)
- * and needs exactly what lib/hebrew/candle-times.ts's upcomingCandleLighting
- * gives the Hebcal path — the next one, after now, or null.
+ * Client-safe, no fetch, no server-only import (only the *type* from
+ * chabad-adapter.ts, erased at compile time). Nothing here parses a
+ * provider response: the Chabad side of this reads an already-parsed dict,
+ * so the adapter's own parsing logic is not involved in, and does not
+ * change for, any of the fallback behavior below.
+ *
+ * candle-lighting/Renderer.tsx is the only caller, and it calls this for
+ * every provider rather than branching itself — the whole point is that the
+ * decision of which source produced the value, and whether that was a
+ * fallback, is made in one pure function that a test can drive directly.
  */
 
 export type ChabadZmanimByDate = Record<string, Record<string, ChabadZman>>;
 
-/**
- * The next `candle_lighting` value strictly after `now`, across every date
- * in `byDate` — mirrors upcomingCandleLighting's "advances past an event
- * once it's passed" contract (scripts/test-hebrew.ts) even though this
- * reads a cache dict rather than computing anything. `byDate` is expected
- * to already be bounded to a search window (the same handful of days
- * upcomingCandleLighting's own SEARCH_WINDOW_DAYS covers) by whoever built
- * it — this function does not know or care how many dates it was handed.
- */
-export function nextChabadCandleLighting(now: Date, byDate: ChabadZmanimByDate): ChabadZman | null {
-  const upcoming = Object.values(byDate)
-    .map((zmanim) => zmanim.candle_lighting)
-    .filter((zman): zman is ChabadZman => Boolean(zman) && new Date(zman.iso).getTime() > now.getTime())
-    .sort((a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime());
+export type ResolvedCandleLighting = {
+  time: Date;
+  /**
+   * The @hebcal/core event, when Hebcal produced the value — the widget
+   * labels off it (`formatEventLabel`, which distinguishes "Candle lighting"
+   * from a Yom Tov's own name). `null` when the value came from Chabad's
+   * cache, which carries no such label; the widget falls back to a generic
+   * one there.
+   */
+  event: CandleLightingEvent | null;
+  /**
+   * True only when the resolved provider was Chabad and its cache had
+   * nothing for the needed date, so this value is Hebcal's own computation
+   * standing in. plan.md §5c: "surface a subtle 'showing calculated times'
+   * indicator rather than failing silently, since a wrong zman is worse
+   * than a flagged one."
+   *
+   * Always false for hebcal and manual — those *are* the calculated path,
+   * and nothing has fallen back; flagging them would make the indicator
+   * meaningless.
+   */
+  fellBackToHebcal: boolean;
+};
 
-  return upcoming[0] ?? null;
+/**
+ * `instant`'s calendar date in `timeZone` as `YYYY-MM-DD` — the key
+ * `ChabadZmanimByDate` and `zmanim_cache.date` are both keyed by.
+ *
+ * Built from `formatToParts` rather than trusting `format()`'s output shape,
+ * the same way lib/hebrew/civil-day.ts's `civilDateInZone` does it: en-CA
+ * happens to render ISO-ish today, but the part types are the contract and
+ * the joined string isn't.
+ */
+function isoDateInZone(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/**
+ * The next candle lighting to show, and where it came from.
+ *
+ * Hebcal is computed FIRST, for every provider including Chabad, because
+ * it's what establishes *which date matters*. A Chabad cache dict can hold
+ * plenty of dates and still be missing the one about to happen (a cache
+ * miss, a cron that hasn't run, or a real no-match like the second night of
+ * a two-day Yom Tov, which chabad.org reports as `ShabbatEndTime` rather
+ * than `CandleLighting` and the adapter deliberately excludes — see
+ * test/fixtures/chabad-zmanim-33710-sep2026.json's 9/12 entry). "Is the
+ * dict empty" cannot tell those apart from a healthy cache; "does the dict
+ * have the date Hebcal says is next" can, and answers all three the same
+ * way.
+ *
+ * That comparison is by LOCAL CALENDAR DATE, never by instant. Providers
+ * legitimately disagree by a minute or two on the same date — that
+ * disagreement is the entire reason plan.md §5c supports more than one
+ * provider — so an instant comparison would treat a perfectly good Chabad
+ * value as a miss and throw it away for a computed one, which is exactly
+ * backwards.
+ *
+ * Computing Hebcal in Chabad mode is not a new class of work: it is the
+ * same computation hebcal mode already runs on every tick, now run in one
+ * more mode, and the caller memoizes it per second.
+ */
+export function resolveCandleLighting(input: {
+  now: Date;
+  provider: "hebcal" | "chabad" | "myzmanim" | "manual";
+  location: BoardLocation;
+  chabadZmanim: ChabadZmanimByDate | null;
+  /** candle-lighting/manifest.ts's Manual "minutes before sunset"; read
+   *  only when `provider` is `"manual"`, ignored otherwise. */
+  manualMinutesBeforeSunset?: number;
+}): ResolvedCandleLighting | null {
+  const { now, provider, location, chabadZmanim, manualMinutesBeforeSunset } = input;
+
+  const hebcalEvent = upcomingCandleLighting(
+    now,
+    location,
+    provider === "manual" ? manualMinutesBeforeSunset : undefined,
+  );
+
+  if (provider !== "chabad") {
+    // No fallback concept here at all — hebcal and manual are the computed
+    // path, and `myzmanim` has no adapter yet, so it resolves the same way
+    // it did before this function existed (plan.md §5c scope: "MyZmanim
+    // gets nothing").
+    return hebcalEvent && { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: false };
+  }
+
+  // Nine days always contains a Friday (candle-times.ts's SEARCH_WINDOW_DAYS),
+  // so on any real location this is non-null and the `null` below is
+  // unreachable in practice — it exists because the type says it can be,
+  // not as a case to design for.
+  if (!hebcalEvent) return null;
+
+  const neededDate = isoDateInZone(hebcalEvent.eventTime, location.timeZone);
+  const cached = chabadZmanim?.[neededDate]?.candle_lighting;
+
+  if (cached) {
+    return { time: new Date(cached.iso), event: null, fellBackToHebcal: false };
+  }
+
+  return { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: true };
 }
