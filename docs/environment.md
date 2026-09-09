@@ -73,12 +73,18 @@ missing one the same as a missing other.
 ## `SUPABASE_SERVICE_ROLE_KEY`
 
 **What it is.** The service-role key. It bypasses Row Level Security
-entirely, which is why CLAUDE.md restricts it to exactly five files: the
+entirely, which is why CLAUDE.md restricts it to exactly eight places: the
 bundle endpoint, the heartbeat endpoint, the realtime-auth endpoint, the
-media proxy, and the cron build worker — every one of them a server route
-that does its own authorization (a screen token, a shared secret) rather
-than leaning on a policy. It never reaches the browser and never appears in
-a client component; `lib/supabase/service.ts` imports `server-only` as its
+media proxy, the cron build worker, and the Chabad zmanim warming cron —
+every one of them a server route that does its own authorization (a screen
+token, a shared secret) rather than leaning on a policy — plus two that
+are not routes: `publishBoard`, which calls the build worker's own
+`buildScreenBundle` immediately for a just-published board, and
+`lib/zmanim/warm.ts`, which is the single copy of the `zmanim_cache` write
+that both the warming cron and the settings page's "Fetch now" button go
+through. That table has a SELECT policy and deliberately no write policy
+at all, since it is shared across every org. It never reaches the browser
+and never appears in a client component; `lib/supabase/service.ts` imports `server-only` as its
 first line specifically so a client component importing it fails the build
 instead of shipping the key.
 
@@ -101,12 +107,17 @@ everywhere it's called, so —
   photo on every board is a broken image.
 - `POST /api/cron/build-bundles` answers 503 — no bundle is ever built or
   rebuilt, so even a screen that once worked never sees a content change.
+- `POST /api/cron/warm-zmanim` answers 503, and the settings page's "Fetch
+  now" reports that Supabase isn't configured — no Chabad zmanim are ever
+  cached, so those Candle Lighting widgets fall back to Hebcal with the
+  "showing calculated times" indicator (plan.md §5c) rather than going
+  blank. The one failure here that degrades instead of breaking.
 
 None of this throws an error a person sees. It looks like every screen in
 the shul quietly stopped working at once, which is the scenario CLAUDE.md's
 "never uses the service-role key outside these files" rule exists to make
 easy to reason about — the failure is always "this key is missing or wrong,"
-never "which of five files leaked it."
+never "which of eight places leaked it."
 
 ---
 

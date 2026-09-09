@@ -14,14 +14,26 @@ Environment variables: @docs/environment.md
 - `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
   `app/m/[id]/[file]/`, `app/api/cron/build-bundles/`,
   `app/api/cron/warm-zmanim/`, and `publishBoard` in
-  `app/(editor)/boards/[id]/actions.ts` — the seven places holding the
-  service-role key. `publishBoard` is a Server Action, not a route, and it
-  earns the exception by calling the exact same `buildScreenBundle` the cron
+  `app/(editor)/boards/[id]/actions.ts`, and `lib/zmanim/warm.ts` — the
+  eight places holding the service-role key. `publishBoard` is a Server
+  Action, not a route, and it earns the exception by calling the exact same `buildScreenBundle` the cron
   route does, immediately, for the screens the just-published board reaches,
   rather than a second copy of the build logic. `warm-zmanim` is the Chabad
   cache-warming cron (plan.md §5c) — once daily, not the 5-minute cadence
   `build-bundles` runs at, because it's warming an undocumented endpoint
-  this product has no ToS with (plan.md §10.4), not serving a live edit.
+  this product has no ToS with (plan.md §10.4), not serving a live edit. It
+  earns the key for a reason separate from the warming itself: it sweeps
+  every org and screen to discover which locations are referenced at all,
+  a cross-tenant read no RLS policy can express.
+  `lib/zmanim/warm.ts` is a lib module rather than a route, and it is what
+  actually writes `zmanim_cache`. Two things warm that cache — the cron
+  above and the "Fetch now" button in org settings — so the write lives
+  here once rather than as two copies that can drift. It needs the key
+  because `zmanim_cache` has exactly one RLS policy, a SELECT, and
+  deliberately no write policy at all: the table is shared across every
+  org, so a write policy for tenant admins would let one shul's admin
+  poison rows twenty neighbouring shuls read. The settings action that
+  calls it holds no key of its own.
   Nowhere else uses the service-role key.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx

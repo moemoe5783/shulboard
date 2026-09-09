@@ -9,24 +9,31 @@ import { lookupShulLocation, type LocationLookupState } from "./actions";
  * "Where is this shul?" — the one question, with every input that answers
  * it underneath.
  *
- * WHAT THIS REPLACES: two bare number fields, placeheld with real Crown
- * Heights coordinates. Those placeholders read as saved data on a form
- * whose shul is in Florida, which is why an org with no location at all
- * looked configured while four widgets rendered their missing-location
- * state in the lobby. There are no placeholders on the coordinate inputs
- * now: an empty field is allowed to look empty.
- *
  * THE ORDER MATTERS. Look up an address, read back the resolved place and
  * the candle lighting there, and only then does confirming fill the
- * coordinate fields — nothing is written until the form is saved. A gabbai
+ * coordinates — nothing is written until the form is saved. A gabbai
  * cannot check 40.669, but he knows when his shul lights on Friday, so the
  * previewed time is the actual sanity check and the reason the confirm step
  * exists rather than the lookup filling the fields silently.
  *
- * THE LOOKUP IS NEVER A GATE. Manual latitude and longitude sit underneath,
- * always editable, working identically whether the geocoder is configured,
- * broken, or rate-limited. A shul must be able to finish this form with the
- * service down.
+ * THE COORDINATES ARE NOT A FIELD BY DEFAULT. They are internal detail —
+ * a gabbai has no reason to read two decimal numbers, and offering them as
+ * inputs invites hand-editing that quietly desyncs them from the ZIP
+ * Chabad.org resolves from. So what shows is what the location IS, as
+ * text, and the inputs live behind a disclosure.
+ *
+ * WHAT THE SUMMARY CAN AND CANNOT SAY. A place name exists only for the
+ * page session in which the lookup ran: there is no column storing it, and
+ * reverse-geocoding on every settings view to recover a label would be a
+ * network call to render a caption. So an org configured before this — or
+ * revisited after a reload — shows its actual stored coordinates as text
+ * instead. That is less pretty and completely truthful, which is the trade
+ * this section exists to make.
+ *
+ * THE LOOKUP IS NEVER A GATE. Manual latitude and longitude are always
+ * reachable, and are shown open rather than collapsed when there is no
+ * geocoding key at all, because then they are the only way in. A shul must
+ * be able to finish this form with the service down.
  *
  * Shared by the settings form and the new-shul form. Both post the same two
  * `latitude`/`longitude` field names their server actions already read, so
@@ -62,10 +69,14 @@ export function LocationLookup({
   const [latitudeValue, setLatitudeValue] = useState(latitude === null ? "" : String(latitude));
   const [longitudeValue, setLongitudeValue] = useState(longitude === null ? "" : String(longitude));
 
-  // Which place the coordinates below were filled from, cleared the moment
-  // they're edited by hand — a note claiming they came from a lookup they
-  // no longer match would be the same lie the old placeholders told.
+  // Which place the coordinates were filled from, cleared the moment they
+  // are edited by hand — a label claiming a place the numbers no longer
+  // match would be the same lie the old coordinate placeholders told.
+  // Null on every fresh page load, by design: see the header comment on
+  // what the summary can and cannot say.
   const [filledFrom, setFilledFrom] = useState<string | null>(null);
+
+  const hasCoordinates = latitudeValue.trim() !== "" && longitudeValue.trim() !== "";
 
   const runLookup = () => {
     if (!query.trim() || pending) return;
@@ -89,6 +100,30 @@ export function LocationLookup({
           Candle lighting, the Hebrew date, parsha and daf yomi are all
           calculated from this. Without it those widgets show nothing.
         </p>
+      </div>
+
+      {/* What the location IS right now — the thing a gabbai came here to
+          check. Read from the pending values, not the saved props, so
+          confirming a lookup or editing by hand is reflected immediately. */}
+      <div className="rounded-panel border-rule bg-paper border px-4 py-3">
+        {filledFrom ? (
+          <p className="text-body text-ink">{filledFrom}</p>
+        ) : hasCoordinates ? (
+          <>
+            <p className="text-body text-ink numeric">
+              {latitudeValue}, {longitudeValue}
+            </p>
+            {/* The advice has to match what's actually available: with no
+                geocoding key there is no lookup to point at. */}
+            <p className="text-meta text-ink-soft mt-1">
+              {geocodingConfigured
+                ? "No place name stored for these. Look up an address to check they're right."
+                : "No place name stored for these — only the coordinates themselves."}
+            </p>
+          </>
+        ) : (
+          <p className="text-body text-ink-soft">No location set yet.</p>
+        )}
       </div>
 
       {geocodingConfigured ? (
@@ -174,48 +209,58 @@ export function LocationLookup({
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
-        <div className="flex gap-3">
-          <Field
-            id="latitude"
-            name="latitude"
-            label="Latitude"
-            type="number"
-            step="any"
-            min={-90}
-            max={90}
-            value={latitudeValue}
-            onChange={(event) => {
-              setLatitudeValue(event.target.value);
-              setFilledFrom(null);
-            }}
-          />
-          <Field
-            id="longitude"
-            name="longitude"
-            label="Longitude"
-            type="number"
-            step="any"
-            min={-180}
-            max={180}
-            value={longitudeValue}
-            onChange={(event) => {
-              setLongitudeValue(event.target.value);
-              setFilledFrom(null);
-            }}
-          />
+      {/*
+        A native <details>, not conditional rendering. Its children stay in
+        the DOM when it is closed — `display: none` inputs are still
+        submitted, only `disabled` ones are dropped — so the coordinates
+        post whether the gabbai ever opens this or not. Rendering them
+        conditionally would silently clear the org's location on any save
+        made with the disclosure shut.
+
+        Open by default when there is no geocoding key, because then these
+        two fields are the only way to set a location at all.
+      */}
+      <details open={!geocodingConfigured}>
+        <summary className="text-meta text-verdigris w-fit cursor-pointer">
+          Enter coordinates manually
+        </summary>
+        <div className="mt-2 flex flex-col gap-1">
+          <div className="flex gap-3">
+            <Field
+              id="latitude"
+              name="latitude"
+              label="Latitude"
+              type="number"
+              step="any"
+              min={-90}
+              max={90}
+              value={latitudeValue}
+              onChange={(event) => {
+                setLatitudeValue(event.target.value);
+                setFilledFrom(null);
+              }}
+            />
+            <Field
+              id="longitude"
+              name="longitude"
+              label="Longitude"
+              type="number"
+              step="any"
+              min={-180}
+              max={180}
+              value={longitudeValue}
+              onChange={(event) => {
+                setLongitudeValue(event.target.value);
+                setFilledFrom(null);
+              }}
+            />
+          </div>
+          <p className="text-meta text-ink-soft">
+            For a shul the lookup can&rsquo;t find. Fill in both, or leave
+            both blank.
+          </p>
         </div>
-        <p className="text-meta text-ink-soft">
-          {/* Deliberately not "Save to apply": this component is also on the
-              new-shul form, whose button says "Add shul", and design.md asks
-              an action to keep its name through the whole flow. Saying only
-              where the numbers came from is true on both forms, and stays
-              true after a save rather than going stale. */}
-          {filledFrom
-            ? `Set from ${filledFrom}.`
-            : "Set by the lookup above, or type them in if you already have them."}
-        </p>
-      </div>
+      </details>
 
       {children}
     </div>
