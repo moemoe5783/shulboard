@@ -1,16 +1,16 @@
 # Environment variables
 
-Every environment variable this product reads, in one place, because all six
-are set by hand in a hosting dashboard rather than committed anywhere, and
+Every environment variable this product reads, in one place, because all
+seven are set by hand in a hosting dashboard rather than committed anywhere, and
 "what does this one do again" is exactly the question this file exists to
 answer three months from now.
 
-Two are public — meant to reach the browser. Three are secrets — server-only,
+Two are public — meant to reach the browser. Four are secrets — server-only,
 same handling as a password. Getting that distinction backwards in either
 direction is the mistake this table exists to prevent: a secret in a
 `NEXT_PUBLIC_*` variable ships in the browser bundle for anyone to read; a
 public one held back as if it were secret just breaks sign-in for no reason.
-The sixth, `ZMANIM_CHABAD_ENABLED`, is neither — not a password, and no
+The seventh, `ZMANIM_CHABAD_ENABLED`, is neither — not a password, and no
 reason to ship it to a browser either — a plain server-side feature flag,
 read only by server code that already never runs on the client.
 
@@ -21,6 +21,7 @@ read only by server code that already never runs on the client.
 | `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron) |
 | `SUPABASE_JWT_SECRET` | secret | live board updates over Realtime |
 | `CRON_SECRET` | secret | the bundle build worker, and the Chabad zmanim cache-warming cron |
+| `GEOCODING_API_KEY` | secret | the address lookup on the shul settings and new-shul forms |
 | `ZMANIM_CHABAD_ENABLED` | server flag | offering Chabad.org as a zmanim source at all |
 
 ---
@@ -201,6 +202,55 @@ the arithmetic on that.
 
 ---
 
+## `GEOCODING_API_KEY`
+
+**What it is.** A LocationIQ API key. It powers the "Address or city" lookup
+on the shul settings form and the new-shul form: a gabbai types an address,
+and the form shows back the resolved place name plus the next candle
+lighting there so he can confirm it before anything is saved
+(`lib/geocoding/locationiq.ts`, `app/(app)/LocationLookup.tsx`). The same
+key backs the save-time check that a shul's ZIP and its coordinates
+describe the same place, which uses one forward and one reverse lookup.
+
+**Where it comes from.** Nowhere but you — `locationiq.com`, sign up, then
+Dashboard → Access Tokens. The free tier is 5,000 requests a day and 2 a
+second, needs no billing account, and permits commercial use **on condition
+that the application links back to LocationIQ** — which is why the lookup
+result renders a "Geocoding by LocationIQ" line. That line is the license
+condition, not decoration; don't delete it as visual clutter.
+
+At this product's scale a shul is geocoded when it's set up and essentially
+never again, so the daily cap is not a constraint. The 2-per-second one is
+why nothing in `lib/geocoding/` issues concurrent requests.
+
+**It is a secret, and not because the key is dangerous.** It reads public
+map data and can't touch this product's own data at all. It's held back for
+one duller reason: it's a metered credential, and a `NEXT_PUBLIC_*` copy of
+it in the browser bundle is a key anyone can lift and spend this
+deployment's daily quota with. `lib/geocoding/locationiq.ts` imports
+`server-only` as its first line so a client component importing it fails
+the build rather than shipping the key.
+
+**What breaks without it.** Nothing breaks, and this is deliberate — the
+whole module returns a typed outcome and never throws, and manual
+latitude/longitude entry is never gated behind it. With it unset:
+
+- `isGeocodingConfigured()` is false, so both forms replace the lookup with
+  one line — "Address lookup isn't set up on this deployment, so enter the
+  coordinates by hand below" — rather than offering a Look up button that
+  can only fail. No request is attempted; there is no keyless call that
+  quietly 401s.
+- The save-time ZIP-versus-coordinates check returns `null` and stays
+  silent. A Brooklyn/Florida mismatch would then sit there unflagged, which
+  is the one real cost of leaving this unset.
+
+A wrong or revoked key is a different failure from a missing one and reads
+differently on the form: the lookup answers "Address lookup failed (401)"
+rather than saying it isn't set up. If a gabbai reports the former, the key
+is present and bad; the latter means it never reached the deployment at all.
+
+---
+
 ## `ZMANIM_CHABAD_ENABLED`
 
 **What it is.** The kill switch for Chabad.org as a zmanim source — plan.md
@@ -265,7 +315,11 @@ short:
    leaves every environment variable configured and the product completely
    inert: screens get their first bundle never, and content edits never
    reach a screen that's already running.
-5. `ZMANIM_CHABAD_ENABLED` — optional, and leave it unset unless you have
+5. `GEOCODING_API_KEY` — a LocationIQ access token. Optional in the sense
+   that nothing breaks without it, but without it no gabbai can look up an
+   address, and coordinates go back to being two numbers he has to find
+   himself — which is the failure this variable exists to remove.
+6. `ZMANIM_CHABAD_ENABLED` — optional, and leave it unset unless you have
    specifically decided to turn Chabad.org on (see that section above for
    why this isn't a routine setup step). If you do set it to `true`, also
    create a **second** external scheduler entry hitting
@@ -273,10 +327,10 @@ short:
    `Authorization: Bearer <CRON_SECRET>` header, once a day rather than
    every 5 minutes.
 
-All six go in the hosting platform's environment variable settings — for
+All seven go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
-carries the two public ones as fillable lines; it names the other four —
-the three secrets, plus `ZMANIM_CHABAD_ENABLED`, which isn't one but has no
+carries the two public ones as fillable lines; it names the other five —
+the four secrets, plus `ZMANIM_CHABAD_ENABLED`, which isn't one but has no
 more business defaulting to a value in a committed file than a secret does
 — in a comment explaining why each is deliberately left blank, rather than
 inviting anyone to paste a real value into a file that gets committed.

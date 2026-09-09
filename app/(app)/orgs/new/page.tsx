@@ -1,3 +1,4 @@
+import { isGeocodingConfigured } from "@/lib/geocoding/locationiq";
 import { getMemberships, requireUser } from "@/lib/orgs";
 import { NewOrgForm } from "./NewOrgForm";
 
@@ -26,7 +27,7 @@ export default async function NewOrgPage() {
         </p>
 
         <div className="rounded-panel border-rule bg-surface mt-6 border p-6">
-          <NewOrgForm timezones={timezones} />
+          <NewOrgForm timezones={timezones} geocodingConfigured={isGeocodingConfigured()} />
         </div>
       </div>
     </main>

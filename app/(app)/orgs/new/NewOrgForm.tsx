@@ -1,15 +1,25 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { createOrg, type CreateOrgState } from "../../actions";
+import { LocationLookup } from "../../LocationLookup";
 
-export function NewOrgForm({ timezones }: { timezones: string[] }) {
+export function NewOrgForm({
+  timezones,
+  geocodingConfigured,
+}: {
+  timezones: string[];
+  geocodingConfigured: boolean;
+}) {
   const [state, formAction, pending] = useActionState<CreateOrgState, FormData>(
     createOrg,
     {},
   );
+  // Controlled only so the location lookup can calculate its candle-lighting
+  // preview in the zone about to be saved.
+  const [zone, setZone] = useState("America/New_York");
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -31,43 +41,23 @@ export function NewOrgForm({ timezones }: { timezones: string[] }) {
         // The schema's own default. Zmanim are calculated against this, so it is
         // set deliberately rather than guessed from a browser that might be
         // travelling.
-        defaultValue="America/New_York"
-        hint="Zmanim, candle lighting and davening times are all calculated here."
+        value={zone}
+        onChange={(event) => setZone(event.target.value)}
+        hint="Every time on every board is shown in this zone."
       >
-        {timezones.map((zone) => (
-          <option key={zone} value={zone}>
-            {zone}
+        {timezones.map((option) => (
+          <option key={option} value={option}>
+            {option}
           </option>
         ))}
       </SelectField>
 
-      <div className="flex gap-3">
-        <Field
-          id="latitude"
-          name="latitude"
-          label="Latitude"
-          type="number"
-          step="any"
-          min={-90}
-          max={90}
-          placeholder="40.6694"
-        />
-        <Field
-          id="longitude"
-          name="longitude"
-          label="Longitude"
-          type="number"
-          step="any"
-          min={-180}
-          max={180}
-          placeholder="-73.9422"
-        />
-      </div>
-      <p className="text-meta text-ink-soft -mt-2">
-        Optional for now, but the Hebrew date and candle lighting widgets need
-        it to show a real time rather than nothing — look your shul&rsquo;s up
-        on a map if you don&rsquo;t have it handy.
-      </p>
+      {/* The same section, the same component, the same two field names, as
+          the settings form — a new shul hits the "I don't know my
+          coordinates" wall first, so this is where the lookup matters most.
+          Nothing here is required: createOrg accepts a shul with no
+          location and settings can fill it in later. */}
+      <LocationLookup latitude={null} longitude={null} timezone={zone} geocodingConfigured={geocodingConfigured} />
 
       <div>
         <Button type="submit" variant="primary" disabled={pending}>
