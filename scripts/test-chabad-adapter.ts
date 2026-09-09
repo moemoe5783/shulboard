@@ -1,17 +1,15 @@
 /**
- * lib/zmanim/chabad-adapter.ts's own parsing logic, against a stubbed
- * `fetch` — no network, and no recorded real chabad.org response either.
+ * lib/zmanim/chabad-adapter.ts's own parsing logic, against a REAL
+ * chabad.org response — no network, `fetch` stubbed to return the fixture.
  *
- * ORIGIN OF THE FIXTURES BELOW: self-authored, by hand, to match the
- * Days/TimeGroups/Items shape and field names (`Name`, `Time`, the ASP.NET
- * `/Date(...)/` encoding) that chabad-adapter.ts's own header comment
- * already flags as reconstructed from a third-party client
- * (`chabad-org-zmanim` on npm) rather than confirmed against a live
- * response. This suite proves the adapter's PARSING LOGIC is internally
- * consistent and fails safe on the shape it expects — it does not, and
- * cannot from this sandbox, prove that shape matches chabad.org's real
- * payload. Verify against one real response (see that file's header)
- * before ZMANIM_CHABAD_ENABLED ever gets turned on for a real shul.
+ * ORIGIN OF THE FIXTURE: test/fixtures/chabad-zmanim-33710-sep2026.json is
+ * a hand-fetched real response for ZIP 33710 (Saint Petersburg, FL),
+ * covering Thu 9/10/2026 through Sun 9/13/2026 — an ordinary Thursday
+ * followed by Erev Rosh Hashanah and both days of Rosh Hashanah. It is not
+ * reconstructed or self-authored; an earlier version of this suite used a
+ * self-authored fixture and that fixture has been deleted, not kept
+ * alongside this real one. This suite's whole job is proving the adapter's
+ * parsing logic against that data, not against a guess.
  *
  * Run with: npm run test:chabad-adapter — not plain `node`. The module
  * under test imports `server-only`, which throws unless the `react-server`
@@ -19,6 +17,8 @@
  * run needs `--conditions=react-server` — see the npm script).
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -27,13 +27,8 @@ function check(ok: boolean, label: string, detail = "") {
   console.log(`${ok ? "  ok     " : "  FAILED "} ${label}${detail ? ` — ${detail}` : ""}`);
 }
 
-/** ASP.NET's own date encoding — the exact format parseAspNetDate exists
- *  to unwrap, not a plain ISO string. */
-const aspNetDate = (date: Date) => `/Date(${date.getTime()})/`;
-
-const FRIDAY = new Date("2026-07-10T00:00:00.000Z");
-const CANDLE_LIGHTING_TIME = new Date("2026-07-11T00:10:00.000Z");
-const SATURDAY = new Date("2026-07-11T00:00:00.000Z");
+const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710-sep2026.json", import.meta.url));
+const FIXTURE = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
 
 function stubFetch(body: unknown) {
   const original = globalThis.fetch;
@@ -48,104 +43,66 @@ function stubFetch(body: unknown) {
   };
 }
 
+// Saint Petersburg, FL is America/New_York — real, not read off the
+// fixture's own `LocationDetails` text ("-5 GMT | DST in effect"), which
+// is exactly the unreliable source this adapter deliberately avoids: that
+// string claims a fixed -5 (standard time) offset in the same breath as
+// claiming DST is active, which would actually make it -4. It has no
+// per-day breakdown either way, so it could not tell a multi-day request
+// which of its days each offset applies to even if it were self-consistent.
 const REQUEST = {
-  locationId: "11213",
+  locationId: "33710",
   locationType: "2" as const,
-  startDate: "2026-07-10",
-  endDate: "2026-07-12",
+  startDate: "2026-09-10",
+  endDate: "2026-09-13",
   timeZone: "America/New_York",
 };
 
-// ---- a day whose TimeGroups include a matching item ----------------------
+const restore = stubFetch(FIXTURE);
+const { times, rawResponseByDate } = await fetchChabadZmanim(REQUEST);
+restore();
 
-{
-  const body = {
-    Days: [
-      {
-        Date: aspNetDate(FRIDAY),
-        TimeGroups: [
-          {
-            Items: [
-              { Name: "Shkiah", Time: aspNetDate(new Date("2026-07-11T00:28:00.000Z")) },
-              { Name: "Candle Lighting", Time: aspNetDate(CANDLE_LIGHTING_TIME) },
-            ],
-          },
-        ],
-      },
-    ],
-  };
+// ---- exactly one CandleLighting item across all 4 days -------------------
 
-  const restore = stubFetch(body);
-  const { times, rawResponseByDate } = await fetchChabadZmanim(REQUEST);
-  restore();
+const datesWithCandleLighting = Object.keys(times).filter((date) => times[date]?.candle_lighting);
+check(datesWithCandleLighting.length === 1, "exactly one date across all 4 days has a candle_lighting value",
+  JSON.stringify(datesWithCandleLighting));
+check(datesWithCandleLighting[0] === "2026-09-11", "that one date is 9/11 (Erev Rosh Hashanah), not any other day",
+  datesWithCandleLighting[0]);
 
-  const friday = times["2026-07-10"];
-  check(friday?.candle_lighting?.iso === CANDLE_LIGHTING_TIME.toISOString(),
-    "a matching item's iso value round-trips exactly, unrounded",
-    friday?.candle_lighting?.iso);
-  check(friday?.candle_lighting?.display === "8:10 PM",
-    "display is rendered in the requested timezone, 12-hour",
-    friday?.candle_lighting?.display);
-  check(!("Shkiah" in (friday ?? {})), "a non-candle-lighting item in the same group is not carried into times");
-  check(Object.keys(rawResponseByDate).includes("2026-07-10"), "the raw per-day body is kept regardless of what parsed");
-}
+// ---- the value itself, built from DisplayDate + Zman + America/New_York --
 
-// ---- a day with no matching item — the isCandleLightingItem no-match path
+const candleLighting = times["2026-09-11"]?.candle_lighting;
+check(candleLighting?.iso === "2026-09-11T23:22:00.000Z",
+  "7:22 PM on 9/11/2026 in America/New_York (EDT, UTC-4) is 23:22 UTC — built from DisplayDate + Zman + timezone, not item.Date",
+  candleLighting?.iso);
+check(candleLighting?.display === "7:22 PM", "display re-renders the same instant in the requested timezone",
+  candleLighting?.display);
 
-{
-  const body = {
-    Days: [
-      {
-        Date: aspNetDate(SATURDAY),
-        TimeGroups: [
-          {
-            Items: [
-              { Name: "Shkiah", Time: aspNetDate(new Date("2026-07-12T00:27:00.000Z")) },
-              { Name: "Havdalah", Time: aspNetDate(new Date("2026-07-12T01:17:00.000Z")) },
-            ],
-          },
-        ],
-      },
-    ],
-  };
+// ---- the regression case: 9/12's real "Candle Lighting after" item -------
+//
+// ZmanType "ShabbatEndTime", FootnoteType "LightCandlesAfter", Title
+// "Candle Lighting after" — this is the actual item that would have
+// false-matched under the old Name/Caption/Title/Type substring-on-"candle"
+// logic, taken from the real fixture rather than invented for this test.
 
-  const restore = stubFetch(body);
-  const { times, rawResponseByDate } = await fetchChabadZmanim(REQUEST);
-  restore();
+check(!("candle_lighting" in (times["2026-09-12"] ?? {})),
+  "9/12's real ShabbatEndTime/LightCandlesAfter \"Candle Lighting after\" item is NOT matched as candle_lighting");
+check(times["2026-09-12"] === undefined,
+  "9/12 has no candle_lighting entry at all — absent, not a stray key under a shared object",
+  JSON.stringify(times["2026-09-12"]));
 
-  // The exact question this block exists to answer: does a day with
-  // nothing matching "candle" in any item's label throw, write a
-  // malformed/partial entry, or simply never appear in `times`?
-  check(!("2026-07-11" in times), "a day with no matching item is absent from times entirely — not present as {}, not thrown");
-  check(Object.keys(rawResponseByDate).includes("2026-07-11"),
-    "the raw body is still kept for that day, so a real shape mismatch stays diagnosable");
-}
+// ---- absent from the other two days too -----------------------------------
 
-// ---- malformed / missing fields degrade rather than throw ----------------
+check(times["2026-09-10"] === undefined, "9/10 (an ordinary Thursday, no candle lighting) has no times entry");
+check(times["2026-09-13"] === undefined, "9/13 (second day Rosh Hashanah, Holiday Ends only) has no times entry");
 
-{
-  const body = {
-    Days: [
-      { Date: "not a real date", TimeGroups: [{ Items: [{ Name: "Candle Lighting", Time: aspNetDate(FRIDAY) }] }] },
-      { Date: aspNetDate(SATURDAY), TimeGroups: "not an array" },
-      { Date: aspNetDate(new Date("2026-07-12T00:00:00.000Z")), TimeGroups: [{ Items: [{ Name: "Candle Lighting" }] }] },
-    ],
-  };
+// ---- every real day is still kept in rawResponseByDate, matched or not ---
 
-  const restore = stubFetch(body);
-  let threw = false;
-  let result: Awaited<ReturnType<typeof fetchChabadZmanim>> | undefined;
-  try {
-    result = await fetchChabadZmanim(REQUEST);
-  } catch {
-    threw = true;
-  }
-  restore();
-
-  check(!threw, "an unparseable day date, a non-array TimeGroups, and a matching item with no time all degrade rather than throw");
-  check(result !== undefined && Object.keys(result.times).length === 0,
-    "none of the three malformed days produced a times entry", JSON.stringify(result?.times));
-}
+check(
+  ["2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"].every((date) => date in rawResponseByDate),
+  "all 4 real days are kept in rawResponseByDate regardless of whether anything in them matched",
+);
 
 console.log("");
 const failed = results.filter((r) => !r.ok).length;
