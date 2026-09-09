@@ -1,3 +1,4 @@
+import { isGeocodingConfigured } from "@/lib/geocoding/locationiq";
 import { hasRoleAtLeast, requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { OrgSettingsForm } from "./OrgSettingsForm";
@@ -34,8 +35,7 @@ export default async function SettingsPage() {
     <div className="max-w-3xl">
       <h1 className="text-title">Settings</h1>
       <p className="text-body text-ink-soft mt-1">
-        Zmanim, candle lighting, the Hebrew date and every other time-based
-        element are calculated from here.
+        Every time-based widget on every board is calculated from these.
       </p>
 
       <div className="rounded-panel border-rule bg-surface mt-6 border p-6">
@@ -52,6 +52,10 @@ export default async function SettingsPage() {
           // this form checks the same flag again server-side; this only
           // controls what the form offers.
           chabadEnabled={process.env.ZMANIM_CHABAD_ENABLED === "true"}
+          // Whether GEOCODING_API_KEY is set (docs/environment.md). Without
+          // it the form says so and points at the coordinate fields, rather
+          // than offering a Look up button that can only fail.
+          geocodingConfigured={isGeocodingConfigured()}
           timezones={timezones}
           canEdit={hasRoleAtLeast(org.role, "admin")}
         />

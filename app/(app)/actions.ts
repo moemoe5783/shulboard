@@ -3,6 +3,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { geocodeAddress, geocodePostalCode, reverseGeocode } from "@/lib/geocoding/locationiq";
+import { describeMiles, milesBetween } from "@/lib/geocoding/distance";
+import { upcomingCandleLighting } from "@/lib/hebrew/candle-times";
+import { formatTimeOfDay } from "@/lib/hebrew/format";
 import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, requireUser } from "@/lib/orgs";
 import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
@@ -167,7 +171,142 @@ export async function createOrg(
   return { error: "That name kept colliding. Try a slightly different one." };
 }
 
-export type UpdateOrgSettingsState = { error?: string; saved?: boolean };
+export type LocationLookupState =
+  | { status: "idle" }
+  | { status: "found"; label: string; latitude: number; longitude: number; candleLighting: string | null; candleLightingWhen: string | null }
+  | { status: "failed"; message: string };
+
+/**
+ * Resolves what a gabbai typed into a place, and hands back a sanity check
+ * he can actually judge: the resolved place name, and the next candle
+ * lighting there.
+ *
+ * The candle lighting is the load-bearing half. A gabbai cannot tell
+ * 40.669 from 40.969, but he knows what time his shul lights on Friday, so
+ * a coordinate that is wrong by enough to matter shows up here as a time
+ * that is visibly wrong — on the settings page, before anything is saved,
+ * rather than being discovered in the lobby. It is computed through the
+ * same `upcomingCandleLighting` every board renders from
+ * (lib/hebrew/candle-times.ts), not a second approximation, so the preview
+ * and the screen can't disagree.
+ *
+ * `timezone` comes from the form's own currently-selected value rather
+ * than from the geocoder (which doesn't return one) or from the saved row
+ * (which the gabbai may be in the middle of changing). That makes the
+ * preview a check on the timezone too: pick the wrong zone and the
+ * previewed time is off by hours, which is exactly as visible as it should
+ * be.
+ *
+ * Nothing is written here. This is a read, and the coordinate fields fill
+ * only when the gabbai confirms the result in the form.
+ */
+export async function lookupShulLocation(
+  query: string,
+  timezone: string,
+): Promise<LocationLookupState> {
+  // A signed-in user and nothing more. Deliberately NOT the save's own
+  // admin-of-the-active-org check: this same lookup runs on the new-shul
+  // form, where the user has no org yet and there is no role to have, so
+  // requiring one there would break the lookup for exactly the person who
+  // needs it most — someone setting up their first shul.
+  //
+  // Requiring a session is still the point: without it this route is an
+  // open geocoding proxy spending this deployment's quota for anyone who
+  // finds it.
+  await requireUser();
+
+  const outcome = await geocodeAddress(query);
+  if (!outcome.ok) return { status: "failed", message: outcome.message };
+
+  const { label, latitude, longitude } = outcome.place;
+
+  // A timezone the gabbai hasn't picked yet, or a hand-posted junk value:
+  // the preview is worth less without it but the coordinates are still
+  // good, so this degrades to showing the place alone rather than failing
+  // the whole lookup.
+  const preview = previewCandleLighting({ latitude, longitude, timeZone: timezone });
+
+  return { status: "found", label, latitude, longitude, ...preview };
+}
+
+/** Non-throwing on a bad timezone (`Intl` throws on an unknown zone) and on
+ *  a latitude where there is no sunset to compute from — a shul north of
+ *  the arctic circle in June has no candle lighting @hebcal/core can
+ *  return, and that is a real place, not a bug to crash on. */
+function previewCandleLighting(location: {
+  latitude: number;
+  longitude: number;
+  timeZone: string;
+}): { candleLighting: string | null; candleLightingWhen: string | null } {
+  try {
+    const event = upcomingCandleLighting(new Date(), location);
+    if (!event) return { candleLighting: null, candleLightingWhen: null };
+
+    return {
+      candleLighting: formatTimeOfDay(event.eventTime, { hour12: true, timeZone: location.timeZone }),
+      candleLightingWhen: new Intl.DateTimeFormat("en-US", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        timeZone: location.timeZone,
+      }).format(event.eventTime),
+    };
+  } catch {
+    return { candleLighting: null, candleLightingWhen: null };
+  }
+}
+
+export type UpdateOrgSettingsState = { error?: string; saved?: boolean; warning?: string };
+
+/** ~30 miles. Wide enough that a shul's ZIP centroid and its actual
+ *  building never trip it — a ZIP is a few miles across at most, and
+ *  neighboring-town coordinates are still the same zmanim to the minute —
+ *  narrow enough to catch the mistake this exists for, a ZIP and a set of
+ *  coordinates that describe different states. */
+const LOCATION_MISMATCH_MILES = 30;
+
+/**
+ * Does the shul's ZIP describe the same place as its coordinates?
+ *
+ * NEVER BLOCKS THE SAVE, by design. Both fields are legitimately editable,
+ * a gabbai may be part-way through changing one, and the geocoder is
+ * allowed to be unavailable — refusing a save on any of that would be
+ * worse than the mismatch. So this runs after the row is written and only
+ * ever returns prose.
+ *
+ * It also stays quiet unless it is genuinely sure: no key, either lookup
+ * failing, or a `postal_code` that isn't a US ZIP (`geocodePostalCode`
+ * pins `countrycodes=us`, so a foreign postcode simply doesn't match) all
+ * return `null`. A warning invented from a failed lookup would be worse
+ * than no warning at all.
+ *
+ * Both places are named, not just the distance: "1,100 miles apart" is not
+ * actionable, "the ZIP is in Brooklyn and the coordinates are in St.
+ * Petersburg" tells a gabbai which field is wrong.
+ */
+async function checkLocationAgreement(
+  postalCode: string | null,
+  latitude: number | null,
+  longitude: number | null,
+): Promise<string | null> {
+  if (!postalCode || latitude === null || longitude === null) return null;
+
+  // Sequentially, not in parallel: LocationIQ's free tier allows 2 requests
+  // per second and these are two of them (lib/geocoding/locationiq.ts).
+  const zip = await geocodePostalCode(postalCode);
+  if (!zip.ok) return null;
+  const coordinates = await reverseGeocode(latitude, longitude);
+  if (!coordinates.ok) return null;
+
+  const miles = milesBetween(zip.place, coordinates.place);
+  if (miles <= LOCATION_MISMATCH_MILES) return null;
+
+  return (
+    `Saved, but check the location: ZIP ${postalCode} is ${zip.place.label}, ` +
+    `while the coordinates are ${coordinates.place.label} — ${describeMiles(miles)} apart. ` +
+    `Hebcal uses the coordinates and Chabad.org uses the ZIP, so the two would show different times.`
+  );
+}
 
 /**
  * Updates the active org's name, timezone and coordinates — the one place
@@ -216,7 +355,10 @@ export async function updateOrgSettings(
   // its own fresh copy of the row, so a rename or a timezone change should
   // not need a hard reload to show up.
   revalidatePath("/", "layout");
-  return { saved: true };
+
+  // After the write, never instead of it — see checkLocationAgreement.
+  const warning = await checkLocationAgreement(zmanim.postal_code, latitude, longitude);
+  return { saved: true, ...(warning ? { warning } : {}) };
 }
 
 /**
