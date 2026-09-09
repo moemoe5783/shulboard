@@ -180,6 +180,14 @@ try {
     !/calculated times/i.test((await page.locator("body").textContent()) ?? ""),
     "and nothing anywhere else on a Hebcal board renders it either",
   );
+  // The Chabad attribution shares that corner and is equally
+  // source-conditional: the value here is Hebcal's, so crediting Chabad.org
+  // would be a false claim about where the time came from.
+  check(
+    !/chabad/i.test(candleLightingText),
+    "a Hebcal-provider candle lighting widget renders no Chabad.org attribution",
+    candleLightingText.trim(),
+  );
 
   const hebrewSpanAttrs = async (locator) =>
     locator.evaluate((el) => {

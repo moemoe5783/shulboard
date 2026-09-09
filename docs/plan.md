@@ -80,7 +80,8 @@ Clock, date, Hebrew date, parsha, daf yomi, countdowns — **computed in the
 browser** from lat/long + system clock. No network needed, ever.
 
 Zmanim are the exception, because of the multi-provider decision (see §5c): when
-the source is Chabad.org or MyZmanim, the values come from a remote API. But
+the source is Chabad.org or MyZmanim, the values come from a remote source
+(for Chabad, their published candle-lighting embed — §5c). But
 zmanim are deterministic and known in advance, so the bundle ships **90 days of
 resolved zmanim** for the screen's location and provider. Offline behavior is
 identical; the screen just needs to reconnect sometime within three months.
@@ -305,7 +306,7 @@ their wall, and these three genuinely differ by a minute or two.
 |---|---|---|---|
 | Hebcal | Official REST API + `@hebcal/core` JS lib | Free | Only one that runs client-side. Default. |
 | MyZmanim | Official REST/SOAP, `api.myzmanim.com`, User+Key | $15/mo/10 locations, $40/mo/100, then $0.10 each | Requires internal `LocationID`. **Decided: ZIP-level only** — resolve via `searchPostal` at onboarding and cache the LocationID on the org. Street-address and shul-specific lookups are manual through their mobile app; don't build for them, and don't market address-level precision. |
-| Chabad.org | **No official API.** Unofficial JSON endpoint (MIT TS client on npm, server-side only, no CORS). Official route is iCal + embed codes at chabad.org/candlelighting | Free | Undocumented, unsupported, no ToS. Can break without notice — needs a fallback path. |
+| Chabad.org | **Candle lighting: the published embed**, `candlelighting.js.asp?locationid=<ZIP>&locationtype=2&ln=2&weeks=<n>` — the surface Chabad.org pointed at when asked (§10.4). Sanctioned, server-side, attribution required. **Zmanim beyond candle lighting: still unresolved** — see below. | Free | Params are case-sensitive and fail SILENTLY: `locationId` is ignored and falls back to Brooklyn. `weeks` is coverage, not rows — `weeks=4` returns 13 entries over 24 days. |
 | Manual | You | — | Per-zman override or fixed offset. `lib/hebrew/candle-times.ts`'s `havdalahShitahSchema` already has a `"custom"` value that is this same idea at the grain of one zman (fixed minutes after sunset) — built for a standalone Havdalah widget that shipped, then got removed in favor of this section. Decide whether it becomes this Manual provider's own Havdalah row or stays separate when this section is built. |
 
 **Canonical zman IDs.** Providers name things differently (`tzeit7083deg` /
@@ -345,6 +346,19 @@ screen someone is standing in front of.
    deliberately (candle lighting down, latest-shma down, etc.). Display verbatim.
    Offer an optional attribution line on the board ("Zmanim: MyZmanim").
 
+**Chabad-sourced zmanim beyond candle lighting is still open.** §10.4's
+conversation resolved candle lighting and only candle lighting: Chabad.org
+pointed at their published candle-lighting embed, which carries exactly
+what it says — candle lighting and Shabbos/Yom Tov end times, nothing
+else. There is no sanctioned bulk source for alos, netz, the shma and
+tfila deadlines, shkia or tzeis: **the published zmanim RSS feed returns
+one day only and takes no date parameter, so it cannot fill a 90-day
+cache.** The undocumented `Get_Zmanim` JSON endpoint does carry all
+thirteen, which is why `lib/zmanim/chabad-adapter.ts` is kept unwired
+rather than deleted — but wiring it back is a permission question, not a
+refactor, and it needs its own conversation. Until then a shul choosing
+Chabad.org gets Chabad's candle lighting and Hebcal's everything else.
+
 **Caching.** Postgres table keyed `(provider, location_id, date)`. Twenty Crown
 Heights shuls share the same rows, so one API call serves all of them. This is
 what keeps MyZmanim's per-location billing manageable and limits blast radius if
@@ -356,8 +370,11 @@ works) → last known good. Surface a subtle "showing calculated times" indicato
 rather than failing silently, since a wrong zman is worse than a flagged one.
 
 **Open items:** MyZmanim attribution/ToS requirements for commercial resale;
-Chabad.org permission for programmatic access. Bundle the Chabad conversation
-with the Hayom Yom / Chitas licensing question — same organization, one ask.
+Chabad-sourced zmanim beyond candle lighting (see above). ~~Chabad.org
+permission for programmatic access~~ — **resolved for candle lighting,
+§10.4.** The Hayom Yom / Chitas licensing question is still worth bundling
+into the next Chabad.org conversation, alongside the zmanim one — same
+organization, one ask.
 
 ### Hebrew/format options (per screen, override per widget)
 - Hebrew script vs transliterated: `כ״ג אלול` / `23 Elul` / `23 Elul 5786`
@@ -539,9 +556,17 @@ is your biggest conversion lever), screen-count limits.
    MyZmanim / manual), see §5c. Remaining sub-question: does MyZmanim ship in v1
    given it's a paid per-location dependency, or is it a paid-tier feature added
    after launch?
-4. **Chabad.org + MyZmanim terms** — one conversation with Chabad.org covering
-   both programmatic zmanim access and Hayom Yom / Chitas text licensing. Do this
-   before building either.
+4. ~~**Chabad.org + MyZmanim terms**~~ — **partly decided.** Chabad.org, asked
+   directly, pointed at their **published candle-lighting embed**
+   (`/tools/shared/candlelighting/candlelighting.js.asp`) rather than at the
+   undocumented `Get_Zmanim` JSON endpoint. Candle lighting therefore runs on
+   a sanctioned, public surface with an attribution condition — the widget
+   shows "Times by Chabad.org" whenever the value on screen is theirs, and
+   that credit is not user-removable, because a shul cannot license it away
+   on Chabad's behalf. `lib/zmanim/chabad-embed.ts` is that reader.
+   **Still open:** Chabad-sourced zmanim beyond candle lighting (§5c — the
+   RSS feed is one day at a time and cannot fill a cache), MyZmanim's own
+   resale terms, and Hayom Yom / Chitas text licensing.
 5. **Screen count pricing** — per-screen or per-org? Shapes the schema.
 6. **Shared infra with the yeshiva system?** Both are multi-tenant Supabase apps
    for frum institutions with overlapping customers. Worth deciding now whether

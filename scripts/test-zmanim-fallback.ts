@@ -8,13 +8,17 @@
  * decision lives there rather than inside the Renderer's JSX.
  *
  * THE CACHE VALUES BELOW ARE THE REAL FIXTURE'S. They are read straight out
- * of test/fixtures/chabad-zmanim-33710-sep2026.json — a hand-fetched
- * chabad.org response for ZIP 33710 (Saint Petersburg, FL) covering Thu
- * 9/10/2026 through Sun 9/13/2026 — through the real adapter, not
- * hand-typed here. So the one cached candle lighting these tests see (9/11,
- * 7:22 PM) and the three days that carry none (9/10, 9/12, 9/13) are the
- * endpoint's own answers, including the second-night Yom Tov case on 9/12
- * that this fallback exists for.
+ * of test/fixtures/chabad-embed-33701-4w.js — a hand-captured response from
+ * chabad.org's published candle-lighting embed for ZIP 33701 (Saint
+ * Petersburg, FL) — through the real reader, not hand-typed here. That is
+ * deliberately the SAME source that fills `zmanim_cache` in production
+ * (lib/zmanim/warm.ts), so this suite exercises the fallback against the
+ * values a screen would really have.
+ *
+ * The fixture's 9/11 candle lighting (7:22 PM) and its 9/12 "Light Holiday
+ * Candles after 8:14 PM" — the second night of Rosh Hashanah, which the
+ * reader deliberately excludes — are the two entries this fallback exists
+ * for.
  *
  * Run with: npm run test:zmanim-fallback — not plain `node`. Loading the
  * fixture through the adapter means importing a module that imports
@@ -27,7 +31,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { BoardLocation } from "../lib/board-location.tsx";
 import { upcomingCandleLighting } from "../lib/hebrew/candle-times.ts";
-import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
+import { fetchChabadEmbed } from "../lib/zmanim/chabad-embed.ts";
 import { resolveCandleLighting, type ChabadZmanimByDate } from "../lib/zmanim/resolve.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -46,35 +50,31 @@ const LOCATION: BoardLocation = {
 
 // ---- load the real fixture through the real adapter ----------------------
 
-const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710-sep2026.json", import.meta.url));
-const FIXTURE = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
+const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-embed-33701-4w.js", import.meta.url));
+const FIXTURE = readFileSync(FIXTURE_PATH, "utf8");
 
 const originalFetch = globalThis.fetch;
-// `.text()`, not `.json()` — the adapter parses the body itself so it can
-// report the byte length in its diagnostic log.
 globalThis.fetch = (async () => ({
   ok: true,
   status: 200,
   statusText: "OK",
-  text: async () => JSON.stringify(FIXTURE),
+  text: async () => FIXTURE,
 })) as unknown as typeof fetch;
-const { times: CACHE } = await fetchChabadZmanim({
-  locationId: "33710",
-  locationType: "2",
-  startDate: "2026-09-10",
-  endDate: "2026-09-13",
+const { times: CACHE } = await fetchChabadEmbed({
+  locationId: "33701",
+  weeks: 4,
   timeZone: "America/New_York",
 });
 globalThis.fetch = originalFetch;
 
 check(
   CACHE["2026-09-11"]?.candle_lighting?.iso === "2026-09-11T23:22:00.000Z",
-  "fixture loaded through the real adapter: 9/11 carries the real 7:22 PM value",
+  "fixture loaded through the real embed reader: 9/11 carries the real 7:22 PM value",
   CACHE["2026-09-11"]?.candle_lighting?.iso,
 );
 check(
   CACHE["2026-09-12"] === undefined,
-  "fixture loaded through the real adapter: 9/12 (second night Rosh Hashanah) carries none",
+  "fixture loaded through the real embed reader: 9/12 (second night Rosh Hashanah) carries none",
 );
 
 const iso = (d: Date) => d.toISOString();
@@ -135,9 +135,9 @@ check(
 //
 // 9/12 16:00Z. Hebcal's next candle lighting is 9/13 00:14Z — 8:14 PM local
 // on 9/12, the second night of Rosh Hashanah, lit after nightfall. The
-// fixture HAS that time, as `ZmanType: "ShabbatEndTime"` /
-// `Title: "Candle Lighting after"`, and the adapter deliberately excludes
-// it, so the cache has no `candle_lighting` for 9/12. Note the cache is not
+// fixture HAS that time, as "Light Holiday Candles after&nbsp;8:14 PM",
+// and the reader deliberately excludes it, so the cache has no
+// `candle_lighting` for 9/12. Note the cache is not
 // empty here — it holds 9/11 — which is exactly why the trigger has to be
 // "is the needed date present" rather than "is the dict empty."
 

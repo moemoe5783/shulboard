@@ -26,10 +26,12 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * whole handler, not just the org settings UI: even if a `zmanim_provider`
  * column somehow already says `'chabad'` for some row, this route does
  * nothing until the flag is explicitly on. That's the actual gate the
- * proposal's "off by default... until I turn it on myself" refers to — the
- * comments in lib/zmanim/chabad-adapter.ts about being unofficial and
- * provisional are documentation, not a runtime check, and this flag is the
- * runtime check they point at.
+ * proposal's "off by default... until I turn it on myself" refers to.
+ *
+ * The source it warms from is now Chabad.org's published candle-lighting
+ * embed (lib/zmanim/chabad-embed.ts), which is what Chabad.org pointed at
+ * when asked — so this flag is no longer holding back an unsanctioned
+ * endpoint, just an integration the owner turns on deliberately.
  *
  * Same CRON_SECRET as build-bundles (docs/environment.md) — one shared
  * secret between an external scheduler and every cron route in this

@@ -6,7 +6,7 @@ import type { BoardLocation } from "@/lib/board-location";
 // scripts/test-zmanim-fallback.ts, which has no bundler to read tsconfig's
 // `@/` alias.
 import { upcomingCandleLighting } from "../hebrew/candle-times.ts";
-import type { ChabadZman } from "./chabad-adapter";
+import type { ChabadEmbedZman } from "./chabad-embed";
 
 /*
  * plan.md §5c's fallback chain — "requested provider → cache → Hebcal
@@ -14,7 +14,7 @@ import type { ChabadZman } from "./chabad-adapter";
  * has a provider today, `candle_lighting`.
  *
  * Client-safe, no fetch, no server-only import (only the *type* from
- * chabad-adapter.ts, erased at compile time). Nothing here parses a
+ * chabad-embed.ts, erased at compile time). Nothing here parses a
  * provider response: the Chabad side of this reads an already-parsed dict,
  * so the adapter's own parsing logic is not involved in, and does not
  * change for, any of the fallback behavior below.
@@ -25,7 +25,7 @@ import type { ChabadZman } from "./chabad-adapter";
  * fallback, is made in one pure function that a test can drive directly.
  */
 
-export type ChabadZmanimByDate = Record<string, Record<string, ChabadZman>>;
+export type ChabadZmanimByDate = Record<string, Record<string, ChabadEmbedZman>>;
 
 export type ResolvedCandleLighting = {
   time: Date;
@@ -49,6 +49,21 @@ export type ResolvedCandleLighting = {
    * meaningless.
    */
   fellBackToHebcal: boolean;
+  /**
+   * Which source the displayed value actually came from.
+   *
+   * This exists for the attribution, not for the fallback flag: Chabad.org
+   * publishes their candle-lighting embed on the condition that an
+   * application using it credits them (lib/zmanim/chabad-embed.ts), so the
+   * widget has to know when the time on screen is theirs. It is derivable
+   * from `provider` and `fellBackToHebcal` together, and stated outright
+   * anyway — a renderer reconstructing a licence condition from two other
+   * fields is how the credit goes missing in a later refactor.
+   *
+   * `"hebcal"` covers manual too: that path is Hebcal's computation with a
+   * different candle-lighting offset, and nobody needs crediting for it.
+   */
+  source: "chabad" | "hebcal";
 };
 
 /**
@@ -79,9 +94,9 @@ function isoDateInZone(instant: Date, timeZone: string): string {
  * it's what establishes *which date matters*. A Chabad cache dict can hold
  * plenty of dates and still be missing the one about to happen (a cache
  * miss, a cron that hasn't run, or a real no-match like the second night of
- * a two-day Yom Tov, which chabad.org reports as `ShabbatEndTime` rather
- * than `CandleLighting` and the adapter deliberately excludes — see
- * test/fixtures/chabad-zmanim-33710-sep2026.json's 9/12 entry). "Is the
+ * a two-day Yom Tov, which the embed phrases as "Light Holiday Candles
+ * after" and the reader deliberately excludes — see
+ * test/fixtures/chabad-embed-33701-4w.js's 9/12 entry). "Is the
  * dict empty" cannot tell those apart from a healthy cache; "does the dict
  * have the date Hebcal says is next" can, and answers all three the same
  * way.
@@ -119,7 +134,14 @@ export function resolveCandleLighting(input: {
     // path, and `myzmanim` has no adapter yet, so it resolves the same way
     // it did before this function existed (plan.md §5c scope: "MyZmanim
     // gets nothing").
-    return hebcalEvent && { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: false };
+    return (
+      hebcalEvent && {
+        time: hebcalEvent.eventTime,
+        event: hebcalEvent,
+        fellBackToHebcal: false,
+        source: "hebcal",
+      }
+    );
   }
 
   // Nine days always contains a Friday (candle-times.ts's SEARCH_WINDOW_DAYS),
@@ -132,8 +154,8 @@ export function resolveCandleLighting(input: {
   const cached = chabadZmanim?.[neededDate]?.candle_lighting;
 
   if (cached) {
-    return { time: new Date(cached.iso), event: null, fellBackToHebcal: false };
+    return { time: new Date(cached.iso), event: null, fellBackToHebcal: false, source: "chabad" };
   }
 
-  return { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: true };
+  return { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: true, source: "hebcal" };
 }
