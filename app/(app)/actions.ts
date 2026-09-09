@@ -10,6 +10,8 @@ import { formatTimeOfDay } from "@/lib/hebrew/format";
 import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, requireUser } from "@/lib/orgs";
 import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
+import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { warmChabadLocation } from "@/lib/zmanim/warm";
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -359,6 +361,126 @@ export async function updateOrgSettings(
   // After the write, never instead of it — see checkLocationAgreement.
   const warning = await checkLocationAgreement(zmanim.postal_code, latitude, longitude);
   return { saved: true, ...(warning ? { warning } : {}) };
+}
+
+export type FetchZmanimNowState =
+  | { status: "idle" }
+  | { status: "done"; message: string }
+  | { status: "failed"; message: string };
+
+/**
+ * How recently this location may have been fetched before "Fetch now"
+ * refuses. Chabad's endpoint is undocumented and has no ToS with this
+ * project (plan.md §10.4), so a button that fires it must not be usable as
+ * a hammer.
+ *
+ * PER LOCATION, NOT PER ORG — deliberately stricter than per-org, and the
+ * grain that actually matters. Twenty Crown Heights shuls resolve to one
+ * ZIP and one cache row (plan.md §5c), so a per-org limit would let those
+ * twenty admins hit the same location twenty times a minute. This uses
+ * `zmanim_cache.fetched_at` for the location itself, which is durable
+ * across deploys and cold starts in a way an in-memory counter is not, and
+ * needs no new column.
+ */
+const FETCH_NOW_COOLDOWN_MS = 60_000;
+
+/**
+ * Warms this org's own Chabad location on demand.
+ *
+ * WHY IT EXISTS: the cron is right for steady state but leaves a gabbai who
+ * has just picked Chabad.org with nothing to do but wait, and no way to
+ * tell "the cron hasn't run yet" from "the cron is broken". This answers
+ * that question directly, with the day counts, in the place the setting was
+ * changed.
+ *
+ * It runs `warmChabadLocation` — the same function the cron calls, not a
+ * second copy — so the two can't drift into caching different shapes. That
+ * function is what holds the service-role key (`zmanim_cache` has a SELECT
+ * policy and deliberately no write policy at all, so nothing running as a
+ * tenant can write it); this action holds no key of its own and reads the
+ * org row through the caller's own RLS-scoped client.
+ *
+ * It warms the SAVED row, not what is currently typed into the form, and
+ * says which location it used — a gabbai who has changed the ZIP without
+ * saving sees the old one named back rather than a success message about
+ * the wrong place.
+ */
+export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
+  const org = await requireActiveOrg();
+  if (!hasRoleAtLeast(org.role, "admin")) {
+    return { status: "failed", message: "Only an owner or admin can fetch zmanim." };
+  }
+
+  // The same runtime gate the cron checks, for the same reason — the org
+  // settings page only offering the option is not the gate
+  // (docs/environment.md).
+  if (process.env.ZMANIM_CHABAD_ENABLED !== "true") {
+    return { status: "failed", message: "Chabad.org isn't turned on for this product yet." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("orgs")
+    .select("timezone, postal_code, zmanim_location_id")
+    .eq("id", org.orgId)
+    .single();
+
+  if (error || !data) {
+    return { status: "failed", message: "Couldn't read this shul's settings. Reload and try again." };
+  }
+
+  const location = resolveChabadLocation({
+    orgPostalCode: data.postal_code,
+    orgZmanimLocationId: data.zmanim_location_id,
+  });
+  if (!location) {
+    return { status: "failed", message: "Add a US ZIP above and save, then fetch." };
+  }
+
+  // Readable under RLS by any signed-in user (the table's one policy), so
+  // the cooldown check needs no elevated client of its own.
+  const { data: recent } = await supabase
+    .from("zmanim_cache")
+    .select("fetched_at")
+    .eq("provider", "chabad")
+    .eq("location_id", location.cacheKey)
+    .order("fetched_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (recent?.fetched_at) {
+    const elapsed = Date.now() - new Date(recent.fetched_at).getTime();
+    if (elapsed < FETCH_NOW_COOLDOWN_MS) {
+      const wait = Math.ceil((FETCH_NOW_COOLDOWN_MS - elapsed) / 1000);
+      return {
+        status: "failed",
+        message: `${location.locationId} was fetched less than a minute ago. Wait ${wait}s and try again.`,
+      };
+    }
+  }
+
+  const outcome = await warmChabadLocation({ ...location, timezone: data.timezone });
+
+  if (outcome.status === "failed") {
+    // The provider's own message verbatim, not a paraphrase: this button
+    // exists so a gabbai can tell a broken fetch from a cron that hasn't
+    // run, and "something went wrong" answers neither.
+    return { status: "failed", message: `Fetching ${location.locationId} failed: ${outcome.error}` };
+  }
+
+  const { days, daysWithCandleLighting } = outcome;
+  if (daysWithCandleLighting === 0) {
+    return {
+      status: "done",
+      message:
+        `Fetched ${days} days for ${location.locationId}, but none of them had a candle-lighting time. ` +
+        `That's worth reporting — 90 days always contains Fridays, so it points at chabad.org having changed its response.`,
+    };
+  }
+  return {
+    status: "done",
+    message: `Fetched ${days} days for ${location.locationId}. ${daysWithCandleLighting} have a candle-lighting time.`,
+  };
 }
 
 /**

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { fetchChabadZmanim } from "@/lib/zmanim/chabad-adapter";
 import { resolveChabadLocation, type ChabadLocation } from "@/lib/zmanim/location";
+import { warmChabadLocation } from "@/lib/zmanim/warm";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
 /*
@@ -15,8 +15,12 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * minutes actually change, and it's kinder to an endpoint this project has
  * no ToS with (plan.md §10.4).
  *
- * SEVENTH NAMED SERVICE-ROLE EXCEPTION — CLAUDE.md's list of exactly six
- * places has been updated to seven for this route; see that file.
+ * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
+ * the key for its own reason, separate from the warming it delegates: it
+ * sweeps EVERY org and screen to discover which locations are referenced
+ * at all, which is a cross-tenant read no RLS policy can express. The
+ * write into `zmanim_cache` is `lib/zmanim/warm.ts`'s, shared with the
+ * settings page's own "Fetch now" button so there is one copy of it.
  *
  * OFF BY DEFAULT. ZMANIM_CHABAD_ENABLED (docs/environment.md) gates the
  * whole handler, not just the org settings UI: even if a `zmanim_provider`
@@ -34,8 +38,6 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const WARM_DAYS_AHEAD = 90;
 
 type OrgRow = { id: string; timezone: string; zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null };
 type ScreenRow = {
@@ -118,38 +120,11 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   const targets = collectTargets((orgs ?? []) as OrgRow[], (screens ?? []) as unknown as ScreenRow[]);
 
-  const today = new Date();
-  const startDate = today.toISOString().slice(0, 10);
-  const endDate = new Date(today.getTime() + WARM_DAYS_AHEAD * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-  /*
-   * Three outcomes, not two — mirroring build-bundles' own
-   * built/unchanged/failed rather than collapsing anything into "failed":
-   *
-   * - "warmed": the fetch succeeded and at least one day in the window
-   *   carried a `candle_lighting` value.
-   * - "warmed-no-candle-lighting": the fetch and parse both succeeded and
-   *   the endpoint simply had nothing to light across the whole window.
-   *   This is NOT a failure. Plenty of individual days legitimately have no
-   *   candle lighting — an ordinary Thursday, or the second night of a
-   *   two-day Yom Tov, which chabad.org reports as `ShabbatEndTime` and the
-   *   adapter deliberately excludes (test/fixtures/chabad-zmanim-33710-
-   *   sep2026.json's 9/12 entry). Over 90 days, though, zero is a different
-   *   claim from "this Thursday has none": a real location always has
-   *   Fridays in a 90-day window, so zero across the whole span is the
-   *   signature of a silent response-shape regression — exactly what bit
-   *   this adapter this week, when `item.Date` parsing skipped every day
-   *   and nothing anywhere said so. Distinguishing it is the point: a
-   *   reader of this route's own output can tell "fetched fine, nothing to
-   *   light" from "the fetch broke," and can tell either from a healthy run.
-   * - "failed": the fetch threw, the response wasn't ok, or the upsert
-   *   errored. An actual error, with its message.
-   *
-   * Rows are still written in every non-failed case, `times: {}` and all —
-   * an empty day is a real, cacheable answer, and the untouched
-   * `raw_response` beside it is what makes a shape regression diagnosable
-   * at all.
-   */
+  // Three outcomes per target, not two — the distinction between "fetched
+  // fine, nothing to light" and "the fetch broke" is made in
+  // lib/zmanim/warm.ts, which explains why zero candle lightings across a
+  // 90-day window is a signal rather than a failure. This route only counts
+  // them up.
   const results: {
     cacheKey: string;
     status: "warmed" | "warmed-no-candle-lighting" | "failed";
@@ -163,44 +138,7 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
   // point of the cache), and an undocumented endpoint is exactly the kind
   // this project should not hammer concurrently.
   for (const target of targets.values()) {
-    try {
-      const { times, rawResponseByDate } = await fetchChabadZmanim({
-        locationId: target.locationId,
-        locationType: target.locationType,
-        startDate,
-        endDate,
-        timeZone: target.timezone,
-      });
-
-      const rows = Object.keys(rawResponseByDate).map((date) => ({
-        provider: "chabad" as const,
-        location_id: target.cacheKey,
-        date,
-        timezone: target.timezone,
-        times: times[date] ?? {},
-        raw_response: rawResponseByDate[date] as never,
-        fetched_at: new Date().toISOString(),
-      }));
-
-      if (rows.length > 0) {
-        const { error } = await db.from("zmanim_cache").upsert(rows, { onConflict: "provider,location_id,date" });
-        if (error) throw new Error(error.message);
-      }
-
-      const daysWithCandleLighting = Object.values(times).filter((day) => day.candle_lighting).length;
-      results.push({
-        cacheKey: target.cacheKey,
-        status: daysWithCandleLighting > 0 ? "warmed" : "warmed-no-candle-lighting",
-        days: rows.length,
-        daysWithCandleLighting,
-      });
-    } catch (cause) {
-      results.push({
-        cacheKey: target.cacheKey,
-        status: "failed",
-        error: cause instanceof Error ? cause.message : String(cause),
-      });
-    }
+    results.push({ cacheKey: target.cacheKey, ...(await warmChabadLocation(target)) });
   }
 
   return NextResponse.json({

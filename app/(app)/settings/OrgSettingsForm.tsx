@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { updateOrgSettings, type UpdateOrgSettingsState } from "../actions";
+import { FetchZmanimNow } from "./FetchZmanimNow";
 import { LocationLookup } from "../LocationLookup";
 
 export function OrgSettingsForm({
@@ -101,27 +102,40 @@ export function OrgSettingsForm({
                 name="postalCode"
                 label="ZIP code"
                 defaultValue={postalCode ?? ""}
-                hint="US only. Chabad.org has no way to accept coordinates, so it resolves its times from the center of this ZIP rather than from the latitude and longitude above — expect its times to differ from Hebcal's by a minute or so."
+                hint="US only. Chabad.org has no way to accept coordinates, so it resolves its times from the center of this ZIP rather than from the location above — expect its times to differ from Hebcal's by a minute or so."
               />
-              <Field
-                id="zmanimLocationId"
-                name="zmanimLocationId"
-                label="Chabad.org location"
-                defaultValue={zmanimLocationId ?? ""}
-                hint="Only needed without a US ZIP above. Copy the number out of your own chabad.org candle-lighting page URL (…/locationId/<this>/locationType/…)."
-              />
+              <FetchZmanimNow />
             </>
           ) : (
-            /* Hebcal and Manual don't read either of these, so neither field
-               is shown — but the form is what the save reads, so without
-               these the stored values would be wiped the first time a gabbai
-               saved on Hebcal, and switching back to Chabad.org would find
-               them gone. */
-            <>
-              <input type="hidden" name="postalCode" value={postalCode ?? ""} />
-              <input type="hidden" name="zmanimLocationId" value={zmanimLocationId ?? ""} />
-            </>
+            /* Hebcal and Manual don't read the ZIP, so the field is hidden —
+               but the form is what the save reads, so without this the
+               stored value would be wiped the first time a gabbai saved on
+               Hebcal, and switching back to Chabad.org would find it gone. */
+            <input type="hidden" name="postalCode" value={postalCode ?? ""} />
           )}
+
+          {/*
+            THERE IS NO "Chabad.org location" FIELD, and that is deliberate.
+
+            It wrote orgs.zmanim_location_id, and its purpose was Chabad's
+            locationtype=1 — their own opaque internal city numbering, for a
+            shul with no US ZIP. Nothing can use it: lib/zmanim/chabad-adapter
+            .ts only ever sends the locationtype resolveChabadLocation hands
+            it, and every path a gabbai can reach resolves to =2 (a ZIP).
+            There was also no way for a gabbai to tell the two kinds of
+            number apart, so the field collected ZIPs — which resolve as
+            city ids, silently asking Chabad for the wrong place if the ZIP
+            field above were ever cleared.
+
+            THE COLUMN STAYS (supabase/migrations/20260909090000_orgs_zmanim
+            _location_id.sql) and is still read by resolveChabadLocation, the
+            bundle builder and the warming cron. Non-US shuls are where it
+            comes back: that is the case a ZIP cannot express, and it needs a
+            locationtype selector beside it to be usable at all rather than
+            one more numeric box. Any stored value is preserved below rather
+            than dropped by this field's removal.
+          */}
+          <input type="hidden" name="zmanimLocationId" value={zmanimLocationId ?? ""} />
         </LocationLookup>
       </fieldset>
 
