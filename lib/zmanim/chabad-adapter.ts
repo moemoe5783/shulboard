@@ -155,6 +155,87 @@ function formatDisplay(date: Date, timeZone: string): string {
 }
 
 /**
+ * One line per request, at `console.info` so it lands in Vercel's function
+ * logs without a log-level flag.
+ *
+ * WHY THIS EXISTS: a live 91-day warm for ZIP 33710 came back with 91 days
+ * and zero candle-lighting times. The warming code's own alarm caught it
+ * (lib/zmanim/warm.ts's `warmed-no-candle-lighting`), but the alarm can
+ * only say "zero" — it cannot say whether the request was malformed, the
+ * range was honoured, or the response shape changed. Every field below is
+ * chosen to answer one of those without a second guess:
+ *
+ * - the full URL, so a wrong date format or a missing parameter is visible
+ *   rather than inferred (the three date parameters are the live suspects —
+ *   the hand-verified working request uses M-D-YYYY for `tdate` and
+ *   M/D/YYYY for `startdate`/`enddate`, and this code sends ISO for all
+ *   three);
+ * - status and byte length, which separate a truncated or error body from
+ *   a full one;
+ * - `days`, plus the FIRST and LAST `DisplayDate`, which is what actually
+ *   says whether chabad.org honoured the range it was asked for or
+ *   substituted its own — a count alone cannot tell those apart;
+ * - the range chabad.org echoes back in its own top-level `EndDate` /
+ *   `GmtStartDate` / `GmtEndDate`, its side of the same question;
+ * - every distinct `ZmanType` across the whole response, so a changed
+ *   vocabulary is obvious (the fixture's own set is 13 halachic types plus
+ *   `CandleLighting` and `ShabbatEndTime`);
+ * - and the dates that carried a `CandleLighting`, not just how many.
+ *   WHICH days is the discriminating fact: candle lighting on every Friday
+ *   in the range is a working response, candle lighting only on the `tdate`
+ *   day means one wide request can never return more than one and the
+ *   whole 91-day-single-fetch approach is wrong.
+ *
+ * Deliberately not logged: the response body. It is up to a megabyte at 91
+ * days, it is already stored verbatim in `zmanim_cache.raw_response` where
+ * it can be read at leisure, and a log line nobody can scroll through is
+ * not a diagnostic.
+ */
+function logRequest(url: URL, status: number, bytes: number, body: unknown, days: unknown[]): void {
+  const record = (body ?? {}) as Record<string, unknown>;
+  const displayDates = days.map((day) => (day as Record<string, unknown>)?.DisplayDate);
+
+  const zmanTypes = new Set<string>();
+  const candleLightingDates: unknown[] = [];
+
+  for (const day of days) {
+    const dayRecord = (day ?? {}) as Record<string, unknown>;
+    let hasCandleLighting = false;
+    for (const group of Array.isArray(dayRecord.TimeGroups) ? dayRecord.TimeGroups : []) {
+      for (const item of Array.isArray((group as Record<string, unknown>)?.Items)
+        ? ((group as Record<string, unknown>).Items as unknown[])
+        : []) {
+        const type = (item as Record<string, unknown>)?.ZmanType;
+        if (typeof type === "string") {
+          zmanTypes.add(type);
+          if (type === "CandleLighting") hasCandleLighting = true;
+        }
+      }
+    }
+    if (hasCandleLighting) candleLightingDates.push(dayRecord.DisplayDate);
+  }
+
+  console.info(
+    "[chabad-zmanim] " +
+      JSON.stringify({
+        url: url.toString(),
+        status,
+        bytes,
+        days: days.length,
+        firstDisplayDate: displayDates[0] ?? null,
+        lastDisplayDate: displayDates[displayDates.length - 1] ?? null,
+        echoedLocation: record.LocationName ?? null,
+        echoedLocationId: record.LocationId ?? null,
+        echoedEndDate: record.EndDate ?? null,
+        echoedGmtStartDate: record.GmtStartDate ?? null,
+        echoedGmtEndDate: record.GmtEndDate ?? null,
+        zmanTypes: [...zmanTypes].sort(),
+        candleLightingDates,
+      }),
+  );
+}
+
+/**
  * One (chabad, location) pair's zmanim for the given date range, ready to
  * upsert into `zmanim_cache` one row per date.
  *
@@ -186,11 +267,27 @@ export async function fetchChabadZmanim(input: {
 
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) {
+    console.error(`[chabad-zmanim] ${response.status} ${response.statusText} for ${url.toString()}`);
     throw new Error(`Chabad zmanim request failed: ${response.status} ${response.statusText}`);
   }
 
-  const body: unknown = await response.json();
+  // Read as text, not `.json()`, for two reasons: the byte length is part of
+  // what the log below has to report, and a body that isn't JSON at all
+  // becomes a diagnosable error with a snippet rather than an opaque throw.
+  const raw = await response.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    console.error(
+      `[chabad-zmanim] 200 but unparseable body, ${raw.length} bytes, for ${url.toString()} — starts: ${JSON.stringify(raw.slice(0, 200))}`,
+    );
+    throw new Error("Chabad zmanim response was not JSON");
+  }
+
   const days = Array.isArray((body as { Days?: unknown[] })?.Days) ? (body as { Days: unknown[] }).Days : [];
+
+  logRequest(url, response.status, raw.length, body, days);
 
   const times: Record<string, Record<string, ChabadZman>> = {};
   const rawResponseByDate: Record<string, unknown> = {};

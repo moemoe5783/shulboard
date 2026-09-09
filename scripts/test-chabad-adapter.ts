@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
 
 const results: { ok: boolean; label: string }[] = [];
-function check(ok: boolean, label: string, detail = "") {
+function check(ok: boolean, label: string, detail: string | null | undefined = "") {
   results.push({ ok, label });
   console.log(`${ok ? "  ok     " : "  FAILED "} ${label}${detail ? ` — ${detail}` : ""}`);
 }
@@ -30,14 +30,25 @@ function check(ok: boolean, label: string, detail = "") {
 const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710-sep2026.json", import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(FIXTURE_PATH, "utf8"));
 
+/* The adapter reads the body with `.text()` and parses it itself, so the
+ * byte length is available to its diagnostic log line. The stub has to
+ * match that, not `.json()`. The captured URL is asserted below — the gap
+ * that let a wrong date format ship unnoticed was this suite never looking
+ * at the request it was stubbing. */
+const captured: { url: URL | null } = { url: null };
+
 function stubFetch(body: unknown) {
   const original = globalThis.fetch;
-  globalThis.fetch = (async () => ({
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    json: async () => body,
-  })) as unknown as typeof fetch;
+  captured.url = null;
+  globalThis.fetch = (async (input: URL | string) => {
+    captured.url = new URL(String(input));
+    return {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => JSON.stringify(body),
+    };
+  }) as unknown as typeof fetch;
   return () => {
     globalThis.fetch = original;
   };
@@ -102,6 +113,37 @@ check(times["2026-09-13"] === undefined, "9/13 (second day Rosh Hashanah, Holida
 check(
   ["2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"].every((date) => date in rawResponseByDate),
   "all 4 real days are kept in rawResponseByDate regardless of whether anything in them matched",
+);
+
+// ---- the outgoing request itself ----------------------------------------
+//
+// This suite previously asserted nothing about the URL, which is exactly
+// how the three date parameters came to be sent in ISO format while the
+// hand-verified working request uses M-D-YYYY for `tdate` and M/D/YYYY for
+// `startdate`/`enddate`. These checks pin the parts that are settled; the
+// date FORMAT is a live diagnosis and is deliberately not asserted here
+// yet, so this suite cannot claim a format is correct before a live call
+// has shown which one is.
+
+check(
+  captured.url?.origin + (captured.url?.pathname ?? "") ===
+    "https://www.chabad.org/webservices/zmanim/zmanim/Get_Zmanim",
+  "the endpoint is chabad.org's Get_Zmanim, unchanged",
+  captured.url?.origin + (captured.url?.pathname ?? ""),
+);
+check(captured.url?.searchParams.get("locationid") === "33710", "locationid carries the ZIP");
+check(captured.url?.searchParams.get("locationtype") === "2", "locationtype=2 — a ZIP, never Chabad's opaque city numbering");
+check(captured.url?.searchParams.get("save") === "1", "save=1");
+check(
+  captured.url?.searchParams.get("jewish") === "Zmanim-Halachic-Times.htm",
+  "the jewish= table selector is passed verbatim",
+  captured.url?.searchParams.get("jewish"),
+);
+check(captured.url?.searchParams.get("aid") === null, "no aid parameter — confirmed by hand not to be required");
+check(
+  ["tdate", "startdate", "enddate"].every((key) => Boolean(captured.url?.searchParams.get(key))),
+  "all three date parameters are present and non-empty",
+  ["tdate", "startdate", "enddate"].map((k) => `${k}=${captured.url?.searchParams.get(k)}`).join(" "),
 );
 
 console.log("");
