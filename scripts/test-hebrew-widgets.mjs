@@ -154,6 +154,33 @@ try {
   const added = boxesText.slice(-4);
   check(added.every((t) => t.length > 0), "every new widget renders non-empty text", added.join(" | "));
 
+  // ---- the fallback indicator stays OFF on a Hebcal board ----------------
+  //
+  // lib/zmanim/resolve.ts's "showing calculated times" notice
+  // (widgets/candle-lighting/Renderer.tsx) fires only when the resolved
+  // provider is Chabad and its cache has nothing for the date about to
+  // happen. editor-lab is a plain Hebcal board — DEFAULT_BOARD_ZMANIM,
+  // lib/board-zmanim.tsx — so the indicator must not render here at all.
+  // This is the rendered half of that isolation proof; the value-level half,
+  // across every provider and a real cache dict, is
+  // scripts/test-zmanim-fallback.ts.
+  //
+  // The indicator APPEARING is not asserted here, and can't be: editor-lab
+  // has no way to seed a Chabad provider or a cache dict, and adding a
+  // surface-specific one would be the editor/display fork CLAUDE.md forbids
+  // arriving as a test fixture. It's covered at the resolver instead.
+  const candleLightingBox = page.locator("[data-widget-id]").nth(7);
+  const candleLightingText = (await candleLightingBox.textContent()) ?? "";
+  check(
+    !/calculated times/i.test(candleLightingText),
+    "a Hebcal-provider candle lighting widget renders no 'showing calculated times' indicator",
+    candleLightingText.trim(),
+  );
+  check(
+    !/calculated times/i.test((await page.locator("body").textContent()) ?? ""),
+    "and nothing anywhere else on a Hebcal board renders it either",
+  );
+
   const hebrewSpanAttrs = async (locator) =>
     locator.evaluate((el) => {
       const span = el.querySelector("span[dir]");

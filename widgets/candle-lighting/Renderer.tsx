@@ -4,10 +4,10 @@ import { useMemo, useRef } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
-import { upcomingCandleLighting } from "@/lib/hebrew/candle-times";
 import { formatCandleLightingLabel, formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
+import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
-import { nextChabadCandleLighting } from "@/lib/zmanim/resolve";
+import { resolveCandleLighting } from "@/lib/zmanim/resolve";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
@@ -33,43 +33,42 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   const isChabad = effectiveProvider === "chabad";
   const chabadUnconfigured = isChabad && !zmanim.hasChabadLocation;
 
-  // Re-searched every tick: the countdown has to move every minute, and once
+  // Re-resolved every tick: the countdown has to move every minute, and once
   // a candle-lighting time passes, the very next tick has to find the
   // FOLLOWING one (test:hebrew's "advances past an event once it's passed").
   // Keyed on `second`, not `now` — a fresh Date every render would defeat
   // the memo even when the second hasn't actually changed.
-  const hebcalEvent = useMemo(
+  //
+  // One call for every provider: which source wins, and whether Chabad fell
+  // back to Hebcal for the date about to happen, is decided in
+  // lib/zmanim/resolve.ts rather than branched here.
+  const resolution = useMemo(
     () =>
-      second !== null && location && !isChabad
-        ? upcomingCandleLighting(
-            new Date(second * 1000),
+      second !== null && location
+        ? resolveCandleLighting({
+            now: new Date(second * 1000),
+            provider: effectiveProvider,
             location,
-            effectiveProvider === "manual" ? config.manualMinutesBeforeSunset : undefined,
-          )
+            chabadZmanim: zmanim.chabadZmanim,
+            manualMinutesBeforeSunset: config.manualMinutesBeforeSunset,
+          })
         : null,
-    [second, location, isChabad, effectiveProvider, config.manualMinutesBeforeSunset],
+    [second, location, effectiveProvider, zmanim.chabadZmanim, config.manualMinutesBeforeSunset],
   );
 
-  // Same "next one, after now" contract as hebcalEvent above, read from the
-  // cached dict (lib/board-zmanim.tsx) instead of computed — see
-  // lib/zmanim/resolve.ts.
-  const chabadEvent = useMemo(
-    () =>
-      second !== null && isChabad && zmanim.chabadZmanim
-        ? nextChabadCandleLighting(new Date(second * 1000), zmanim.chabadZmanim)
-        : null,
-    [second, isChabad, zmanim.chabadZmanim],
-  );
-
-  const resolved = isChabad
-    ? chabadEvent && {
-        time: new Date(chabadEvent.iso),
-        label: formatCandleLightingLabel({ script: config.script, nekudos: config.nekudos }),
-      }
-    : hebcalEvent && {
-        time: hebcalEvent.eventTime,
-        label: formatEventLabel(hebcalEvent, { script: config.script, nekudos: config.nekudos }),
-      };
+  const resolved =
+    resolution && {
+      time: resolution.time,
+      fellBackToHebcal: resolution.fellBackToHebcal,
+      // A Hebcal-produced value carries its own event name (a Yom Tov's,
+      // not just "Candle lighting"); a value read out of Chabad's cache
+      // doesn't, so it gets the generic label. Note this makes a
+      // fallback-produced value label exactly like an ordinary Hebcal one —
+      // the indicator below, not the label, is what says it was computed.
+      label: resolution.event
+        ? formatEventLabel(resolution.event, { script: config.script, nekudos: config.nekudos })
+        : formatCandleLightingLabel({ script: config.script, nekudos: config.nekudos }),
+    };
 
   const isFit = config.sizingMode === "fit";
   useFitFontSize(boxRef, contentRef, {
@@ -101,7 +100,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   }
   if (!now || !resolved) return null;
 
-  const { label, time: eventTime } = resolved;
+  const { label, time: eventTime, fellBackToHebcal } = resolved;
   const time = formatTimeOfDay(eventTime, { hour12: config.hour12, timeZone: location.timeZone });
   const countdown = formatCountdown(eventTime.getTime() - now.getTime());
 
@@ -113,7 +112,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         : "items-start text-left";
 
   return (
-    <div ref={boxRef} className={`flex h-full w-full flex-col justify-center ${align}`}>
+    <div ref={boxRef} className={`relative flex h-full w-full flex-col justify-center ${align}`}>
       <div
         ref={contentRef}
         className="flex flex-col gap-[0.1em]"
@@ -152,6 +151,45 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
           </span>
         )}
       </div>
+
+      {fellBackToHebcal && <CalculatedTimesNotice canvas={canvas} />}
     </div>
+  );
+}
+
+/**
+ * plan.md §5c: "surface a subtle 'showing calculated times' indicator rather
+ * than failing silently, since a wrong zman is worse than a flagged one."
+ * Shown only when the screen's provider is Chabad and its cache had nothing
+ * for the date about to happen, so this time is Hebcal's computation
+ * standing in — never on hebcal or manual, which are the computed path by
+ * configuration rather than by failure.
+ *
+ * This is the RENDERER'S OWN CHROME, not board content — design.md §1b's
+ * middle bullet, the same category as EmptyLocation and BoardRenderer's
+ * unknown-widget notice. So it follows the chrome rules: one radius from
+ * the two-value scale (`rounded-control`), weight 400, sentence case, no
+ * raw color. It borrows `currentColor` rather than naming a token colour
+ * for the one reason those siblings do — a board's theme sets its own text
+ * colour on any ground it likes, and a fixed `--ink` here would be
+ * invisible on half of them.
+ *
+ * Inlined in this file rather than extracted: one caller, and CLAUDE.md's
+ * own preference. Absolutely positioned, deliberately — `useFitFontSize`
+ * measures `contentRef` against `boxRef`, so anything added to the normal
+ * flow would shrink the time itself and change every existing board's
+ * rendering the moment a cache went cold.
+ */
+function CalculatedTimesNotice({ canvas }: { canvas: { width: number } }) {
+  return (
+    <span
+      className="rounded-control border-current/25 pointer-events-none absolute right-0 bottom-0 border font-regular whitespace-nowrap opacity-60"
+      style={{
+        fontSize: boardLength(16, canvas.width),
+        padding: `${boardLength(2, canvas.width)} ${boardLength(6, canvas.width)}`,
+      }}
+    >
+      Showing calculated times
+    </span>
   );
 }

@@ -122,7 +122,41 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
   const startDate = today.toISOString().slice(0, 10);
   const endDate = new Date(today.getTime() + WARM_DAYS_AHEAD * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const results: { cacheKey: string; status: "warmed" | "failed"; error?: string }[] = [];
+  /*
+   * Three outcomes, not two — mirroring build-bundles' own
+   * built/unchanged/failed rather than collapsing anything into "failed":
+   *
+   * - "warmed": the fetch succeeded and at least one day in the window
+   *   carried a `candle_lighting` value.
+   * - "warmed-no-candle-lighting": the fetch and parse both succeeded and
+   *   the endpoint simply had nothing to light across the whole window.
+   *   This is NOT a failure. Plenty of individual days legitimately have no
+   *   candle lighting — an ordinary Thursday, or the second night of a
+   *   two-day Yom Tov, which chabad.org reports as `ShabbatEndTime` and the
+   *   adapter deliberately excludes (test/fixtures/chabad-zmanim-33710-
+   *   sep2026.json's 9/12 entry). Over 90 days, though, zero is a different
+   *   claim from "this Thursday has none": a real location always has
+   *   Fridays in a 90-day window, so zero across the whole span is the
+   *   signature of a silent response-shape regression — exactly what bit
+   *   this adapter this week, when `item.Date` parsing skipped every day
+   *   and nothing anywhere said so. Distinguishing it is the point: a
+   *   reader of this route's own output can tell "fetched fine, nothing to
+   *   light" from "the fetch broke," and can tell either from a healthy run.
+   * - "failed": the fetch threw, the response wasn't ok, or the upsert
+   *   errored. An actual error, with its message.
+   *
+   * Rows are still written in every non-failed case, `times: {}` and all —
+   * an empty day is a real, cacheable answer, and the untouched
+   * `raw_response` beside it is what makes a shape regression diagnosable
+   * at all.
+   */
+  const results: {
+    cacheKey: string;
+    status: "warmed" | "warmed-no-candle-lighting" | "failed";
+    days?: number;
+    daysWithCandleLighting?: number;
+    error?: string;
+  }[] = [];
 
   // Serially, same reasoning as build-bundles: this is a small, deduped list
   // (twenty Crown Heights shuls collapse to one target — plan.md §5c's own
@@ -153,7 +187,13 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
         if (error) throw new Error(error.message);
       }
 
-      results.push({ cacheKey: target.cacheKey, status: "warmed" });
+      const daysWithCandleLighting = Object.values(times).filter((day) => day.candle_lighting).length;
+      results.push({
+        cacheKey: target.cacheKey,
+        status: daysWithCandleLighting > 0 ? "warmed" : "warmed-no-candle-lighting",
+        days: rows.length,
+        daysWithCandleLighting,
+      });
     } catch (cause) {
       results.push({
         cacheKey: target.cacheKey,
@@ -167,6 +207,11 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
     enabled: true,
     targets: targets.size,
     warmed: results.filter((r) => r.status === "warmed").length,
+    // Counted separately from both — a caller watching this route can alert
+    // on `failed` for breakage and on a persistently non-zero
+    // `warmedNoCandleLighting` for a shape regression, which are different
+    // problems with different fixes.
+    warmedNoCandleLighting: results.filter((r) => r.status === "warmed-no-candle-lighting").length,
     failed: results.filter((r) => r.status === "failed").length,
     results,
   });
