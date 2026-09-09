@@ -259,7 +259,83 @@ async function runCronAuthChecks() {
   }
 }
 
+/*
+ * The Chabad zmanim cache-warming cron's own authorization — same
+ * CRON_SECRET guard as build-bundles, plus a second gate build-bundles
+ * doesn't have: ZMANIM_CHABAD_ENABLED (docs/environment.md). Unset — the
+ * default — a correctly-authorized request still gets a plain 200 no-op
+ * rather than a 503, which is the point: this route must never reach for
+ * the database, let alone chabad.org, while the flag is off.
+ */
+async function runZmanimCronAuthChecks() {
+  console.log("\nThe Chabad zmanim cron's authorization:");
+
+  const secret = "test-cron-secret-value";
+  const flagOff = await startServer({ ...DUMMY_ENV, CRON_SECRET: secret });
+  try {
+    for (const method of ["GET", "POST"]) {
+      const authorised = await fetch(`${BASE}/api/cron/warm-zmanim`, {
+        method,
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      const body = await authorised.json();
+      check(
+        authorised.status === 200 && body.enabled === false,
+        `${method} with the correct bearer token but the flag off no-ops rather than touching the database`,
+        JSON.stringify(body),
+      );
+
+      const wrongToken = await fetch(`${BASE}/api/cron/warm-zmanim`, {
+        method,
+        headers: { authorization: "Bearer not-the-secret" },
+      });
+      check(wrongToken.status === 401, `${method} with the wrong bearer token is refused`, `${wrongToken.status}`);
+
+      const noHeader = await fetch(`${BASE}/api/cron/warm-zmanim`, { method });
+      check(noHeader.status === 401, `${method} with no Authorization header at all is refused`, `${noHeader.status}`);
+    }
+  } finally {
+    await stopServer(flagOff);
+  }
+
+  // Flag on, still no real database configured — past both gates, and the
+  // only thing missing is Supabase, the same proof build-bundles's own 503
+  // check makes.
+  const flagOn = await startServer({ ...DUMMY_ENV, CRON_SECRET: secret, ZMANIM_CHABAD_ENABLED: "true" });
+  try {
+    const res = await fetch(`${BASE}/api/cron/warm-zmanim`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    check(
+      res.status === 503,
+      "with the flag on and the correct token, it gets past both guards to the missing-database check",
+      `${res.status}`,
+    );
+  } finally {
+    await stopServer(flagOn);
+  }
+
+  // Fail closed: an unset CRON_SECRET must not mean "any request is fine,"
+  // even with the flag on.
+  const withoutSecret = await startServer({ ...DUMMY_ENV, CRON_SECRET: "", ZMANIM_CHABAD_ENABLED: "true" });
+  try {
+    const res = await fetch(`${BASE}/api/cron/warm-zmanim`, {
+      method: "GET",
+      headers: { authorization: "Bearer anything-at-all" },
+    });
+    check(
+      res.status === 401,
+      "with no CRON_SECRET configured, the warming cron refuses rather than opening up",
+      `${res.status}`,
+    );
+  } finally {
+    await stopServer(withoutSecret);
+  }
+}
+
 await runCronAuthChecks();
+await runZmanimCronAuthChecks();
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);

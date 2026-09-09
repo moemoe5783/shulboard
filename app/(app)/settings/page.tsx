@@ -18,7 +18,7 @@ export default async function SettingsPage() {
 
   const { data, error } = await supabase
     .from("orgs")
-    .select("name, timezone, latitude, longitude")
+    .select("name, timezone, latitude, longitude, zmanim_provider, postal_code, zmanim_location_id")
     .eq("id", org.orgId)
     .single();
 
@@ -44,6 +44,14 @@ export default async function SettingsPage() {
           timezone={data.timezone}
           latitude={data.latitude}
           longitude={data.longitude}
+          zmanimProvider={data.zmanim_provider}
+          postalCode={data.postal_code}
+          zmanimLocationId={data.zmanim_location_id}
+          // Off by default (docs/environment.md) — an admin can't select an
+          // option this build isn't ready to serve. The action that saves
+          // this form checks the same flag again server-side; this only
+          // controls what the form offers.
+          chabadEnabled={process.env.ZMANIM_CHABAD_ENABLED === "true"}
           timezones={timezones}
           canEdit={hasRoleAtLeast(org.role, "admin")}
         />

@@ -39,6 +39,10 @@ export type AssembleInput = {
     latitude: number | null;
     longitude: number | null;
     hebrew_prefs: Record<string, unknown>;
+    /** Already resolved screen-or-org by the caller, same tier as above —
+     *  see BundlePayload's own comment on these two. */
+    zmanim_provider: "hebcal" | "chabad" | "myzmanim" | "manual";
+    has_chabad_location: boolean;
   };
   theme: Record<string, unknown>;
   playlist: { id: string; name: string } | null;
@@ -51,14 +55,13 @@ export type AssembleInput = {
 };
 
 /**
- * Every asset id a board references, via the widgets' own declarations.
- *
- * Reads `dataNeeds`, which is why that field carries its parameters: a bare
- * `"asset"` would say a widget wants a picture without saying which. The
- * registry is the only thing that knows how to ask, so this stays true as
- * widgets are added without anything here changing.
+ * Every data need declared on a set of widgets, deduped — the shared first
+ * half of both `assetIdsFor` and `needsZmanim` below. Split out because
+ * "walk the widgets, call their manifest's `dataNeeds`, dedupe the result"
+ * is identical for either kind; only what happens to the result differs —
+ * one becomes a list of ids, the other a yes/no.
  */
-export function assetIdsFor(widgets: BoardWidget[]): string[] {
+function collectDataNeeds(widgets: BoardWidget[]): DataNeed[] {
   const needs: DataNeed[] = [];
 
   for (const widget of widgets) {
@@ -67,9 +70,41 @@ export function assetIdsFor(widgets: BoardWidget[]): string[] {
     needs.push(...manifest.dataNeeds(widget.config as never));
   }
 
-  return dedupeDataNeeds(needs)
+  return dedupeDataNeeds(needs);
+}
+
+/**
+ * Every asset id a board references, via the widgets' own declarations.
+ *
+ * Reads `dataNeeds`, which is why that field carries its parameters: a bare
+ * `"asset"` would say a widget wants a picture without saying which. The
+ * registry is the only thing that knows how to ask, so this stays true as
+ * widgets are added without anything here changing.
+ */
+export function assetIdsFor(widgets: BoardWidget[]): string[] {
+  return collectDataNeeds(widgets)
     .filter((need) => need.kind === "asset" && typeof need.assetId === "string")
     .map((need) => need.assetId as string);
+}
+
+/**
+ * Whether any widget on a board wants Chabad zmanim at all — unlike an
+ * `assetId`, a zmanim need carries no per-widget identity to collect (the
+ * location it resolves against is screen/org state the builder already
+ * reads regardless, not per-widget config; see the proposal this was built
+ * from). This is a yes/no, not a list: does `resolveContent`
+ * (lib/bundle/build.ts) need to bother reading `zmanim_cache` for this
+ * board at all, sparing a board with no time-sensitive widget the read.
+ *
+ * candle-lighting/manifest.ts returns this need for `provider: "chabad"`
+ * OR `"inherit"` — deliberately over-inclusive, since `dataNeeds` only
+ * sees the widget's own config and can't know whether "inherit" resolves
+ * to Chabad at the screen level. hebcal and manual never return one,
+ * regardless of what the screen resolves to — see this file's own note
+ * plus the proposal thread for why that split is deliberate.
+ */
+export function needsZmanim(widgets: BoardWidget[]): boolean {
+  return collectDataNeeds(widgets).some((need) => need.kind === "zmanim");
 }
 
 /**
@@ -134,6 +169,8 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
       latitude: input.screen.latitude,
       longitude: input.screen.longitude,
       hebrewPrefs: input.screen.hebrew_prefs,
+      zmanimProvider: input.screen.zmanim_provider,
+      hasChabadLocation: input.screen.has_chabad_location,
     },
     theme: input.theme,
     playlist: input.playlist

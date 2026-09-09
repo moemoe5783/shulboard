@@ -1,6 +1,6 @@
 # Environment variables
 
-Every environment variable this product reads, in one place, because all five
+Every environment variable this product reads, in one place, because all six
 are set by hand in a hosting dashboard rather than committed anywhere, and
 "what does this one do again" is exactly the question this file exists to
 answer three months from now.
@@ -10,14 +10,18 @@ same handling as a password. Getting that distinction backwards in either
 direction is the mistake this table exists to prevent: a secret in a
 `NEXT_PUBLIC_*` variable ships in the browser bundle for anyone to read; a
 public one held back as if it were secret just breaks sign-in for no reason.
+The sixth, `ZMANIM_CHABAD_ENABLED`, is neither — not a password, and no
+reason to ship it to a browser either — a plain server-side feature flag,
+read only by server code that already never runs on the client.
 
 | Variable | Kind | Required by |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | public | the whole app |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | the whole app |
-| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker) |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron) |
 | `SUPABASE_JWT_SECRET` | secret | live board updates over Realtime |
-| `CRON_SECRET` | secret | the bundle build worker |
+| `CRON_SECRET` | secret | the bundle build worker, and the Chabad zmanim cache-warming cron |
+| `ZMANIM_CHABAD_ENABLED` | server flag | offering Chabad.org as a zmanim source at all |
 
 ---
 
@@ -141,6 +145,14 @@ doesn't come from Supabase at all. Whoever calls this route sends
 `Authorization: Bearer <CRON_SECRET>`; the route checks that header against
 its own copy of the same value (`app/api/cron/build-bundles/route.ts`).
 
+**The same value also guards `POST|GET /api/cron/warm-zmanim`** (the Chabad
+cache-warming cron, plan.md §5c) — one secret shared across every cron route
+in this product, not a second one to provision and keep in sync. That route
+needs its **own** external scheduler entry, on its **own** cadence — see
+`ZMANIM_CHABAD_ENABLED` below for why once daily, not every 5 minutes.
+Setting `CRON_SECRET` does not by itself make `warm-zmanim` do anything; it
+still no-ops until `ZMANIM_CHABAD_ENABLED` is also set.
+
 **Where it comes from.** Nowhere but you. Generate any random string of at
 least 16 characters yourself — a password manager's generator is fine — and
 set it as a plain environment variable in the hosting dashboard.
@@ -189,6 +201,51 @@ the arithmetic on that.
 
 ---
 
+## `ZMANIM_CHABAD_ENABLED`
+
+**What it is.** The kill switch for Chabad.org as a zmanim source — plan.md
+§5c and §10.4. Set to the exact string `true` to turn it on; anything else,
+including unset, means off. Two things read it: the org settings page
+(`app/(app)/settings/`), which only offers "Chabad.org" as a Zmanim source
+option when this is `true`, and `app/api/cron/warm-zmanim/route.ts`, which
+no-ops — returns `{"enabled": false, "warmed": 0}` without touching the
+database or chabad.org — when it isn't. Both checks matter: the settings
+page keeps a gabbai from picking an option that does nothing, and the cron
+check is what actually stops any request reaching chabad.org.
+
+**Where it comes from.** Nowhere but you, same as `CRON_SECRET` — there is
+no default that turns this on. This is the "off by default so it can't
+reach a real shul until I turn it on myself" switch: chabad.org's zmanim
+endpoint is unofficial, undocumented, and has no ToS with this project
+(plan.md §10.4's still-open conversation). Turning this on is a decision to
+start relying on it before that conversation has happened, not a
+configuration step to complete along with everything else in this file.
+
+**What breaks — or rather, doesn't happen — without it.** Nothing breaks.
+Hebcal and Manual are unaffected either way; they never read this flag.
+With it unset: a shul cannot select Chabad.org as a zmanim source (the
+option isn't offered), and even if `orgs.zmanim_provider` were somehow set
+to `'chabad'` directly (a hand-written SQL update, a bug, a future admin
+tool), the warming cron still does nothing, and `lib/board-zmanim.tsx`'s
+`hasChabadLocation` still resolves normally — so the affected Candle
+Lighting widgets fall into the "set your ZIP or Chabad.org location" or
+plain "no time yet" states rather than ever showing a fetched value,
+because nothing ever warms `zmanim_cache` for them. This is deliberate
+defense in depth: the runtime gate is this flag, not the UI's own
+willingness to offer the option.
+
+**Setting it up needs a second external scheduler**, entirely separate
+from `CRON_SECRET`'s build-bundles one: a task hitting
+`POST https://<your-domain>/api/cron/warm-zmanim` with
+`Authorization: Bearer <CRON_SECRET>` **once a day**, not every 5 minutes —
+this endpoint is warming 90 days of an endpoint that has no obligation to
+answer quickly, or at all, and candle-lighting minutes don't change fast
+enough to need more than daily. Skipping this step after turning the flag
+on leaves the option selectable and the widget silently stuck on "no time
+yet" forever, since nothing ever populates `zmanim_cache` for it.
+
+---
+
 ## Setting these up on a real project
 
 Ask Claude Code to run the migrations and wire up the cron job — neither
@@ -208,9 +265,18 @@ short:
    leaves every environment variable configured and the product completely
    inert: screens get their first bundle never, and content edits never
    reach a screen that's already running.
+5. `ZMANIM_CHABAD_ENABLED` — optional, and leave it unset unless you have
+   specifically decided to turn Chabad.org on (see that section above for
+   why this isn't a routine setup step). If you do set it to `true`, also
+   create a **second** external scheduler entry hitting
+   `POST https://<your-domain>/api/cron/warm-zmanim` with the same
+   `Authorization: Bearer <CRON_SECRET>` header, once a day rather than
+   every 5 minutes.
 
-All five go in the hosting platform's environment variable settings — for
+All six go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
-carries the two public ones as fillable lines; it names the three secrets in
-a comment explaining why each is deliberately left without one, rather than
+carries the two public ones as fillable lines; it names the other four —
+the three secrets, plus `ZMANIM_CHABAD_ENABLED`, which isn't one but has no
+more business defaulting to a value in a committed file than a secret does
+— in a comment explaining why each is deliberately left blank, rather than
 inviting anyone to paste a real value into a file that gets committed.

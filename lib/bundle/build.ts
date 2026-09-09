@@ -2,7 +2,8 @@ import "server-only";
 
 import type { Database, Json } from "@/lib/database.types";
 import { serviceClient } from "@/lib/supabase/service";
-import { assembleBundle, assetIdsFor, type AssetRow } from "./assemble";
+import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
 import { hashPayload, payloadBytes } from "./hash";
 import { readAssetVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
@@ -25,6 +26,9 @@ type ScreenForBuild = Pick<
   | "hebrew_prefs"
   | "playlist_id"
   | "rebuild_requested_at"
+  | "zmanim_provider"
+  | "postal_code"
+  | "zmanim_location_id"
 >;
 
 /** Which generated derivative a bundle embeds. dataNeeds carries only an
@@ -83,7 +87,7 @@ export async function buildScreenBundle(screenId: string): Promise<BuildResult> 
     const { data: screen, error: screenError } = await db
       .from("screens")
       .select(
-        "id, org_id, name, canvas_width, canvas_height, orientation, timezone, latitude, longitude, hebrew_prefs, playlist_id, rebuild_requested_at",
+        "id, org_id, name, canvas_width, canvas_height, orientation, timezone, latitude, longitude, hebrew_prefs, playlist_id, rebuild_requested_at, zmanim_provider, postal_code, zmanim_location_id",
       )
       .eq("id", screenId)
       .maybeSingle();
@@ -242,7 +246,11 @@ async function assemblePayloadFor(
   const playlistId = screen.playlist_id;
 
   const [{ data: org }, playlist] = await Promise.all([
-    db.from("orgs").select("theme, timezone, latitude, longitude").eq("id", orgId).maybeSingle(),
+    db
+      .from("orgs")
+      .select("theme, timezone, latitude, longitude, zmanim_provider, postal_code, zmanim_location_id")
+      .eq("id", orgId)
+      .maybeSingle(),
     playlistId
       ? db
           .from("playlists")
@@ -297,12 +305,17 @@ async function assemblePayloadFor(
   // Two passes over the boards: the first only to learn which assets are
   // referenced, so exactly those rows are fetched rather than every asset the
   // org owns. A shul with two thousand kiddush photographs and one on the board
-  // should transfer one row.
+  // should transfer one row. Whether anything on these boards wants zmanim at
+  // all rides along in the same pass, for the same reason: a board with no
+  // time-sensitive widget shouldn't cost resolveContent a zmanim_cache read.
   const referenced = new Set<string>();
+  let boardsNeedZmanim = false;
   for (const board of boards) {
     try {
       const { parseBoardDoc } = await import("@/lib/board-doc");
-      for (const id of assetIdsFor(parseBoardDoc(board.doc).widgets)) referenced.add(id);
+      const widgets = parseBoardDoc(board.doc).widgets;
+      for (const id of assetIdsFor(widgets)) referenced.add(id);
+      if (!boardsNeedZmanim && needsZmanim(widgets)) boardsNeedZmanim = true;
     } catch {
       // A board that will not parse fails the whole build below, when it is
       // parsed for real. This pass just skips it.
@@ -336,8 +349,6 @@ async function assemblePayloadFor(
     }
   }
 
-  const content = await resolveContent(db, orgId);
-
   // Screen overrides org, same tier order the schema comments on both tables
   // describe (screens.sql, orgs.sql) and the same pattern §5c already
   // establishes for the zmanim provider — a screen only carries these columns
@@ -346,6 +357,33 @@ async function assemblePayloadFor(
   const timezone = screen.timezone ?? org?.timezone ?? null;
   const latitude = screen.latitude ?? org?.latitude ?? null;
   const longitude = screen.longitude ?? org?.longitude ?? null;
+  const zmanimProvider = screen.zmanim_provider ?? org?.zmanim_provider ?? "hebcal";
+
+  // Chabad is the only provider needing a resolvable location at all — see
+  // this file's own resolveContent below, and lib/zmanim/location.ts for
+  // what "resolvable" means (ZIP-first, manual id fallback).
+  const chabadLocation =
+    zmanimProvider === "chabad"
+      ? resolveChabadLocation({
+          screenPostalCode: screen.postal_code,
+          orgPostalCode: org?.postal_code,
+          screenZmanimLocationId: screen.zmanim_location_id,
+          orgZmanimLocationId: org?.zmanim_location_id,
+        })
+      : null;
+
+  // Only actually read zmanim_cache when it could possibly matter: the
+  // resolved provider is Chabad, a location for it is on file, AND some
+  // widget on these boards asked for it (boardsNeedZmanim, above). Any one
+  // of those being false means an empty result either way, so skipping the
+  // read entirely rather than running a query that would just come back
+  // empty — a hebcal-provider org, or a chabad one nothing on the board
+  // reads, never touches this table.
+  const content = await resolveContent(
+    db,
+    orgId,
+    zmanimProvider === "chabad" && chabadLocation && boardsNeedZmanim ? chabadLocation.cacheKey : null,
+  );
 
   return assembleBundle({
     screen: {
@@ -362,6 +400,8 @@ async function assemblePayloadFor(
       // generated type only knows it as jsonb in general, which is where
       // this one cast earns its keep.
       hebrew_prefs: screen.hebrew_prefs as Record<string, unknown>,
+      zmanim_provider: zmanimProvider,
+      has_chabad_location: chabadLocation !== null,
     },
     theme: (org?.theme as Record<string, unknown>) ?? {},
     playlist: playlist?.data ? { id: playlist.data.id, name: playlist.data.name } : null,
@@ -378,10 +418,20 @@ async function assemblePayloadFor(
  * Only these can go stale offline — everything else the display computes for
  * itself — and the 30-to-60 day windows mean even they keep rotating for weeks
  * on a screen that never reconnects.
+ *
+ * `zmanimCacheKey`: the resolved (chabad, location) to read, or `null` to
+ * skip the read entirely (Hebcal/Manual never touch this table; a Chabad
+ * screen with no widget asking for it, or no location on file, has nothing
+ * to read either — see this file's own caller). Filtered by BOTH provider
+ * and location_id, not just a date range: `zmanim_cache`'s primary key is
+ * `(provider, location_id, date)`, and a date-only filter would hand back
+ * every provider's every location's rows for that date the moment a second
+ * one exists, collapsed into one dict keyed only by date.
  */
 async function resolveContent(
   db: ReturnType<typeof serviceClient>,
   orgId: string,
+  zmanimCacheKey: string | null,
 ): Promise<BundleContent> {
   const [announcements, schedules, people, events, zmanim] = await Promise.all([
     db
@@ -397,11 +447,15 @@ async function resolveContent(
       .eq("org_id", orgId)
       .lte("starts_at", isoDaysFromNow(EVENT_LOOKAHEAD_DAYS))
       .order("starts_at", { ascending: true }),
-    db
-      .from("zmanim_cache")
-      .select("*")
-      .lte("date", isoDaysFromNow(ZMANIM_LOOKAHEAD_DAYS))
-      .gte("date", isoDaysFromNow(-1)),
+    zmanimCacheKey
+      ? db
+          .from("zmanim_cache")
+          .select("*")
+          .eq("provider", "chabad")
+          .eq("location_id", zmanimCacheKey)
+          .lte("date", isoDaysFromNow(ZMANIM_LOOKAHEAD_DAYS))
+          .gte("date", isoDaysFromNow(-1))
+      : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
   const byDate: Record<string, unknown> = {};

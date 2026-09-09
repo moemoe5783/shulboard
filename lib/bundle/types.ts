@@ -82,6 +82,15 @@ export type BundlePayload = {
     latitude: number | null;
     longitude: number | null;
     hebrewPrefs: Record<string, unknown>;
+    /** Effective zmanim provider, same screen-then-org tier as latitude/
+     *  longitude above (plan.md §5c). Always a real value ("hebcal" is the
+     *  schema's own default), never null — see lib/board-zmanim.tsx, which
+     *  this and the field below exist to populate on the display route. */
+    zmanimProvider: "hebcal" | "chabad" | "myzmanim" | "manual";
+    /** Whether a Chabad location (a US ZIP or a manually-entered raw id —
+     *  lib/zmanim/location.ts) is on file, same tier. Only meaningful when
+     *  `zmanimProvider` is "chabad". */
+    hasChabadLocation: boolean;
   };
   theme: Record<string, unknown>;
   playlist: { id: string; name: string; items: BundlePlaylistItem[] } | null;

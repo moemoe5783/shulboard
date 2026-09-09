@@ -48,6 +48,42 @@ function parseLocationFields(formData: FormData): { latitude: number | null; lon
   return { latitude, longitude };
 }
 
+const ZMANIM_PROVIDERS = ["hebcal", "chabad", "manual"] as const;
+
+/**
+ * The settings form's own zmanim fields — the org-level default provider
+ * (plan.md §5c), its ZIP (`postal_code`, shared with the never-built
+ * MyZmanim onboarding this column already existed for), and the manual
+ * Chabad location id fallback (lib/zmanim/location.ts) for a shul with no
+ * US ZIP on file.
+ *
+ * `chabadEnabled` is checked here, server-side, not just in the form's own
+ * conditional rendering — ZMANIM_CHABAD_ENABLED (docs/environment.md) is
+ * the actual gate; a form that only hid the option client-side would still
+ * accept a hand-crafted POST setting it anyway.
+ */
+function parseZmanimFields(
+  formData: FormData,
+  chabadEnabled: boolean,
+): { zmanim_provider: (typeof ZMANIM_PROVIDERS)[number]; postal_code: string | null; zmanim_location_id: string | null } | { error: string } {
+  const provider = String(formData.get("zmanimProvider") ?? "hebcal").trim();
+  if (!ZMANIM_PROVIDERS.includes(provider as (typeof ZMANIM_PROVIDERS)[number])) {
+    return { error: "Pick a real zmanim source." };
+  }
+  if (provider === "chabad" && !chabadEnabled) {
+    return { error: "Chabad.org isn't turned on for this product yet." };
+  }
+
+  const postalCode = String(formData.get("postalCode") ?? "").trim();
+  const zmanimLocationId = String(formData.get("zmanimLocationId") ?? "").trim();
+
+  return {
+    zmanim_provider: provider as (typeof ZMANIM_PROVIDERS)[number],
+    postal_code: postalCode || null,
+    zmanim_location_id: zmanimLocationId || null,
+  };
+}
+
 export type CreateOrgState = { error?: string };
 
 /**
@@ -163,10 +199,13 @@ export async function updateOrgSettings(
   if ("error" in location) return { error: location.error };
   const { latitude, longitude } = location;
 
+  const zmanim = parseZmanimFields(formData, process.env.ZMANIM_CHABAD_ENABLED === "true");
+  if ("error" in zmanim) return { error: zmanim.error };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("orgs")
-    .update({ name, timezone, latitude, longitude })
+    .update({ name, timezone, latitude, longitude, ...zmanim })
     .eq("id", org.orgId);
 
   if (error) {

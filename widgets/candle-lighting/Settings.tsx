@@ -63,6 +63,34 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
           <option value="right">Right</option>
         </select>
       </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Zmanim source</span>
+        <select
+          value={config.provider}
+          onChange={(event) => onChange({ provider: event.target.value as CandleLightingConfig["provider"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="inherit">Use the screen&rsquo;s setting</option>
+          <option value="hebcal">Hebcal</option>
+          <option value="chabad">Chabad.org</option>
+          <option value="manual">Manual</option>
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Minutes before sunset</span>
+        <input
+          type="number"
+          min={0}
+          max={180}
+          value={config.manualMinutesBeforeSunset}
+          disabled={config.provider !== "manual"}
+          title={config.provider !== "manual" ? "Only used when the source is Manual." : undefined}
+          onChange={(event) => onChange({ manualMinutesBeforeSunset: Number(event.target.value) })}
+          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
+        />
+      </label>
     </div>
   );
 }

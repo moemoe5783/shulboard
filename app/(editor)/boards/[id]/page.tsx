@@ -1,10 +1,18 @@
 import { notFound } from "next/navigation";
 import { BoardDocError, parseBoardDoc } from "@/lib/board-doc";
+import type { BoardZmanim } from "@/lib/board-zmanim";
 import { screensShowingBoard } from "@/lib/board-screens";
 import { hashBoardDoc } from "@/lib/bundle/hash";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
+import { resolveChabadLocation } from "@/lib/zmanim/location";
 import { BoardEditor } from "./BoardEditor";
+
+/** How many days ahead the editor's own live Chabad preview reads —
+ *  matching lib/hebrew/candle-times.ts's own SEARCH_WINDOW_DAYS, since both
+ *  are answering the identical question ("the next candle lighting from
+ *  today") just against two different sources. */
+const CHABAD_PREVIEW_WINDOW_DAYS = 9;
 
 /*
  * The real editor — plan.md §4, at /boards/[id] rather than /editor-lab.
@@ -67,7 +75,7 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
   // (lib/bundle/build.ts) when a screen hasn't set its own.
   const { data: orgLocation } = await supabase
     .from("orgs")
-    .select("latitude, longitude, timezone")
+    .select("latitude, longitude, timezone, zmanim_provider, postal_code, zmanim_location_id")
     .eq("id", board.org_id)
     .maybeSingle();
 
@@ -76,6 +84,8 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
       ? { latitude: orgLocation.latitude, longitude: orgLocation.longitude, timeZone: orgLocation.timezone }
       : null;
 
+  const zmanim = await resolveOrgZmanimPreview(supabase, orgLocation);
+
   return (
     <BoardEditor
       boardId={board.id}
@@ -83,6 +93,7 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
       canvas={{ width: board.canvas_width, height: board.canvas_height }}
       doc={board.doc}
       location={location}
+      zmanim={zmanim}
       publishState={{
         publishedAt: board.published_at,
         screenCount: screenIds.length,
@@ -90,4 +101,47 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
       }}
     />
   );
+}
+
+/**
+ * The org's zmanim config, live — for the editor preview only. The display
+ * route never does this: it reads `bundle.content.zmanim`, already resolved
+ * at build time (lib/bundle/build.ts). The editor has no bundle, only a
+ * database connection under RLS, so it reads `zmanim_cache` directly —
+ * permitted by that table's own select policy ("cached zmanim are readable
+ * by any signed-in user", schema.md §8), which exists for exactly this.
+ *
+ * Same tier order as `location` above: org only, since a board isn't tied
+ * to one screen (see this file's own comment on that).
+ */
+async function resolveOrgZmanimPreview(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  org: { zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null } | null,
+): Promise<BoardZmanim | null> {
+  const provider = (org?.zmanim_provider ?? "hebcal") as BoardZmanim["provider"];
+  if (provider !== "chabad") return { provider, hasChabadLocation: false, chabadZmanim: null };
+
+  const chabadLocation = resolveChabadLocation({
+    orgPostalCode: org?.postal_code,
+    orgZmanimLocationId: org?.zmanim_location_id,
+  });
+  if (!chabadLocation) return { provider, hasChabadLocation: false, chabadZmanim: null };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const end = new Date(Date.now() + CHABAD_PREVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data: rows } = await supabase
+    .from("zmanim_cache")
+    .select("date, times")
+    .eq("provider", "chabad")
+    .eq("location_id", chabadLocation.cacheKey)
+    .gte("date", today)
+    .lte("date", end);
+
+  const chabadZmanim: NonNullable<BoardZmanim["chabadZmanim"]> = {};
+  for (const row of rows ?? []) {
+    chabadZmanim[row.date] = (row.times as NonNullable<BoardZmanim["chabadZmanim"]>[string]) ?? {};
+  }
+
+  return { provider, hasChabadLocation: true, chabadZmanim };
 }

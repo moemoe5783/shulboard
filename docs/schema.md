@@ -109,7 +109,8 @@ The tenant. Its own `id` is the `org_id` every other table points at.
 | `postal_code` | text null | What MyZmanim's `searchPostal` takes. |
 | `country_code` | text null | ISO 3166-1 alpha-2. |
 | `zmanim_provider` | `zmanim_provider` not null default `'hebcal'` | Org default; screens override. |
-| `myzmanim_location_id` | text null | Cached from `searchPostal` at onboarding (plan §5c). |
+| `myzmanim_location_id` | text null | Cached from `searchPostal` at onboarding (plan §5c). MyZmanim-specific — not the same column as the one below. |
+| `zmanim_location_id` | text null | Generic — any provider, mirroring `screens.zmanim_location_id`. Chabad reads this today (ZIP-first via `postal_code`, this as the manual fallback — lib/zmanim/location.ts). MyZmanim's own build still has to decide whether it reads this instead of `myzmanim_location_id` above or keeps using its own; not decided by this column existing. |
 | `nusach` | `nusach` not null default `'ashkenaz'` | Drives davening labels and some zmanim defaults. |
 | `hebrew_prefs` | jsonb not null default `'{}'` | Script vs transliteration, gematria, nekudos, sunset rollover, 12/24h. Org default; screens override. |
 | `theme` | jsonb not null default `'{}'` | Org design tokens (plan §4d) — palette, font pairing, spacing, radius. |

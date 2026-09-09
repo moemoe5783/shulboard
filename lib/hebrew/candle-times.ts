@@ -94,7 +94,12 @@ function havdalahOffsetFor(shitah: HavdalahShitah, customMinutes: number): Havda
  *  from a Shabbos morning with no chag in sight. */
 const SEARCH_WINDOW_DAYS = 9;
 
-function upcomingEvents(now: Date, location: BoardLocation, havdalah?: HavdalahOffset): Event[] {
+function upcomingEvents(
+  now: Date,
+  location: BoardLocation,
+  havdalah?: HavdalahOffset,
+  candleLightingMins?: number,
+): Event[] {
   const start = civilDateInZone(now, location.timeZone);
   const end = new Date(start);
   end.setDate(end.getDate() + SEARCH_WINDOW_DAYS);
@@ -107,6 +112,10 @@ function upcomingEvents(now: Date, location: BoardLocation, havdalah?: HavdalahO
     candlelighting: true,
     il: hebcalLocation.getIsrael(),
     ...havdalah,
+    // undefined, not omitted, when unset: @hebcal/core's own default (18
+    // minutes Diaspora, more in Israel — lib/hebrew/hebcal-location.ts's own
+    // comment) applies exactly as it did before this parameter existed.
+    ...(candleLightingMins !== undefined ? { candleLightingMins } : {}),
   });
 }
 
@@ -121,8 +130,18 @@ function earliestAfter<T extends Event & { eventTime: Date }>(events: Event[], n
 const isCandleLighting = (ev: Event): ev is CandleLightingEvent => ev instanceof CandleLightingEvent;
 const isHavdalah = (ev: Event): ev is HavdalahEvent => ev instanceof HavdalahEvent;
 
-export function upcomingCandleLighting(now: Date, location: BoardLocation): CandleLightingEvent | null {
-  return earliestAfter(upcomingEvents(now, location), now, isCandleLighting);
+/**
+ * `candleLightingMins` is candle-lighting/manifest.ts's own Manual provider
+ * option ("minutes before sunset") — omitted (the only way every existing
+ * caller, including every fixed-date value scripts/test-hebrew.ts already
+ * checks, still calls this) falls through to @hebcal/core's own default.
+ */
+export function upcomingCandleLighting(
+  now: Date,
+  location: BoardLocation,
+  candleLightingMins?: number,
+): CandleLightingEvent | null {
+  return earliestAfter(upcomingEvents(now, location, undefined, candleLightingMins), now, isCandleLighting);
 }
 
 // Unused today — see the NOT WIRED TO ANY WIDGET note above

@@ -156,6 +156,36 @@ const SHABBOS_MORNING = new Date(2026, 6, 11, 14, 0, 0); // 10am EDT
     nextCandle !== null && nextCandle.eventTime.getTime() > candle!.eventTime.getTime(),
     "candle lighting search advances past an event once it's passed",
   );
+
+  // Isolation proof for the Chabad-adapter work (see docs/plan.md §5c):
+  // upcomingCandleLighting gained an optional candleLightingMins parameter
+  // for widgets/candle-lighting's own Manual provider, and the check above
+  // — matching "8:10 PM" / "2026-07-11T00:10:00.000Z" with no third
+  // argument at all — already proves the Hebcal path is byte-identical to
+  // before that parameter existed. This block proves the new parameter
+  // itself is correct rather than merely inert: 18 (explicit) must match
+  // the default exactly, since 18 minutes is @hebcal/core's own Diaspora
+  // default (lib/hebrew/hebcal-location.ts), and a different value must
+  // move the time by exactly the difference, in the expected direction.
+  const explicit18 = upcomingCandleLighting(FRIDAY_NOON, CROWN_HEIGHTS, 18);
+  check(
+    explicit18!.eventTime.getTime() === candle!.eventTime.getTime(),
+    "manual minutes=18 matches the default exactly (both are @hebcal/core's own Diaspora default)",
+  );
+
+  const manual30 = upcomingCandleLighting(FRIDAY_NOON, CROWN_HEIGHTS, 30);
+  check(
+    candle!.eventTime.getTime() - manual30!.eventTime.getTime() === 12 * 60 * 1000,
+    "manual minutes=30 lights 12 minutes earlier than the 18-minute default",
+    manual30!.eventTime.toISOString(),
+  );
+
+  const manual0 = upcomingCandleLighting(FRIDAY_NOON, CROWN_HEIGHTS, 0);
+  check(
+    manual0!.eventTime.getTime() - candle!.eventTime.getTime() === 18 * 60 * 1000,
+    "manual minutes=0 lights exactly at sunset, 18 minutes after the default",
+    manual0!.eventTime.toISOString(),
+  );
 }
 
 console.log("");
