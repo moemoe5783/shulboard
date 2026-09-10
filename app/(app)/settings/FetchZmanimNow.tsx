@@ -11,7 +11,10 @@ import { fetchChabadZmanimNow, type FetchZmanimNowState } from "../actions";
  * a gabbai has nothing to do but wait, and no way to tell "the cron hasn't
  * run yet" from "the cron is broken". This answers that where the setting
  * was changed, and reports how far ahead the screens are now covered
- * rather than a checkmark — or the provider's own error verbatim.
+ * rather than a checkmark — or the provider's own error verbatim. About
+ * four weeks is the whole window the embed offers (WARM_WEEKS in
+ * lib/zmanim/warm.ts), so "through October 4" is the expected answer, not
+ * a short one.
  *
  * Only rendered when Chabad.org is the selected source — it does nothing
  * for Hebcal or Manual, which never read the cache. The action re-checks
@@ -36,9 +39,11 @@ export function FetchZmanimNow() {
           {pending ? "Fetching" : "Fetch now"}
         </Button>
         <p className="text-meta text-ink-soft">
-          Reads the coming weeks&rsquo; candle lighting and Shabbos end
-          times from chabad.org for the saved ZIP. This runs on its own once
-          a day — use this to check it works, or after changing the ZIP.
+          Reads about four weeks of candle lighting and Shabbos end times
+          from chabad.org for the saved ZIP — that&rsquo;s as far ahead as
+          chabad.org will give. Anything beyond it is calculated instead.
+          This runs on its own once a day; use this to check it works, or
+          after changing the ZIP.
         </p>
       </div>
 

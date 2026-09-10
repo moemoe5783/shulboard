@@ -4,12 +4,14 @@
  *
  * TWO JOBS:
  *
- * 1. HOW FAR AHEAD DOES `weeks` GO? The warming cache window is 90 days
- *    (~12.9 weeks). If the embed caps below that, the window shrinks to
- *    match rather than being papered over with repeated requests. This
- *    prints the entry count and the first/last date at weeks=4, 13, 26 and
- *    52, plus the coverage in days, so a cap is visible as a plateau
- *    rather than inferred.
+ * 1. HOW FAR AHEAD DOES `weeks` GO? **ANSWERED: it caps at 4.** Measured
+ *    at two values — weeks=13 and weeks=52 both return byte-identical
+ *    responses to weeks=4, with the response's own final URL rewritten to
+ *    weeks=4. Larger values are silently coerced, never rejected. The
+ *    warming constant is now a literal 4 (WARM_WEEKS in
+ *    lib/zmanim/warm.ts). This script is kept so the finding can be
+ *    re-checked if the endpoint ever changes: a cap shows up here as a
+ *    plateau in the entry count and last date across the four values.
  *
  * 2. CAPTURE A REAL RESPONSE for the parser's fixture. Each body is written
  *    verbatim to /tmp/chabad-embed-<weeks>w.js — no unwrapping, no
@@ -130,5 +132,5 @@ for (const weeks of [4, 13, 26, 52]) {
   }
 }
 
-console.log("If weeks plateaus, the largest value that still grows the span is the real cap.");
-console.log("Hand back /tmp/chabad-embed-13w.js (or whichever covers ~90 days) as the fixture.");
+console.log("Expect a plateau: 13 and 52 measured identical to 4, so all four rows should match.");
+console.log("If a larger value ever grows the span, the cap moved — update WARM_WEEKS in lib/zmanim/warm.ts.");

@@ -93,6 +93,7 @@ const happy = resolveCandleLighting({
 });
 check(happy?.fellBackToHebcal === false, "chabad + real cached value for the needed date: no fallback");
 check(happy?.event === null, "chabad + cached value: no hebcal event, so the widget uses the generic label");
+check(happy?.source === "chabad", "chabad + cached value: source says chabad", happy?.source);
 check(
   happy !== null && iso(happy.time) === "2026-09-11T23:22:00.000Z",
   "chabad + cached value: the value shown is CHABAD'S, not a recomputation",
@@ -130,6 +131,7 @@ check(
   "a chabad value 3 minutes off hebcal's on the same date is KEPT, not discarded as a miss",
   offset && `${iso(offset.time)} fellBack=${offset.fellBackToHebcal}`,
 );
+check(offset?.source === "chabad", "and it is reported as chabad's, not hebcal's", offset?.source);
 
 // ---- 3. the second Yom Tov night: a real no-match ----------------------
 //
@@ -155,9 +157,51 @@ check(
 );
 check(secondNight?.event !== null, "the fallback carries hebcal's event, so the label is the real one");
 check(
+  secondNight?.source === "hebcal",
+  "and source says hebcal — a fallback value is never attributed to chabad",
+  secondNight?.source,
+);
+check(
   Object.keys(CACHE).length > 0,
   "and the cache it fell back from was NOT empty — the trigger is the needed date, not an empty dict",
   `${Object.keys(CACHE).length} dates cached`,
+);
+
+// ---- 3b. past the window's end: the ordinary case, not an edge --------
+//
+// The embed caps at four weeks (WARM_WEEKS in lib/zmanim/warm.ts), and this
+// fixture's last entry is 10/4. So a screen asking in late October is past
+// everything Chabad will ever have cached, and falls through to Hebcal with
+// the indicator. That is the designed behaviour of §5c's fallback chain at
+// this window size — NOT a warming failure and NOT what the
+// zero-candle-lighting alarm is for. Asserted explicitly because the four
+// week cap makes this the common path rather than a corner.
+
+const pastWindow = resolveCandleLighting({
+  now: new Date("2026-10-20T16:00:00Z"),
+  provider: "chabad",
+  location: LOCATION,
+  chabadZmanim: CACHE,
+});
+check(
+  pastWindow?.fellBackToHebcal === true && pastWindow.source === "hebcal",
+  "a date past the four-week window falls back to hebcal — expected at this cap, not a failure",
+  pastWindow && `${iso(pastWindow.time)} fellBack=${pastWindow.fellBackToHebcal} source=${pastWindow.source}`,
+);
+check(
+  Object.keys(CACHE).sort().at(-1) === "2026-10-04",
+  "and the cache really does end at 10/4 — four weeks of coverage, nothing beyond",
+  Object.keys(CACHE).sort().at(-1),
+);
+
+// The zero-candle-lighting alarm is `> 0`, not a count tuned to a span, so
+// shortening the window from a notional thirteen weeks to the real four did
+// not weaken it: four weeks still contain four Fridays.
+const candleLightingCount = Object.values(CACHE).filter((day) => day.candle_lighting).length;
+check(
+  candleLightingCount === 5,
+  "a healthy four-week response carries five candle lightings, so the zero alarm stays meaningful",
+  String(candleLightingCount),
 );
 
 // ---- 4. cache miss / cron failure: same path, same flag ----------------
@@ -224,6 +268,7 @@ for (const instant of PROBE_INSTANTS) {
     after && `${iso(after.time)} ${after.event?.renderBrief("en")}`,
   );
   check(after?.fellBackToHebcal === false, `hebcal at ${instant}: no indicator`);
+  check(after?.source === "hebcal", `hebcal at ${instant}: source says hebcal`, after?.source);
 
   // A hebcal widget is unaffected even when a chabad cache happens to be
   // sitting in context — an org that switched providers, an editor preview
@@ -251,6 +296,10 @@ for (const instant of PROBE_INSTANTS) {
     manualAfter && iso(manualAfter.time),
   );
   check(manualAfter?.fellBackToHebcal === false, `manual(40) at ${instant}: no indicator`);
+  // Manual is Hebcal's computation with a different offset, so it reports
+  // as hebcal rather than growing a third value nothing distinguishes.
+  check(manualAfter?.source === "hebcal", `manual(40) at ${instant}: source says hebcal, not a third value`,
+    manualAfter?.source);
 }
 
 // That the manual parameter is actually load-bearing, checked once at an

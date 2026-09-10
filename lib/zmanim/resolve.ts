@@ -50,18 +50,25 @@ export type ResolvedCandleLighting = {
    */
   fellBackToHebcal: boolean;
   /**
-   * Which source the displayed value actually came from.
+   * Which source the displayed value actually came from. `"hebcal"` covers
+   * manual too — that path is Hebcal's computation with a different
+   * candle-lighting offset.
    *
-   * This exists for the attribution, not for the fallback flag: Chabad.org
-   * publishes their candle-lighting embed on the condition that an
-   * application using it credits them (lib/zmanim/chabad-embed.ts), so the
-   * widget has to know when the time on screen is theirs. It is derivable
-   * from `provider` and `fellBackToHebcal` together, and stated outright
-   * anyway — a renderer reconstructing a licence condition from two other
-   * fields is how the credit goes missing in a later refactor.
+   * NOTHING IN THE RENDER PATH READS THIS TODAY, and that is worth saying
+   * rather than leaving to be discovered. It was added to drive a Chabad
+   * attribution notice in the widget, which has since been removed —
+   * permission for the data was granted directly and no credit was asked
+   * for (see the comment at the removal site in
+   * widgets/candle-lighting/Renderer.tsx). The widget reads
+   * `fellBackToHebcal` for the one thing it does show.
    *
-   * `"hebcal"` covers manual too: that path is Hebcal's computation with a
-   * different candle-lighting offset, and nobody needs crediting for it.
+   * Kept deliberately, not by neglect: it is the only place the answer to
+   * "was this fetched or computed" is stated positively rather than as the
+   * absence of a fallback, and scripts/test-zmanim-fallback.ts pins it, so
+   * it is a checked contract rather than a write-only field. Any future
+   * consumer — a provider-divergence warning (§5c's rule 1), a diagnostic,
+   * a per-source badge — reads this instead of re-deriving it from
+   * `provider` and `fellBackToHebcal` together.
    */
   source: "chabad" | "hebcal";
 };

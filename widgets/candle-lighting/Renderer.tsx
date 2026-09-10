@@ -60,7 +60,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
     resolution && {
       time: resolution.time,
       fellBackToHebcal: resolution.fellBackToHebcal,
-      source: resolution.source,
       // A Hebcal-produced value carries its own event name (a Yom Tov's,
       // not just "Candle lighting"); a value read out of Chabad's cache
       // doesn't, so it gets the generic label. Note this makes a
@@ -101,7 +100,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   }
   if (!now || !resolved) return null;
 
-  const { label, time: eventTime, fellBackToHebcal, source } = resolved;
+  const { label, time: eventTime, fellBackToHebcal } = resolved;
   const time = formatTimeOfDay(eventTime, { hour12: config.hour12, timeZone: location.timeZone });
   const countdown = formatCountdown(eventTime.getTime() - now.getTime());
 
@@ -153,57 +152,56 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         )}
       </div>
 
-      {/* Mutually exclusive by construction: a fallback value is Hebcal's,
-          so `source` is never "chabad" when `fellBackToHebcal` is true.
-          They share the corner and can never collide there. */}
-      {fellBackToHebcal && <CornerNotice canvas={canvas}>Showing calculated times</CornerNotice>}
-      {source === "chabad" && <CornerNotice canvas={canvas}>Times by Chabad.org</CornerNotice>}
+      {/*
+        THERE IS NO CHABAD ATTRIBUTION HERE, AND THAT IS NOT AN OVERSIGHT.
+
+        A "Times by Chabad.org" notice used to render alongside this one
+        whenever `source` was "chabad". It is gone because the premise was
+        wrong: permission for this data was granted by Chabad.org directly
+        and they did not ask for attribution. The "Shabbat Times Powered by
+        Chabad.org" link in their embed's own markup was an inference from
+        that markup, not a stated term of the permission.
+
+        So do not re-add it believing it to be a licence requirement. If
+        Chabad.org ever does ask for a credit, that is a new instruction
+        and this comment is not it.
+
+        `source` stays on the resolver (lib/zmanim/resolve.ts) — the
+        fallback logic reads it and it is still worth having. Only the
+        rendering went.
+      */}
+      {fellBackToHebcal && <CalculatedTimesNotice canvas={canvas} />}
     </div>
   );
 }
 
 /**
- * The one corner of this widget that is the PRODUCT speaking, not the shul.
+ * plan.md §5c: "surface a subtle indicator rather than failing silently,
+ * since a wrong zman is worse than a flagged one."
  *
- * Two messages use it, never both at once:
+ * Shown when the screen's provider is Chabad and its cache had nothing for
+ * the date about to happen, so this time is Hebcal's own computation
+ * standing in. That is not a rare case: Chabad's embed only serves about
+ * four weeks (WARM_WEEKS in lib/zmanim/warm.ts), so every date past that
+ * window lands here by design. It is the only signal on the board that a
+ * time was calculated rather than fetched, which is why it stays.
  *
- * - "Showing calculated times" — plan.md §5c: "surface a subtle indicator
- *   rather than failing silently, since a wrong zman is worse than a
- *   flagged one." Shown when the screen's provider is Chabad and its cache
- *   had nothing for the date about to happen, so this time is Hebcal's
- *   computation standing in.
- * - "Times by Chabad.org" — the attribution condition on Chabad.org's
- *   published candle-lighting embed, whose own markup carries a "Shabbat
- *   Times Powered by Chabad.org" link (lib/zmanim/chabad-embed.ts). This
- *   is a licence term, not decoration.
+ * This is the renderer's own chrome — the product speaking, not the shul —
+ * so it follows CLAUDE.md's chrome rules: one radius from the two-value
+ * scale, weight 400, sentence case, no raw colour. It borrows
+ * `currentColor` for the same reason EmptyLocation and the unknown-widget
+ * notice do: a board sets its own text colour on any ground it likes, and
+ * a fixed `--ink` here would be invisible on half of them.
  *
- * WHY IT LIVES INSIDE THE WIDGET, per instance, rather than once per board:
- * it travels with the data it credits. A board showing two zmanim widgets
- * from different sources credits each correctly, and the credit disappears
- * on its own the moment the value stops being Chabad's — which is exactly
- * what happens on a fallback. A single board-level credit would be wrong
- * in both of those cases and would put product chrome somewhere the shul
- * cannot move it.
- *
- * NOT USER-REMOVABLE, and there is deliberately no config flag to hide it.
- * The board document is the shul's to author (design.md §1b), but this is
- * not part of it — a shul cannot license away Chabad.org's condition by
- * unticking a box, and an editor-only credit would breach it precisely
- * where the publication happens, on the screen.
- *
- * This is the renderer's own chrome, so it follows CLAUDE.md's chrome
- * rules — one radius from the two-value scale, weight 400, sentence case,
- * no raw colour. It borrows `currentColor` for the same reason
- * EmptyLocation and the unknown-widget notice do: a board sets its own
- * text colour on any ground it likes, and a fixed `--ink` here would be
- * invisible on half of them.
+ * Not user-removable, and no config flag to hide it. The board document is
+ * the shul's to author (design.md §1b), but this is not part of it — a
+ * shul cannot opt out of being told its times are computed.
  *
  * Absolutely positioned, deliberately — `useFitFontSize` measures
  * `contentRef` against `boxRef`, so anything in the normal flow would
- * shrink the time itself the moment a cache went cold or a provider
- * changed.
+ * shrink the time itself the moment a cache went cold.
  */
-function CornerNotice({ canvas, children }: { canvas: { width: number }; children: string }) {
+function CalculatedTimesNotice({ canvas }: { canvas: { width: number } }) {
   return (
     <span
       className="rounded-control border-current/25 pointer-events-none absolute right-0 bottom-0 border font-regular whitespace-nowrap opacity-60"
@@ -212,7 +210,7 @@ function CornerNotice({ canvas, children }: { canvas: { width: number }; childre
         padding: `${boardLength(2, canvas.width)} ${boardLength(6, canvas.width)}`,
       }}
     >
-      {children}
+      Showing calculated times
     </span>
   );
 }
