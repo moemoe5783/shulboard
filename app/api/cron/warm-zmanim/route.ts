@@ -48,14 +48,35 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type OrgRow = { id: string; timezone: string; zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null };
+type OrgRow = {
+  id: string;
+  timezone: string;
+  zmanim_provider: string;
+  postal_code: string | null;
+  zmanim_location_id: string | null;
+  zmanim_location_type: string | null;
+  zmanim_location_name: string | null;
+};
 type ScreenRow = {
   id: string;
   timezone: string | null;
   zmanim_provider: string | null;
   postal_code: string | null;
+  /* `screens` carries an id and no type or name — those two columns are
+     org-level only, because there is no screen-level zmanim settings form
+     to write them and adding columns nothing writes is how a schema grows
+     dead weight. A screen id therefore resolves as a legacy bare id
+     (locationtype 1, unverifiable), which lib/zmanim/location.ts documents
+     and which no UI can currently produce. */
   zmanim_location_id: string | null;
-  orgs: { timezone: string; zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null } | null;
+  orgs: {
+    timezone: string;
+    zmanim_provider: string;
+    postal_code: string | null;
+    zmanim_location_id: string | null;
+    zmanim_location_type: string | null;
+    zmanim_location_name: string | null;
+  } | null;
 };
 
 /** One location worth warming, plus a timezone to render `display` strings
@@ -87,7 +108,12 @@ function collectTargets(orgs: OrgRow[], screens: ScreenRow[]): Map<string, WarmT
   for (const org of orgs) {
     consider(
       org.timezone,
-      resolveChabadLocation({ orgPostalCode: org.postal_code, orgZmanimLocationId: org.zmanim_location_id }),
+      resolveChabadLocation({
+        orgPostalCode: org.postal_code,
+        orgZmanimLocationId: org.zmanim_location_id,
+        orgZmanimLocationType: org.zmanim_location_type,
+        orgZmanimLocationName: org.zmanim_location_name,
+      }),
     );
   }
 
@@ -100,6 +126,8 @@ function collectTargets(orgs: OrgRow[], screens: ScreenRow[]): Map<string, WarmT
         orgPostalCode: screen.orgs?.postal_code,
         screenZmanimLocationId: screen.zmanim_location_id,
         orgZmanimLocationId: screen.orgs?.zmanim_location_id,
+        orgZmanimLocationType: screen.orgs?.zmanim_location_type,
+        orgZmanimLocationName: screen.orgs?.zmanim_location_name,
       }),
     );
   }
@@ -124,11 +152,11 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });
 
   const [{ data: orgs, error: orgsError }, { data: screens, error: screensError }] = await Promise.all([
-    db.from("orgs").select("id, timezone, zmanim_provider, postal_code, zmanim_location_id"),
+    db.from("orgs").select("id, timezone, zmanim_provider, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name"),
     db
       .from("screens")
       .select(
-        "id, timezone, zmanim_provider, postal_code, zmanim_location_id, orgs(timezone, zmanim_provider, postal_code, zmanim_location_id)",
+        "id, timezone, zmanim_provider, postal_code, zmanim_location_id, orgs(timezone, zmanim_provider, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name)",
       )
       .eq("is_active", true),
   ]);

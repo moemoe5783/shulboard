@@ -1,0 +1,53 @@
+-- The two facts a Chabad location needs beyond its id, now that a shul can
+-- actually obtain one: which KIND of id it is, and what place it was
+-- supposed to be.
+--
+-- WHY NOT A COMPOSITE IN THE EXISTING COLUMN. Chabad's own zmanim response
+-- echoes its location back as "2-33710" -- type, hyphen, id -- so storing
+-- "1-872" in orgs.zmanim_location_id would have matched their own shape and
+-- needed no migration at all. It was the first choice and it lost on two
+-- counts:
+--
+--   1. The NAME has to be stored regardless, and does not fit a composite:
+--      titles contain commas and could contain a hyphen ("Wilkes-Barre"),
+--      so packing three values into one text column means a parser with a
+--      genuine ambiguity in it. A migration is happening either way, and
+--      once it is, packing two values into one column to avoid adding a
+--      column that is being added anyway is strictly worse.
+--   2. "2-33710" is an ECHO format, not a REQUEST format. The zmanim call
+--      sends locationid and locationtype as separate lowercase parameters
+--      (lib/zmanim/chabad-adapter.ts), so every read would split the
+--      composite straight back apart. Splitting is what the request wants.
+--
+-- Three columns also means the type can be CONSTRAINED, which a substring
+-- of a text column cannot be. That check is the whole defence against the
+-- failure mode this exists for: assuming "1" for an international result
+-- when the search returned "2", and silently querying a US ZIP that
+-- happens to collide with a city id.
+--
+-- NO BACKFILL, deliberately. Existing zmanim_location_id values are bare
+-- ids a gabbai dug out of a chabad.org URL by hand, and there is no way to
+-- know whether any of them is a city id or a ZIP -- guessing here is the
+-- exact mistake the type column exists to prevent. lib/zmanim/location.ts
+-- reads a null type as "1" for those, which is what resolveChabadLocation
+-- already assumed for that column before this migration, so nothing
+-- changes for them; and with the name null they cannot be verified, which
+-- that module logs rather than treating as a mismatch.
+alter table public.orgs
+  -- Chabad's ItemType / locationtype. '1' is their opaque city numbering,
+  -- '2' is a literal US ZIP. Null means an id predating the search, read
+  -- as '1'.
+  add column zmanim_location_type text
+    check (zmanim_location_type in ('1', '2')),
+  -- The Title the search returned for the chosen id ("Lugano,
+  -- Switzerland"), whitespace-normalized. NOT decoration and not a cache
+  -- of something derivable: it is the only thing the zmanim response's own
+  -- LocationName can be checked against for a city id, which is what stops
+  -- a wrong id silently caching another country's times
+  -- (lib/zmanim/chabad-adapter.ts's verifyLocationName). A ZIP verifies
+  -- against itself and needs no name.
+  add column zmanim_location_name text;
+
+-- No RLS work. `orgs` already carries its policies and this project does
+-- not use column-level security, so three more columns on an existing
+-- tenant table inherit exactly the access the row has.

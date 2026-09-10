@@ -76,7 +76,9 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
   // (lib/bundle/build.ts) when a screen hasn't set its own.
   const { data: orgLocation } = await supabase
     .from("orgs")
-    .select("latitude, longitude, timezone, zmanim_provider, postal_code, zmanim_location_id")
+    // One literal — see lib/bundle/build.ts's note: a concatenated select
+    // string loses Supabase's row-type inference.
+    .select("latitude, longitude, timezone, zmanim_provider, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
     .eq("id", board.org_id)
     .maybeSingle();
 
@@ -117,7 +119,13 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
  */
 async function resolveOrgZmanimPreview(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  org: { zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null } | null,
+  org: {
+    zmanim_provider: string;
+    postal_code: string | null;
+    zmanim_location_id: string | null;
+    zmanim_location_type: string | null;
+    zmanim_location_name: string | null;
+  } | null,
 ): Promise<BoardZmanim | null> {
   // Always Chabad — lib/zmanim/provider.ts. The stored value is passed in
   // so the day the choice comes back this line is already right.
@@ -126,6 +134,8 @@ async function resolveOrgZmanimPreview(
   const chabadLocation = resolveChabadLocation({
     orgPostalCode: org?.postal_code,
     orgZmanimLocationId: org?.zmanim_location_id,
+    orgZmanimLocationType: org?.zmanim_location_type,
+    orgZmanimLocationName: org?.zmanim_location_name,
   });
   if (!chabadLocation) return { provider, hasChabadLocation: false, chabadZmanim: null };
 

@@ -271,25 +271,93 @@ function zmanimUrl(input: { locationId: string; locationType: "1" | "2"; startDa
  * fallback, which computes the right city's times from the org's own
  * coordinates — strictly better than caching another city's.
  *
- * ONLY ENFORCEABLE FOR A ZIP (`locationtype=2`). Chabad's opaque city
- * numbering (`locationtype=1`, resolved by lib/zmanim/location.ts only
- * when a shul has no US ZIP on file) does not appear in the returned
- * name, and `LocationId` comes back null, so there is nothing to compare
- * against. That case is logged rather than checked, and the log line says
- * which city was actually served so a wrong id is at least visible after
- * the fact.
+ * ENFORCEABLE FOR BOTH KINDS OF ID NOW. A ZIP is checked against the
+ * response's own name, which contains it. A city id is checked against the
+ * Title `Get_Locations` returned for it, stored alongside the id
+ * (`orgs.zmanim_location_name`) precisely so there is something to compare
+ * — that used to be the gap that made `locationtype=1` unusable rather
+ * than merely unsupported. The one case still unverifiable is a city id
+ * stored before the search existed, which is logged rather than refused.
  */
-function verifyLocationName(body: Record<string, unknown>, input: { locationId: string; locationType: "1" | "2" }): string {
+function verifyLocationName(
+  body: Record<string, unknown>,
+  input: { locationId: string; locationType: "1" | "2"; expectedName?: string | null },
+): string {
   const location = typeof body.LocationName === "string" ? body.LocationName.trim() : "";
   if (!location) throw new Error("Chabad zmanim: no LocationName in the response");
 
-  if (input.locationType === "2" && !location.includes(input.locationId)) {
+  if (input.locationType === "2") {
+    if (!location.includes(input.locationId)) {
+      throw new Error(
+        `Chabad zmanim: asked for ZIP ${input.locationId} but the response is for "${location}" — ` +
+          "refusing it rather than caching another city's times (see this module's note on parameter case)",
+      );
+    }
+    return location;
+  }
+
+  /*
+   * A CITY ID, WHICH USED TO BE UNVERIFIABLE. The gap was real and logged:
+   * a `locationtype=1` response carries no id to match, `LocationId` comes
+   * back null, and "Brooklyn, NY" is a perfectly normal-looking answer to
+   * a request that was supposed to be Lugano. So the compensating control
+   * that makes the ZIP path safe simply did not exist for a city, and the
+   * settings form said so where the field would have gone.
+   *
+   * `Get_Locations` closes it: the search returns the Title for the id it
+   * gives us, that Title is stored (`orgs.zmanim_location_name`), and it is
+   * what the response's own `LocationName` is checked against.
+   */
+  const expected = normalizeName(input.expectedName ?? "");
+  if (!expected) {
+    /*
+     * Nothing to check against — an id stored before the search existed,
+     * dug out of a chabad.org URL by hand. Logged loudly rather than
+     * refused: that configuration worked (unverified) before this check,
+     * and blanking a shul's board to enforce a check it predates would be
+     * this change breaking something it was meant to protect. The log names
+     * the city actually served, so a wrong id is at least discoverable
+     * after the fact, and re-picking the location in settings stores a name
+     * and closes it properly.
+     */
+    console.error(
+      `[chabad-zmanim] locationtype=1 id ${input.locationId} has no stored name to verify — ` +
+        `served "${location}", cached unverified. Re-pick this shul's location in settings to fix.`,
+    );
+    return location;
+  }
+
+  /*
+   * THE CITY TOKEN, NOT THE WHOLE TITLE, and this is a deliberate looseness
+   * rather than a sloppy compare. Nobody has yet seen a `LocationName` from
+   * a `locationtype=1` request — the search's Title is "Lugano,
+   * Switzerland", and whether the zmanim response says exactly that, or
+   * "Lugano TI, Switzerland", or names a canton, is unobserved. Requiring
+   * the whole string to match would refuse every international shul the
+   * first time the two surfaces format a region differently.
+   *
+   * So this asserts what the failure mode actually needs: the place before
+   * the first comma has to appear in what came back. Brooklyn served for
+   * Lugano fails it; "Lugano TI" served for Lugano passes. It is the same
+   * shape as the ZIP check one line up — a substring of the response's own
+   * name — which is why the two read alike.
+   */
+  const expectedCity = expected.split(",")[0].trim();
+  if (!expectedCity || !normalizeName(location).includes(expectedCity)) {
     throw new Error(
-      `Chabad zmanim: asked for ${input.locationId} but the response is for "${location}" — ` +
-        "refusing it rather than caching another city's times (see this module's note on parameter case)",
+      `Chabad zmanim: asked for "${input.expectedName}" (locationid ${input.locationId}) but the ` +
+        `response is for "${location}" — refusing it rather than caching another city's times`,
     );
   }
   return location;
+}
+
+/** Case- and whitespace-insensitive, for comparing two surfaces' spellings
+ *  of one place. `Get_Locations` returns "Lugano,  Switzerland" with two
+ *  spaces after the comma, and chabad.org uses non-breaking spaces
+ *  liberally, so an exact compare would fail on formatting alone. */
+function normalizeName(value: string): string {
+  return value.replace(/[\s ]+/g, " ").trim().toLowerCase();
 }
 
 /**
@@ -347,6 +415,11 @@ function logRequest(url: URL, status: number, result: ChabadZmanimResult, days: 
 export async function fetchChabadZmanim(input: {
   locationId: string;
   locationType: "1" | "2";
+  /** The place this id is supposed to be — `ChabadLocation.expectedName`.
+   *  Required in practice for `locationType: "1"`; see
+   *  `verifyLocationName`, which refuses a mismatch and logs loudly when
+   *  there is nothing to compare. */
+  expectedName?: string | null;
   startDate: string;
   endDate: string;
   timeZone: string;

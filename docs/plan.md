@@ -333,7 +333,8 @@ their wall, and these three genuinely differ by a minute or two.
 |---|---|---|---|
 | Hebcal | Official REST API + `@hebcal/core` JS lib | Free | Only one that runs client-side. Default. |
 | MyZmanim | Official REST/SOAP, `api.myzmanim.com`, User+Key | $15/mo/10 locations, $40/mo/100, then $0.10 each | Requires internal `LocationID`. **Decided: ZIP-level only** — resolve via `searchPostal` at onboarding and cache the LocationID on the org. Street-address and shul-specific lookups are manual through their mobile app; don't build for them, and don't market address-level precision. |
-| Chabad.org | **`Get_Zmanim`, one request for everything** — `webservices/zmanim/zmanim/Get_Zmanim?locationid=<ZIP>&locationtype=2&save=1&tdate=<M-D-YYYY>&jewish=Zmanim-Halachic-Times.htm&startdate=<M/D/YYYY>&enddate=<M/D/YYYY>&before=18&after=42&ShabbosEnds=1&bdef=0`. **92 days verified**, every day in the span, carrying all thirteen daily zmanim *and* candle lighting on every Erev Shabbos and Yom Tov. Permission for the data granted directly, no attribution asked for; the endpoint itself is undocumented, which is why `ZMANIM_CHABAD_ENABLED` still gates it. `lib/zmanim/chabad-adapter.ts`. | Free | **The trailing four parameters are not optional.** Without `before`/`after`/`ShabbosEnds`/`bdef` the same request returns the full day count and zero candle-lighting times, with nothing anywhere saying why. **The date formats deliberately differ** — `tdate` is M-D-YYYY, `startdate`/`enddate` are M/D/YYYY. Params are case-sensitive and fail SILENTLY: `locationId` is ignored and falls back to Brooklyn, so the `LocationName` check is load-bearing. `ShabbosEnds` is genuinely mixed-case; don't normalize either. |
+| Chabad.org (locations) | **`Get_Locations?location=<query>`** — a public search resolving a place name to Chabad's own opaque location id. `{"Suggestions":[{"Title":"Lugano,  Switzerland","Value":"872","ItemType":"1"}]}`: `Value` is the `locationid`, `ItemType` is the `locationtype`. Lowercase param, no `aid`. `lib/zmanim/chabad-locations.ts`. | Free | **This is what unblocked non-US shuls** — `locationtype=1` was reachable in code and unusable in practice, because the only way to get an id was to dig one out of a chabad.org URL and there was nothing to verify it against. **Only one query has ever been observed.** Multi-result behaviour, misspellings and places with no Chabad presence are unknown; the reader assumes none of it and `scripts/probe-chabad-locations.ts` is what settles it. **`ItemType` may be `"2"`,** meaning `Value` is a ZIP — never hardcode `1`. Note `Title` has irregular internal whitespace ("Lugano,&nbsp;&nbsp;Switzerland"); normalize for display, never the `Value`. |
+| Chabad.org (zmanim) | **`Get_Zmanim`, one request for everything** — `webservices/zmanim/zmanim/Get_Zmanim?locationid=<ZIP>&locationtype=2&save=1&tdate=<M-D-YYYY>&jewish=Zmanim-Halachic-Times.htm&startdate=<M/D/YYYY>&enddate=<M/D/YYYY>&before=18&after=42&ShabbosEnds=1&bdef=0`. **92 days verified**, every day in the span, carrying all thirteen daily zmanim *and* candle lighting on every Erev Shabbos and Yom Tov. Permission for the data granted directly, no attribution asked for; the endpoint itself is undocumented, which is why `ZMANIM_CHABAD_ENABLED` still gates it. `lib/zmanim/chabad-adapter.ts`. | Free | **The trailing four parameters are not optional.** Without `before`/`after`/`ShabbosEnds`/`bdef` the same request returns the full day count and zero candle-lighting times, with nothing anywhere saying why. **The date formats deliberately differ** — `tdate` is M-D-YYYY, `startdate`/`enddate` are M/D/YYYY. Params are case-sensitive and fail SILENTLY: `locationId` is ignored and falls back to Brooklyn, so the `LocationName` check is load-bearing. `ShabbosEnds` is genuinely mixed-case; don't normalize either. |
 | Manual | You | — | Per-zman override or fixed offset. `lib/hebrew/candle-times.ts`'s `havdalahShitahSchema` already has a `"custom"` value that is this same idea at the grain of one zman (fixed minutes after sunset) — built for a standalone Havdalah widget that shipped, then got removed in favor of this section. Decide whether it becomes this Manual provider's own Havdalah row or stays separate when this section is built. |
 
 **Canonical zman IDs.** Providers name things differently (`tzeit7083deg` /
@@ -457,6 +458,40 @@ assumed, off the Nov 1 DST fall-back: chatzos halayla differs by under a
 minute between two adjacent nights normally, but across a fall-back the
 two candidate readings are an hour apart, and the response matches the
 following-night one.
+
+**International shuls, and how a city id is verified.** A shul with no US
+ZIP picks its city from `Get_Locations` in org settings, and **three things
+are stored, not one**: `orgs.zmanim_location_id` (the `Value`),
+`orgs.zmanim_location_type` (the `ItemType`) and
+`orgs.zmanim_location_name` (the Title). The type is stored because a search
+may return `ItemType` `"2"` for a US result, where the `Value` is a ZIP —
+assuming `"1"` for anything found by name would silently query a different
+place, so it is never defaulted and a third value is rejected rather than
+coerced.
+
+The **name is what makes a city id safe**, and it closes the gap that made
+`locationtype=1` unusable rather than merely unsupported. A ZIP verifies
+against the zmanim response's own `LocationName`, which contains it; a city
+id had nothing to check — `LocationId` comes back null, and "Brooklyn, NY"
+is a perfectly normal-looking answer to a request that was meant to be
+Lugano. Now the searched Title is compared against that `LocationName` and
+a mismatch **refuses the whole response rather than caching it**
+(`verifyLocationName`). The comparison is on the city token before the first
+comma, case- and whitespace-insensitively, because no `LocationName` from a
+`locationtype=1` request has been observed and requiring the two surfaces to
+format a region identically would refuse every international shul on the
+first formatting difference. An id stored before the search existed has no
+name, cannot be verified, and is logged loudly rather than refused —
+blanking a board to enforce a check it predates would be the fix breaking
+what it protects.
+
+**ZIP stays the path for US shuls.** `resolveChabadLocation` is ZIP-first,
+needs no lookup, and the geocoder already derives the ZIP from the address
+lookup. The city search is the no-US-ZIP case and the settings form says so
+where it sits, rather than offering two location fields as equals — which is
+the mistake the removed hand-typed field made. A searched `ItemType` `"2"`
+result caches under `zip:<id>`, the same key a shul that typed that ZIP
+produces, so the two share one cached row.
 
 **Caching.** Postgres table keyed `(provider, location_id, date)`. Twenty Crown
 Heights shuls share the same rows, so one API call serves all of them. This is
@@ -715,7 +750,9 @@ is your biggest conversion lever), screen-count limits.
    MyZmanim / manual), see §5c. Remaining sub-question: does MyZmanim ship in v1
    given it's a paid per-location dependency, or is it a paid-tier feature added
    after launch?
-4. ~~**Chabad.org terms**~~ — **decided.** Permission for the data was
+4. ~~**Chabad.org terms**~~ — **decided.** ~~And non-US shuls are no longer
+   blocked~~: `Get_Locations` (§5c) resolves a city name to a location id,
+   which is what `locationtype=1` was always missing. Permission for the data was
    granted directly by Chabad.org, and **no attribution was asked for** —
    the credit link in their embed markup was an inference from the markup,
    not a stated term, and the widget does not render one. Don't re-add it

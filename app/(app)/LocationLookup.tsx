@@ -71,8 +71,14 @@ export function LocationLookup({
    *  rather than the one on file. */
   timezone: string;
   geocodingConfigured: boolean;
-  /** Anything else that belongs to this question — the settings form's
-   *  hidden Chabad location id. The new-shul form passes none. */
+  /** Anything else that belongs to this question — the settings form
+   *  passes its Chabad.org city search (ChabadCityLookup), which is the
+   *  other way to answer "where is this shul?" for a shul with no US ZIP.
+   *  Inside this component rather than beside it so the two are one
+   *  question with two answers, not two competing location fields. The
+   *  new-shul form passes none: its actions are admin-of-an-existing-org
+   *  gated, and a non-US shul sets the city in settings straight after
+   *  creating the org. */
   children?: ReactNode;
 }) {
   const [query, setQuery] = useState("");

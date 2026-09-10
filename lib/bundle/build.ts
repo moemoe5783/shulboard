@@ -249,7 +249,10 @@ async function assemblePayloadFor(
   const [{ data: org }, playlist] = await Promise.all([
     db
       .from("orgs")
-      .select("theme, timezone, latitude, longitude, zmanim_provider, postal_code, zmanim_location_id")
+      // One literal, not a concatenation: Supabase's generated types infer
+      // the row shape from the select string itself, and a `+` turns the
+      // result into GenericStringError.
+      .select("theme, timezone, latitude, longitude, zmanim_provider, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
       .eq("id", orgId)
       .maybeSingle(),
     playlistId
@@ -374,6 +377,8 @@ async function assemblePayloadFor(
     orgPostalCode: org?.postal_code,
     screenZmanimLocationId: screen.zmanim_location_id,
     orgZmanimLocationId: org?.zmanim_location_id,
+    orgZmanimLocationType: org?.zmanim_location_type,
+    orgZmanimLocationName: org?.zmanim_location_name,
   });
 
   // Only actually read zmanim_cache when it could possibly matter: a

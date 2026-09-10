@@ -47,6 +47,16 @@ Environment variables: @docs/environment.md
   Nowhere else uses the service-role key.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx
+- `lib/zmanim/chabad-locations.ts` — Chabad's public `Get_Locations`
+  search, which is what makes a **non-US shul** configurable: it resolves a
+  city name to Chabad's own location id AND its type AND a Title. All three
+  are stored (`orgs.zmanim_location_id` / `_type` / `_name`) — never
+  hardcode the type, and the Title is what the zmanim response's own
+  `LocationName` is verified against, which is what stops a wrong id
+  caching another country's times. ZIP stays the path for US shuls;
+  `resolveChabadLocation` is ZIP-first. **Only one query has ever been
+  observed** — the reader assumes nothing about multi-result behaviour and
+  `scripts/probe-chabad-locations.ts` is what settles it.
 - `lib/zmanim/provider.ts` — **Chabad.org is the only zmanim source.**
   `effectiveZmanimProvider()` resolves every stored `zmanim_provider` to
   `'chabad'`, so an org still on the schema's `'hebcal'` default is served
