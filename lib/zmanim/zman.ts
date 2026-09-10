@@ -21,6 +21,7 @@ export type ChabadClockZman = {
   iso: string;
   display: string;
   footnote?: ChabadFootnote;
+  label?: string;
 };
 
 /**
@@ -42,6 +43,7 @@ export type ChabadDurationZman = {
   durationSeconds: number;
   display: string;
   footnote?: ChabadFootnote;
+  label?: string;
 };
 
 /**
@@ -63,6 +65,24 @@ export type ChabadDurationZman = {
  * type rather than drop the whole footnote.
  */
 export type ChabadFootnote = { type: string; text: string | null };
+
+/*
+ * `label` on both shapes above: THE PROVIDER'S OWN WORDS FOR THIS ZMAN,
+ * cached alongside the value so nothing downstream needs a label table.
+ *
+ * Chabad sends it in the response root's `GroupHeadings[].EssentialTitle`
+ * ("Latest Shacharit", "Earliest Tallit", "Shabbat Ends"), and the board
+ * shows exactly that. The canonical id is invisible plumbing — it exists so
+ * a board document survives a provider change — and translating the
+ * provider's wording into house vocabulary on the way to the screen would
+ * throw away the one thing that makes the row match the luach on the wall.
+ *
+ * Optional because a value can predate this field (a row warmed before it
+ * existed) or come from a computation rather than a provider. Both fall
+ * back to `ZMAN_PANEL_LABEL` below, which is the only place house
+ * vocabulary is allowed to reach a board — and only in the absence of the
+ * provider's own.
+ */
 
 export type ChabadZman = ChabadClockZman | ChabadDurationZman;
 
@@ -92,14 +112,18 @@ export function isClockZman(zman: ChabadZman): zman is ChabadClockZman {
  * so a Baal HaTanya value sits under them without asserting anything
  * false.
  *
- * `AlosHashachar`, `LatestShema`, `LatestTefillah` and `Tzeis` are NOT
- * mapped, and that is a reported gap rather than a nearest-fit guess —
- * §5c offers `alos_72`/`alos_16.1deg`, `sof_zman_shma_gra`/`_mga`,
- * `sof_zman_tfila_gra`/`_mga` and `tzeis_3_stars`/`tzeis_medium_stars`/
- * `tzeis_72`, and each of those names a shitah this value is measurably
- * not (see `UNMAPPED_ESSENTIAL_ZMAN_TYPES`). They are cached under a
- * provider-namespaced key instead, so the data is not thrown away while
- * §5c's vocabulary is short four ids.
+ * `AlosHashachar`, `LatestShema`, `LatestTefillah` and `Tzeis` were
+ * reported gaps until §5c named the four Baal HaTanya ids they needed;
+ * they now map to `alos_baal_hatanya`, `sof_zman_shma_baal_hatanya`,
+ * `sof_zman_tfila_baal_hatanya` and `tzeis_baal_hatanya`. Those ids name
+ * the shitah the measurement established, which is why they are not
+ * `sof_zman_shma_gra` and friends: 1–2 minutes from GRA is still a
+ * different shitah, and a GRA label would be a false claim about what a
+ * board is showing.
+ *
+ * `ShaahZmanit` is the one type still unmapped — a duration, and §5c's
+ * canonical list has no id for one. It stays cached under a
+ * provider-namespaced key so the data is not thrown away.
  */
 export const CANONICAL_BY_ESSENTIAL_ZMAN_TYPE: Readonly<Record<string, string>> = {
   /** "Earliest Tallit" in Chabad's own column heading, which is what
@@ -131,6 +155,16 @@ export const CANONICAL_BY_ESSENTIAL_ZMAN_TYPE: Readonly<Record<string, string>> 
    */
   ShabbatEndTime: "shabbos_ends",
   ChatzosNight: "chatzos_laila",
+  /*
+   * The four §5c named for this data — plan.md §5c's "What Chabad.org
+   * actually supplies, measured." Each matches @hebcal/core's own Baal
+   * HaTanya implementation across all 92 days of the fixture: alos and sof
+   * zman tfila to the minute, sof zman shma and tzeis to within one.
+   */
+  AlosHashachar: "alos_baal_hatanya",
+  LatestShema: "sof_zman_shma_baal_hatanya",
+  LatestTefillah: "sof_zman_tfila_baal_hatanya",
+  Tzeis: "tzeis_baal_hatanya",
 };
 
 /**
@@ -142,23 +176,10 @@ export const CANONICAL_BY_ESSENTIAL_ZMAN_TYPE: Readonly<Record<string, string>> 
  * Every one of these is still cached, under `chabad:<EssentialZmanType>`.
  */
 export const UNMAPPED_ESSENTIAL_ZMAN_TYPES: Readonly<Record<string, string>> = {
-  AlosHashachar:
-    "Baal HaTanya alos — matches @hebcal/core's alosBaalHatanya to the minute on all 92 days. " +
-    "Not alos_72 (measured 73–79 min before netz, so it varies with the season and is not a fixed offset) " +
-    "and not alos_16.1deg (3–4 min earlier than it). §5c needs a third id, e.g. alos_baal_hatanya.",
-  LatestShema:
-    "Baal HaTanya sof zman shma — 0 to 1 min from sofZmanShmaBaalHatanya, 1–2 min from GRA, 34–35 min later than MGA. " +
-    "Close enough to GRA to be tempting and still a different shitah, so sof_zman_shma_gra would be a false label.",
-  LatestTefillah:
-    "Baal HaTanya sof zman tfila — exactly 0 min from sofZmanTfilaBaalHatanya on all 92 days, 1–2 min from GRA. " +
-    "Same reasoning as LatestShema.",
-  Tzeis:
-    "Baal HaTanya tzeis (6°) — exactly 1 min after tzaisBaalHatanya on all 75 days that carry it. " +
-    "Earlier than all three of §5c's tzeis ids: tzeis_medium_stars (7.0833°) is 3–5 min later, " +
-    "tzeis_3_stars (8.5°) is what ShabbatEndTime matches instead, and tzeis_72 is 34–37 min later.",
   ShaahZmanit:
     "A duration, not a clock time, and §5c's canonical list has no id for one at all. " +
-    "Cached as ChabadDurationZman rather than dropped.",
+    "Cached as ChabadDurationZman rather than dropped, and deliberately NOT selectable in the " +
+    "Zmanim widget — see CHABAD_SUPPLIES.",
 };
 
 /** `chabad:AlosHashachar` and friends. Namespaced so a canonical id can
@@ -205,3 +226,164 @@ const NIGHT_ROLLOVER_TYPES: ReadonlySet<string> = new Set(["ChatzosNight"]);
 export function rollsIntoNextDay(essentialZmanType: string, hour: number): boolean {
   return NIGHT_ROLLOVER_TYPES.has(essentialZmanType) && hour < 12;
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * §5c's capability matrix, as data — what the Zmanim widget offers and why.
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Every canonical zman id plan.md §5c names, in the order a luach prints
+ * them.
+ *
+ * THIS IS THE SETTINGS PANEL'S ORDER, NOT THE BOARD'S. A board renders its
+ * rows sorted by instant, which is what makes `chatzos_laila` land last
+ * (its instant is the following morning — see `rollsIntoNextDay`) without
+ * anything special-casing it. This list exists so the checkbox list in the
+ * properties panel groups the alternates for one zman together — the three
+ * alos shitos next to each other, the four tzeis shitos next to each other
+ * — which sorting by any single day's instants would scatter.
+ *
+ * `chabad:ShaahZmanit` is deliberately absent. It is cached, it is real,
+ * and it is not offered — see CHABAD_SUPPLIES.
+ */
+export const CANONICAL_ZMAN_ORDER: readonly string[] = [
+  "alos_72",
+  "alos_16.1deg",
+  "alos_baal_hatanya",
+  "misheyakir",
+  "netz",
+  "sof_zman_shma_mga",
+  "sof_zman_shma_gra",
+  "sof_zman_shma_baal_hatanya",
+  "sof_zman_tfila_mga",
+  "sof_zman_tfila_gra",
+  "sof_zman_tfila_baal_hatanya",
+  "chatzos",
+  "mincha_gedola",
+  "mincha_ketana",
+  "plag_hamincha",
+  "candle_lighting",
+  "shkia",
+  "tzeis_baal_hatanya",
+  "tzeis_medium_stars",
+  "tzeis_3_stars",
+  "tzeis_72",
+  "shabbos_ends",
+  "chatzos_laila",
+];
+
+/**
+ * House vocabulary for each canonical id — **editor chrome, and a last
+ * resort on a board.**
+ *
+ * THE BOARD PREFERS THE PROVIDER'S OWN WORDS. A cached value carries its
+ * provider's label (`ChabadClockZman.label`) and the renderer shows that
+ * verbatim: Chabad says "Latest Shacharit", the board says "Latest
+ * Shacharit". This table is used in exactly two places, both of which have
+ * no provider string to show instead:
+ *
+ * 1. **The properties panel's checkbox list.** The panel is chrome
+ *    (design.md §1b), it uses the product's own words like every other
+ *    control, and it cannot reach the cache anyway — `BoardZmanimProvider`
+ *    wraps the renderer, not the panel, and a Settings component receives
+ *    `{config, onChange}` and nothing else.
+ * 2. **A computed row on a board with no warmed cache** — a Hebcal-provider
+ *    board, or a Chabad one whose cron has never run. Note that a Chabad
+ *    board WITH a warmed cache shows the provider's label even on a
+ *    computed row, because a label does not vary by date and the resolver
+ *    harvests it from any date the cache has (see resolve-zmanim.ts).
+ *
+ * Sentence case, and the community's words rather than translations of them
+ * — CLAUDE.md's copy rule. A gabbai reads "Sof zman shma", not "Latest time
+ * for the morning Shema".
+ */
+export const ZMAN_PANEL_LABEL: Readonly<Record<string, string>> = {
+  alos_72: "Alos (72 minutes)",
+  "alos_16.1deg": "Alos (16.1°)",
+  alos_baal_hatanya: "Alos (Baal HaTanya)",
+  misheyakir: "Misheyakir",
+  netz: "Netz",
+  sof_zman_shma_mga: "Sof zman shma (MGA)",
+  sof_zman_shma_gra: "Sof zman shma (GRA)",
+  sof_zman_shma_baal_hatanya: "Sof zman shma (Baal HaTanya)",
+  sof_zman_tfila_mga: "Sof zman tfila (MGA)",
+  sof_zman_tfila_gra: "Sof zman tfila (GRA)",
+  sof_zman_tfila_baal_hatanya: "Sof zman tfila (Baal HaTanya)",
+  chatzos: "Chatzos",
+  mincha_gedola: "Mincha gedola",
+  mincha_ketana: "Mincha ketana",
+  plag_hamincha: "Plag hamincha",
+  candle_lighting: "Candle lighting",
+  shkia: "Shkia",
+  tzeis_baal_hatanya: "Tzeis (Baal HaTanya)",
+  tzeis_medium_stars: "Tzeis (3 medium stars)",
+  tzeis_3_stars: "Tzeis (3 stars)",
+  tzeis_72: "Tzeis (72 minutes)",
+  shabbos_ends: "Shabbos ends",
+  chatzos_laila: "Chatzos halayla",
+};
+
+/**
+ * The canonical ids Chabad.org actually supplies — §5c's capability matrix
+ * for the one provider that has a cache.
+ *
+ * §5c: "The settings UI greys out unavailable ones — never render a blank
+ * row on a screen someone is standing in front of." Everything in
+ * `CANONICAL_ZMAN_ORDER` that is not in here is shown disabled in the
+ * panel with a reason, not hidden — hiding them makes a gabbai think the
+ * app is broken, and the reason is the interesting part: the GRA and MGA
+ * shitos are absent because Chabad publishes Baal HaTanya, not because
+ * nobody got round to them.
+ *
+ * `chabad:ShaahZmanit` IS supplied and is still not here, which is a
+ * decision rather than an omission. Three reasons, any one of which would
+ * be enough:
+ *
+ * - **It has no canonical id.** Putting `chabad:ShaahZmanit` in a board
+ *   document would defeat the single property these config keys exist for:
+ *   a canonical id is invisible plumbing so a board survives a provider
+ *   change, and a provider-namespaced key is a board that breaks the day
+ *   the provider changes.
+ * - **It cannot sort into a time-ordered list.** A board's rows are ordered
+ *   by instant and a duration has none, so it would need its own region
+ *   below the table — a second layout concept for one row.
+ * - **It is a derivation, not a zman.** A printed luach carries it because
+ *   the reader may want to compute something; nobody in a lobby davens by
+ *   it.
+ *
+ * Naming an id for it later and adding a row is purely additive — the value
+ * is already cached on all 92 days.
+ */
+export const CHABAD_SUPPLIES: ReadonlySet<string> = new Set(
+  Object.values(CANONICAL_BY_ESSENTIAL_ZMAN_TYPE),
+);
+
+/**
+ * One canonical id whose value may legitimately be served by a different
+ * one, and the id that serves it.
+ *
+ * `tzeis_baal_hatanya` <- `shabbos_ends`, AND ONLY IN THAT DIRECTION.
+ *
+ * WHY THIS EXISTS AT ALL: Chabad publishes exactly one nightfall per day
+ * and relabels it. Measured over the 92-day fixture, the 17 days carrying
+ * `ShabbatEndTime` are exactly the 17 with no `Tzeis` — so a board
+ * configured to show nightfall goes blank every single Shabbos and Yom Tov
+ * without this, which is precisely when the most people are standing in
+ * front of it.
+ *
+ * WHY NOT THE OTHER DIRECTION: a plain 6° nightfall is 24–26 minutes after
+ * sunset and a Shabbos-end time is 34–38 (8.5°). Showing the earlier one
+ * under a "Shabbos ends" row would tell a room that Shabbos is over ten
+ * minutes before it is. Substituting toward the stricter time is safe;
+ * substituting away from it is not, which is why this is a one-way map and
+ * not a pair of equivalent ids.
+ *
+ * The substituted row carries the SUBSTITUTE's own label — Chabad's
+ * "Shabbat Ends" — so the board never claims the value is something it
+ * isn't. That is the whole disclosure, and it is why this needs no badge.
+ */
+export const ZMAN_SUBSTITUTE: Readonly<Record<string, string>> = {
+  tzeis_baal_hatanya: "shabbos_ends",
+};

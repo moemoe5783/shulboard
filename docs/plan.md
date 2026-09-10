@@ -313,11 +313,37 @@ their wall, and these three genuinely differ by a minute or two.
 `Shkiah` / etc.), so define your own vocabulary and write a thin adapter per
 provider that maps into it:
 
-`alos_72`, `alos_16.1deg`, `misheyakir`, `netz`, `sof_zman_shma_gra`,
-`sof_zman_shma_mga`, `sof_zman_tfila_gra`, `sof_zman_tfila_mga`, `chatzos`,
-`mincha_gedola`, `mincha_ketana`, `plag_hamincha`, `shkia`, `tzeis_3_stars`,
-`tzeis_medium_stars`, `tzeis_72`, `candle_lighting`, `shabbos_ends`,
-`chatzos_laila`
+`alos_72`, `alos_16.1deg`, **`alos_baal_hatanya`**, `misheyakir`, `netz`,
+`sof_zman_shma_gra`, `sof_zman_shma_mga`, **`sof_zman_shma_baal_hatanya`**,
+`sof_zman_tfila_gra`, `sof_zman_tfila_mga`,
+**`sof_zman_tfila_baal_hatanya`**, `chatzos`, `mincha_gedola`,
+`mincha_ketana`, `plag_hamincha`, `shkia`, **`tzeis_baal_hatanya`**,
+`tzeis_3_stars`, `tzeis_medium_stars`, `tzeis_72`, `candle_lighting`,
+`shabbos_ends`, `chatzos_laila`
+
+**The four Baal HaTanya ids are named for the shitah the data measures**,
+not for the nearest existing id. They were the open item this list carried
+until the Zmanim widget needed them, and the reason they are not
+`sof_zman_shma_gra` and friends is that 1–2 minutes from the GRA is still a
+different shitah: a GRA label on a Baal HaTanya time is a false claim about
+what a board is showing, which is worse than a longer vocabulary. See the
+measurement below.
+
+The list is **not** a zod enum anywhere. `widgets/zmanim`'s config stores
+plain strings, so adding the next four ids is not a schema migration for
+every stored board document — an id nothing supplies simply resolves to no
+row, the same thing `candle_lighting` does on a Tuesday.
+
+**This vocabulary is invisible plumbing and must stay that way.** A
+canonical id exists so a board document survives a provider change: the
+same `netz` row reads from Chabad today and from MyZmanim after a settings
+change, with nothing in the document edited. What reaches a screen is
+always the provider's own label for that id — Chabad sends "Latest
+Shacharit", the board shows "Latest Shacharit" — which is why
+`zmanim_cache.times` stores a `label` beside every value
+(`lib/zmanim/zman.ts`) rather than this project keeping a translation table.
+House vocabulary (`ZMAN_PANEL_LABEL`) is editor chrome, and reaches a board
+only when there is no provider string to show instead.
 
 `tzeis_medium_stars` (7.0833°, "3 medium stars") is not aspirational like the
 rest of this list — it's real code today, just not wired to any widget.
@@ -385,13 +411,14 @@ HaTanya, four of Chabad's fifteen types have no honest id here:
 | `LatestTefillah` | Same. Needs `sof_zman_tfila_baal_hatanya`. |
 | `Tzeis` | 6°, earlier than all three of `tzeis_3_stars` / `tzeis_medium_stars` / `tzeis_72`. Needs `tzeis_baal_hatanya`. |
 
-Plus `ShaahZmanit`, which is a **duration** ("62:51 min.") and has no
-canonical id because this list has no concept of one. All five are cached
-under `chabad:<EssentialZmanType>` rather than being dropped or given an
-id they haven't earned — `lib/zmanim/zman.ts` holds both tables and the
-measurement for each omission. **Naming those four is a halachic
-decision, not a refactor; the Zmanim widget build is where it has to
-happen, because that is where they become rows on a board.**
+**All four are now named** — see the canonical list above — so those types
+map like every other. `ShaahZmanit` is the one still unmapped: a
+**duration** ("62:51 min."), and this list has no concept of one. It is
+cached under `chabad:ShaahZmanit` rather than dropped, and deliberately
+**not offered in the Zmanim widget** — a provider-namespaced key in a board
+document defeats the one property canonical ids exist for, it cannot sort
+into a time-ordered list, and nobody in a lobby davens by it.
+`lib/zmanim/zman.ts` holds the tables and the measurement.
 
 Two mappings that DO hold, and are worth stating because they look like
 gaps: `EarliestTefillin` ("Earliest Tallit", measured as misheyakir
@@ -424,13 +451,57 @@ assuming they agree. `scripts/probe-chabad.ts` is what would settle it.
 works) → last known good. Surface a subtle "showing calculated times" indicator
 rather than failing silently, since a wrong zman is worse than a flagged one.
 
+**The computed leg of that chain is `lib/zmanim/hebcal-zmanim.ts`, and it
+is Baal HaTanya throughout.** Four of the ids it computes name that shitah
+outright, so a gabbai selects it by selecting the row; the shitah-neutral
+ones (`netz`, `shkia`, `chatzos`, `mincha_gedola`, `mincha_ketana`,
+`plag_hamincha`, `misheyakir`, `chatzos_laila`) then use `@hebcal/core`'s
+Baal HaTanya variant where one exists, because a table mixing Baal HaTanya's
+alos with the GRA's plag is a table no luach prints — and the difference is
+not cosmetic, plag being 3–4 minutes apart between them and misheyakir 6–8
+(10.2° against `@hebcal/core`'s own 11° default). Measured consequence:
+every computed value sits **within one minute** of the Chabad value it
+stands in for, on all 92 days of the fixture, which is what makes the
+indicator honest small print rather than a warning about a visibly
+different number.
+
+`candle_lighting` and `shabbos_ends` are deliberately **not** computed
+there. Both are date-conditional events rather than times every day has,
+and working out which dates they fall on is what
+`lib/hebrew/candle-times.ts` and the Candle Lighting widget already do — a
+second copy is the fork this project refuses everywhere else. So on a board
+whose cache has nothing for a date, those two rows are absent rather than
+calculated.
+
+**One nightfall, relabelled — the substitution a Zmanim widget must make.**
+Because `Tzeis` and `ShabbatEndTime` are mutually exclusive in the source, a
+widget configured for `tzeis_baal_hatanya` would go blank on all 17
+Shabbos/Yom Tov days in a 92-day window — which is exactly when the most
+people are reading the board. `lib/zmanim/zman.ts`'s `ZMAN_SUBSTITUTE` maps
+`tzeis_baal_hatanya` ← `shabbos_ends` and the row then carries the
+**substitute's own label** ("Shabbat Ends"), which is the whole disclosure.
+It is one-directional on purpose: a 6° nightfall is 24–26 minutes after
+sunset and a Shabbos end 34–38, so substituting toward the stricter time is
+safe and away from it would tell a room Shabbos is over ten minutes early.
+
 **Open items:** MyZmanim attribution/ToS requirements for commercial resale;
-**naming the four Baal HaTanya canonical IDs above** (a halachic decision
-for the Zmanim widget build, not a refactor); and how far past 92 days
-`Get_Zmanim` will actually go. ~~Chabad.org permission for programmatic
-access~~ and ~~Chabad-sourced zmanim beyond candle lighting~~ — **both
-resolved, §10.4 and above.** The Hayom Yom / Chitas licensing question is
-the one that still wants a Chabad.org conversation.
+how far past 92 days `Get_Zmanim` will actually go; and a canonical id for
+`ShaahZmanit` if a board ever wants that row. ~~Chabad.org permission for
+programmatic access~~, ~~Chabad-sourced zmanim beyond candle lighting~~ and
+~~naming the four Baal HaTanya canonical IDs~~ — **all resolved, §10.4 and
+above.** The Hayom Yom / Chitas licensing question is the one that still
+wants a Chabad.org conversation.
+
+**Still missing from the capability matrix, and visible in the UI as
+such:** nothing supplies `alos_72`, `alos_16.1deg`, the GRA or MGA shma and
+tfila deadlines, `tzeis_3_stars`, `tzeis_medium_stars` or `tzeis_72`. The
+Zmanim widget's panel shows those rows **disabled with a reason** rather
+than hiding them, per this section's own rule and design.md §4 ("hiding
+them makes users think the app is broken") — and the reason is the
+interesting part: they are absent because Chabad publishes Baal HaTanya,
+not because nobody got round to them. `tzeis_medium_stars` and `tzeis_72`
+are the closest to reachable — `lib/hebrew/candle-times.ts`'s
+`havdalahOffsetFor()` already maps them, as this section notes above.
 
 ### Hebrew/format options (per screen, override per widget)
 - Hebrew script vs transliterated: `כ״ג אלול` / `23 Elul` / `23 Elul 5786`

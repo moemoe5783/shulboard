@@ -60,6 +60,21 @@ and when a screen shows it. A bounded frame the gabbai deliberately sized is the
 right model here, not one that quietly resizes out from under a layout they
 composed around it.
 
+**The Zmanim widget shipped and it defaults to `hug`, not to `fixed` —
+this paragraph is still right about why, and about one row too few.** Two of
+the canonical zmanim a table can contain, `candle_lighting` and
+`shabbos_ends`, exist on some dates and not others, so a selection
+containing either has a row count that differs between the Tuesday the box
+was sized on and the Friday a room is reading it. That is the one part of
+the count that is not a design-time choice, and it is enough to make `hug`
+the safer default. `fixed` is still offered and still the better choice for
+a board composed around a frame; the properties panel warns when a `fixed`
+zmanim table contains a date-conditional row instead of silently clipping
+it on Friday. `fit` is refused for the table outright — the type size would
+depend on the row count, so the whole thing would rescale on those days,
+which is Clock's own "worst possible behavior" argument applied to a table.
+Its "next one only" mode is a single row and takes all three modes.
+
 ### `hug` — content drives the box, and the box resizes to match
 
 The declared type size is authoritative, same as `fixed`. But instead of the
