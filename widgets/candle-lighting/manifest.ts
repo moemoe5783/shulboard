@@ -41,9 +41,10 @@ export const candleLightingConfigSchema = z.object({
    * `true` is the default and the behaviour before this existed: compute
    * it and flag it with "Showing calculated times". `false` shows the
    * unavailable state instead. Some shuls want the time on their board to
-   * be their source's or nothing, and with Chabad capped at four weeks
-   * (lib/zmanim/warm.ts) that is a real and recurring choice rather than a
-   * corner case.
+   * be their source's or nothing, and with Chabad warmed 92 days out
+   * (lib/zmanim/warm.ts) that is now a choice about the far edge of the
+   * window and about a location whose cron has not yet run, rather than
+   * something a board hits every month.
    *
    * Read only when the resolved provider is Chabad — Hebcal and Manual are
    * the computed path, so there is no provider value for them to be

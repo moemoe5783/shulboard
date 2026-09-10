@@ -104,9 +104,17 @@ export function OrgSettingsForm({
 
             It wrote orgs.zmanim_location_id, and its purpose was Chabad's
             locationtype=1 — their own opaque internal city numbering, for a
-            shul with no US ZIP. Nothing can use it: lib/zmanim/chabad-embed
-            .ts hardcodes locationtype=2, and every path a gabbai can reach
-            resolves to a ZIP anyway.
+            shul with no US ZIP. No path a gabbai can reach produces one:
+            resolveChabadLocation only returns locationtype=1 for a value
+            already in that column, and the lookup only ever writes a ZIP.
+
+            The reader would now honour one — lib/zmanim/chabad-adapter.ts
+            passes locationType through rather than hardcoding 2, which the
+            embed did — but honouring it is not the same as being able to
+            verify it: verifyLocationName can only check a ZIP against the
+            returned LocationName, so a wrong city id would be cached
+            silently. A field here needs that gap closed too, not just a
+            box.
 
             THE COLUMN STAYS (supabase/migrations/20260909090000_orgs_zmanim
             _location_id.sql) and is still read by resolveChabadLocation, the

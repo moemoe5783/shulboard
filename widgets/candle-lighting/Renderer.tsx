@@ -154,8 +154,9 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
    * DELIBERATELY NOT AN OFFLINE MESSAGE. The display route boots from its
    * last-known-good bundle (plan.md §3c) and keeps rendering with no
    * network at all, so a screen showing this is almost certainly online —
-   * it simply has no value for that date, most often because the date is
-   * past Chabad's four-week window (lib/zmanim/warm.ts). "Check the
+   * it simply has no value for that date — either past the end of the
+   * warmed window (92 days, lib/zmanim/warm.ts) or because the cron has
+   * never run for this location at all. "Check the
    * network" would send a gabbai after a problem that isn't there, and
    * "offline" is a condition this product handles somewhere else entirely.
    *
@@ -301,10 +302,11 @@ function Entry({
  *
  * Shown when the screen's provider is Chabad and its cache had nothing for
  * the date about to happen, so this time is Hebcal's own computation
- * standing in. That is not a rare case: Chabad's embed only serves about
- * four weeks (WARM_WEEKS in lib/zmanim/warm.ts), so every date past that
- * window lands here by design. It is the only signal on the board that a
- * time was calculated rather than fetched, which is why it stays.
+ * standing in. Rarer than it was — the window is 92 days now (WARM_DAYS
+ * in lib/zmanim/warm.ts) rather than four weeks — but still by design for
+ * any date past it, and still the state a location whose cron has never
+ * run sits in. It is the only signal on the board that a time was
+ * calculated rather than fetched, which is why it stays.
  *
  * This is the renderer's own chrome — the product speaking, not the shul —
  * so it follows CLAUDE.md's chrome rules: one radius from the two-value
