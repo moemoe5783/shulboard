@@ -12,7 +12,7 @@
     "test:db-types": "bash scripts/check-db-types.sh",
     "gen:db-types": "bash scripts/generate-db-types.sh",
     "test:routes": "node scripts/test-routes.mjs",
-    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:hebrew && npm run test:chabad-adapter && npm run test:chabad-embed && npm run test:geocoding && npm run test:zmanim-fallback && npm run test:zmanim-widget && npm run test:zmanim-overflow && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display && npm run test:realtime && npm run test:font-parity && npm run test:sizing && npm run test:hebrew-widgets",
+    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:hebrew && npm run test:chabad-adapter && npm run test:chabad-embed && npm run test:geocoding && npm run test:zmanim-fallback && npm run test:zmanim-widget && npm run test:zmanim-overflow && npm run test:zmanim-international && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display && npm run test:realtime && npm run test:font-parity && npm run test:sizing && npm run test:hebrew-widgets",
     "test:editor": "node scripts/test-editor.mjs",
     "test:sizing": "node scripts/test-sizing.mjs",
     "test:widgets": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-widgets.ts",
@@ -29,7 +29,9 @@
     "probe:chabad-embed": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad-embed.ts",
     "test:chabad-embed": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-chabad-embed.ts",
     "test:zmanim-widget": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-zmanim-widget.ts",
-    "test:zmanim-overflow": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-zmanim-overflow.ts"
+    "test:zmanim-overflow": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-zmanim-overflow.ts",
+    "probe:chabad-locations": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad-locations.ts",
+    "test:zmanim-international": "node --conditions=react-server --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-zmanim-international.ts"
   },
   "dependencies": {
     "@hebcal/core": "^6.9.2",
