@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useEditor } from "@/lib/editor/store";
 import {
   CHROME_BUTTON,
@@ -39,6 +40,7 @@ export function Toolbar({
   const showGrid = useEditor((s) => s.showGrid);
   const setShowGrid = useEditor((s) => s.setShowGrid);
   const gridSize = useEditor((s) => s.gridSize);
+  const [gridText, setGridText] = useState(String(gridSize));
   const setGridSize = useEditor((s) => s.setGridSize);
   const selection = useEditor((s) => s.selection);
 
@@ -108,8 +110,19 @@ export function Toolbar({
           min={2}
           max={200}
           step={2}
-          value={gridSize}
-          onChange={(event) => setGridSize(Number(event.target.value))}
+          value={gridText}
+          /* Same string-held-locally shape as components/editor/NumberField
+             — see that file for why Number(e.target.value) leaves a "044"
+             stuck in the DOM. Not NumberField itself: this input is
+             dark-lab chrome with an sr-only label and no visible one, so
+             reusing it would mean growing that component's API for the one
+             caller that isn't a properties panel. */
+          onChange={(event) => {
+            setGridText(event.target.value);
+            const parsed = Number(event.target.value);
+            if (event.target.value.trim() !== "" && parsed >= 2 && parsed <= 200) setGridSize(parsed);
+          }}
+          onBlur={() => setGridText(String(gridSize))}
           className={`text-cell rounded-control text-paper numeric h-8 w-14 border bg-transparent px-1 ${CHROME_RULE}`}
         />
       </label>
