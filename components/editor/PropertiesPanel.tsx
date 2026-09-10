@@ -105,6 +105,7 @@ function Body({
         {manifest?.sizing.userToggleable && (
           <SizingToggle
             mode={config.sizingMode ?? manifest.sizing.mode}
+            recommended={manifest.sizing.recommended}
             onChange={(mode) => setWidgetConfig(ids, { sizingMode: mode })}
           />
         )}
@@ -154,22 +155,24 @@ function Body({
  */
 function SizingToggle({
   mode,
+  recommended,
   onChange,
 }: {
   mode: SizingMode;
+  recommended?: SizingMode;
   onChange: (mode: SizingMode) => void;
 }) {
+  const options = [
+    { value: "fit" as const, label: "Fit to box" },
+    { value: "fixed" as const, label: "Fixed size" },
+    { value: "hug" as const, label: "Hug height" },
+  ];
+
   return (
     <div className="border-paper/15 mb-3 border-b pb-3">
       <span className={`${PANEL_LABEL} mb-1 block`}>Sizing</span>
       <div className="flex gap-2">
-        {(
-          [
-            { value: "fit" as const, label: "Fit to box" },
-            { value: "fixed" as const, label: "Fixed size" },
-            { value: "hug" as const, label: "Hug height" },
-          ]
-        ).map((option) => (
+        {options.map((option) => (
           <button
             key={option.value}
             type="button"
@@ -183,6 +186,18 @@ function SizingToggle({
           </button>
         ))}
       </div>
+      {/*
+        A line under the control rather than "(recommended)" appended to an
+        option's label. Three buttons share a 264px rail (design.md §4), so
+        the labels are already at their limit — a fourth word inside one of
+        them would wrap it and make that button taller than its neighbours,
+        which reads as a rendering bug rather than as advice.
+      */}
+      {recommended && recommended !== mode && (
+        <p className={`${PANEL_LABEL} mt-1`}>
+          {options.find((option) => option.value === recommended)?.label} is recommended for this element.
+        </p>
+      )}
     </div>
   );
 }

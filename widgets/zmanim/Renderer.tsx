@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { BOARD_FONTS, boardFontSize, boardLength } from "@/lib/board-theme";
+import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
 import { manifest, type ZmanimConfig } from "./manifest";
+import { overflowState } from "./overflow";
 
 /** The footnote block, relative to a row's own type size. Small — it is a
  *  sentence of prose sitting under a table of figures, and it must never
@@ -23,23 +24,22 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // "inherit" (the default) defers to the board's own resolved provider —
-  // dataNeeds (manifest.ts) can't do this resolution itself, since it only
-  // ever sees this widget's own config; this is the one place both are in
-  // hand.
-  const effectiveProvider = config.provider === "inherit" ? zmanim.provider : config.provider;
-  const isChabad = effectiveProvider === "chabad";
-  const chabadUnconfigured = isChabad && !zmanim.hasChabadLocation;
+  // Chabad.org is the only source (lib/zmanim/provider.ts), so there is no
+  // provider to resolve — `config.provider` and `zmanim.provider` are both
+  // unread. What still matters is whether Chabad has a location to look
+  // the shul up by.
+  const chabadUnconfigured = !zmanim.hasChabadLocation;
 
   /*
-   * `all` is a stacked table and must not be fit-scaled — manifest.ts's
-   * sizing note and docs/sizing.md §2. Settings.tsx moves the mode to
-   * `hug` when `all` is picked; this is the independent second half of
-   * that, so a config hand-edited back to `fit` degrades to its declared
-   * size rather than rescaling the whole table on the days a
-   * date-conditional row appears.
+   * `fit` is honest for the table and not for a single row — manifest.ts's
+   * sizing note has the whole argument. In `next` the row's own label
+   * changes through the day, so a fitted single row rescales several times
+   * a day; Settings.tsx recommends `fixed` there rather than switching the
+   * mode, and this is the independent half of that: a `next`-mode widget
+   * left on `fit` renders at its declared size instead of rescaling.
    */
-  const isFit = config.sizingMode === "fit" && config.displayMode === "next";
+  const isFit = config.sizingMode === "fit" && config.displayMode === "all";
+  const isHug = config.sizingMode === "hug";
 
   /*
    * Re-resolved every tick, keyed on `second` rather than on a fresh
@@ -48,11 +48,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
    * advance the moment one passes — and `all` mode needs it once a day,
    * when the date rolls over; one memo serves both rather than two code
    * paths that can disagree about which day it is.
-   *
-   * One call for every provider and every display mode: which source won,
-   * whether a row was substituted, whether a value fell back and whether
-   * the shul allows a fallback at all is decided in
-   * lib/zmanim/resolve-zmanim.ts, not branched here.
    */
   const resolved = useMemo(
     () =>
@@ -60,22 +55,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         ? resolveZmanimTable({
             now: new Date(second * 1000),
             ids: config.zmanim,
-            provider: effectiveProvider,
             location,
             chabadZmanim: zmanim.chabadZmanim,
-            fallbackToCalculated: config.fallbackToCalculated,
-            hour12: config.hour12,
           })
         : null,
-    [
-      second,
-      location,
-      effectiveProvider,
-      zmanim.chabadZmanim,
-      config.zmanim,
-      config.fallbackToCalculated,
-      config.hour12,
-    ],
+    [second, location, zmanim.chabadZmanim, config.zmanim],
   );
 
   const rows: ResolvedZman[] =
@@ -87,15 +71,48 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         ? resolved.today.rows
         : [];
 
+  /*
+   * SPACERS ARE WHAT MAKE `fit` RECOMMENDABLE, and they are the whole
+   * mechanism behind manifest.ts's reversal of the earlier "fit is refused
+   * for the table" conclusion.
+   *
+   * The problem `fit` had: the fitted type size is a function of what is
+   * in the box, and `candle_lighting` and `shabbos_ends` are in the box on
+   * some dates and not others — so the table rescaled on Friday and
+   * rescaled back on Sunday, which is the least stable thing a
+   * most-watched element can do.
+   *
+   * The fix: pad the measured list to the DECLARED selection count. The
+   * declared count is a design-time constant and an upper bound on any
+   * day's real count, because a date-conditional row can only be absent,
+   * never extra. Friday's returning row lands in a spacer's place and the
+   * measurement does not change. A spacer is one row's height of nothing —
+   * not a labelled row with a blank time, which is what §5c forbids
+   * ("never render a blank row on a screen someone is standing in front
+   * of").
+   *
+   * Only in `fit`. `fixed` has no measurement to stabilise, and in `hug`
+   * the box's height IS its content, so a spacer would be visible dead
+   * space rather than reserved space inside a frame.
+   */
+  const spacerCount =
+    isFit && config.displayMode === "all" ? Math.max(0, config.zmanim.length - rows.length) : 0;
+
   useFitFontSize(boxRef, contentRef, {
     minFontSize: manifest.sizing.minFontSize ?? 14,
     maxFontSize: manifest.sizing.maxFontSize ?? 200,
     canvasWidth: canvas.width,
     enabled: isFit,
-    // Which rows are on screen, not the tick. In `next` mode the label
-    // length genuinely changes as the day advances ("Netz" then "Latest
-    // Shacharit"), so each row has its own fitted size.
-    deps: [rows.map((row) => `${row.id}:${row.display}`).join(",")],
+    /*
+     * THE DECLARED COUNT, NOT TODAY'S ROWS. This is the other half of the
+     * spacers: with the DOM row count pinned to the declared selection,
+     * the fit only has to re-run when the box changes (the hook's own
+     * ResizeObserver) or when the gabbai edits the selection. Today's
+     * labels and times are deliberately absent from these deps — a
+     * re-measure on a label's length is a rescale for a width reason, and
+     * a long label clipping (see `Row`) is the answer to that instead.
+     */
+    deps: [config.zmanim.length],
   });
 
   if (!location) {
@@ -103,9 +120,9 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
   // A distinct gap from the one above, and checked separately for the
   // reason candle-lighting's Renderer gives: lat/long can be set while the
-  // ZIP this provider also needs is not, and an unconfigured Chabad widget
-  // must never read as "no times for this date," which is a different and
-  // temporary condition.
+  // ZIP Chabad needs is not, and an unconfigured widget must never read as
+  // "no times for this date," which is a different and temporary
+  // condition.
   if (chabadUnconfigured) {
     return (
       <EmptyLocation
@@ -122,20 +139,30 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   /*
-   * The shul asked for its own source or nothing, and the source has
-   * nothing for any of the selected zmanim on this date.
+   * Chabad has nothing for any of the selected zmanim on this date.
    *
    * DELIBERATELY NOT AN OFFLINE MESSAGE, and deliberately the same wording
-   * shape candle lighting already uses. The display route boots from its
+   * shape candle lighting uses. The display route boots from its
    * last-known-good bundle (plan.md §3c) and keeps rendering with no
    * network, so a screen showing this is almost certainly online and
    * simply has no values for that date. "Check the network" would send a
    * gabbai after a problem that isn't there.
+   *
+   * THIS IS A COMMON STATE NOW, not a corner. It used to take a shul
+   * deliberately turning off "Calculate missing times"; with the computed
+   * path gone (lib/zmanim/provider.ts) it is what every date past the
+   * 92-day warmed window shows, and every date a warm missed. So it is
+   * rendered as a deliberate line at the widget's own type size rather
+   * than as a small aside — a room should read it as the board saying
+   * something, not as the board having failed.
    */
   if (rows.length === 0) {
     return (
       <div className="flex h-full w-full flex-col justify-center">
-        <span className="leading-tight opacity-60" style={{ fontSize: boardLength(config.size, canvas.width) }}>
+        <span
+          className="leading-tight opacity-60"
+          style={{ fontSize: boardFontSize(config.size, canvas.width) }}
+        >
           No zmanim for this date
         </span>
       </div>
@@ -143,54 +170,198 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   const footnotes = config.showFootnotes ? distinctFootnotes(rows) : [];
-  const anyFellBack = rows.some((row) => row.fellBackToHebcal);
 
   return (
-    <div ref={boxRef} className="relative flex h-full w-full flex-col justify-start">
-      <div
-        ref={contentRef}
-        className="flex w-full flex-col"
-        style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
+    <div
+      ref={boxRef}
+      /*
+       * `overflow-hidden` is what both overflow modes translate inside, and
+       * it is also §3's clip for `clip` mode — one mechanism, three
+       * behaviours. Not applied in `hug`, where the box is its content and
+       * there is nothing to clip.
+       */
+      className={`relative flex h-full w-full flex-col justify-start ${isHug ? "" : "overflow-hidden"}`}
+    >
+      <OverflowViewport
+        boxRef={boxRef}
+        contentRef={contentRef}
+        mode={isHug ? "clip" : config.overflow}
+        second={second}
+        rowCount={rows.length + spacerCount}
+        canvasWidth={canvas.width}
       >
-        {/*
-          A two-column grid, not a row of flex pairs — and that is the
-          whole reason a column of times lines up. `auto` on the second
-          track makes every time cell exactly as wide as the widest time,
-          so the figures stack; per-row flex would right-align each row's
-          time to its own row's width and nothing would align with
-          anything. docs/sizing.md §4 asks for tabular figures on numeric
-          board content, and a grid is what makes them worth having.
+        <div
+          ref={contentRef}
+          className="flex w-full flex-col"
+          style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
+        >
+          {/*
+            A two-column grid, not a row of flex pairs — and that is the
+            whole reason a column of times lines up. `auto` on the second
+            track makes every time cell exactly as wide as the widest time,
+            so the figures stack; per-row flex would right-align each row's
+            time to its own row's width and nothing would align with
+            anything. docs/sizing.md §4 asks for tabular figures on numeric
+            board content, and a grid is what makes them worth having.
 
-          Both edges are pinned (labels to the left of the box, times to
-          the right), which is §3's growth rule satisfied trivially: a
-          longer label grows into the gap between the columns and no
-          edge moves. There is no alignment control on this widget for
-          the same reason — a table's alignment IS its column structure.
-        */}
-        <div className="grid w-full" style={{ gridTemplateColumns: "1fr auto", columnGap: "1em" }}>
-          {rows.map((row) => (
-            <Row key={row.id} row={row} />
-          ))}
-        </div>
-
-        {footnotes.length > 0 && (
-          <div
-            className="flex flex-col opacity-60"
-            style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
-          >
-            {footnotes.map((text) => (
-              <span key={text} className="leading-tight">
-                {text}
-              </span>
+            Both edges are pinned (labels to the left of the box, times to
+            the right), which is §3's growth rule satisfied trivially: a
+            longer label grows into the gap between the columns and no edge
+            moves. There is no alignment control on this widget for the
+            same reason — a table's alignment is its column structure.
+          */}
+          <div className="grid w-full" style={{ gridTemplateColumns: "1fr auto", columnGap: "1em" }}>
+            {rows.map((row) => (
+              <Row key={row.id} row={row} />
+            ))}
+            {/* See `spacerCount`. Empty grid cells, one row's height each,
+                holding the measurement steady in `fit` mode. `aria-hidden`
+                because there is nothing to read. */}
+            {Array.from({ length: spacerCount }, (_, index) => (
+              <SpacerRow key={`spacer-${index}`} />
             ))}
           </div>
-        )}
-      </div>
 
-      {/* In flow in `hug` and `fixed`, absolute in `fit` — see the
-          component's own note on why the position depends on the mode and
-          not on the surface. */}
-      {anyFellBack && <CalculatedTimesNotice canvas={canvas} inFlow={!isFit} />}
+          {footnotes.length > 0 && (
+            <div
+              className="flex flex-col opacity-60"
+              style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
+            >
+              {footnotes.map((text) => (
+                <span key={text} className="leading-tight">
+                  {text}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </OverflowViewport>
+    </div>
+  );
+}
+
+/**
+ * What happens to rows that don't fit — `scroll`, `page` or `clip`.
+ *
+ * BOTH MOVING MODES DRIVE OFF THE MASTER SECOND TICK (lib/tick.ts), and
+ * neither creates a timer. plan.md §3e: "one master rAF/second-tick that
+ * all time widgets subscribe to. No setInterval accumulation." A display
+ * route runs for months, so a widget with its own interval leaks one timer
+ * per remount until the TV WebView dies at 3am.
+ *
+ * BOTH ARE INERT WHEN NOTHING OVERFLOWS, which is why `page` can be the
+ * default without putting motion on boards that don't need it.
+ *
+ * `page` is a PLAIN SWAP, per design.md's motion rule ("motion answers
+ * actions only... no staggered reveals"): the translate has no transition,
+ * so one screenful is replaced by the next between two frames. A cross-fade
+ * at twenty feet reads as a moment of illegibility, not as polish.
+ *
+ * `scroll` is the one place a transition is right, because the transition
+ * IS the content: the tick sets a new target every second and CSS
+ * interpolates linearly across that second, which is how a once-a-second
+ * clock produces genuinely continuous motion without a rAF loop.
+ *
+ * THE ARITHMETIC IS IN ./overflow.ts, not here. This component measures
+ * and renders; where the list should sit is a pure function of four
+ * numbers and a tick, and keeping it in a component would mean it could
+ * only ever be tested through a DOM.
+ */
+function OverflowViewport({
+  boxRef,
+  contentRef,
+  mode,
+  second,
+  rowCount,
+  canvasWidth,
+  children,
+}: {
+  boxRef: React.RefObject<HTMLDivElement | null>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
+  mode: ZmanimConfig["overflow"];
+  second: number | null;
+  rowCount: number;
+  canvasWidth: number;
+  children: React.ReactNode;
+}) {
+  const [{ boxHeight, boxWidth, contentHeight }, setMeasured] = useState({
+    boxHeight: 0,
+    boxWidth: 0,
+    contentHeight: 0,
+  });
+
+  /*
+   * One ResizeObserver over both boxes. Measurement is unavoidable here in
+   * a way it is not for sizing: how many rows fit is a fact about rendered
+   * pixels, and the alternative — deriving it from the declared type size
+   * and a line-height constant — would be a second, drifting copy of what
+   * the browser already knows.
+   *
+   * SSR renders this once with both at zero, which reads as "nothing
+   * overflows" and so as a still, complete table. That is the right first
+   * frame; the client corrects it after hydration, same class of gap as
+   * Clock's `second === null` placeholder.
+   */
+  useEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    if (!box || !content || mode === "clip") return;
+
+    // The width is measured here too, not read off the ref during render:
+    // the scroll rate is declared in board design units and has to be
+    // converted against the box's real rendered width, and a ref read in a
+    // render body is both a lint error and a genuine correctness trap (it
+    // holds last frame's value).
+    const measure = () =>
+      setMeasured((previous) =>
+        previous.boxHeight === box.clientHeight &&
+        previous.boxWidth === box.clientWidth &&
+        previous.contentHeight === content.scrollHeight
+          ? previous
+          : { boxHeight: box.clientHeight, boxWidth: box.clientWidth, contentHeight: content.scrollHeight },
+      );
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [boxRef, contentRef, mode, rowCount]);
+
+  const { offset, animate, wrapped } = overflowState({
+    mode,
+    second,
+    boxHeight,
+    contentHeight,
+    rowCount,
+    boxWidth,
+    canvasWidth,
+  });
+
+  return (
+    <div
+      className="w-full"
+      style={{
+        transform: offset === 0 ? undefined : `translateY(${-offset}px)`,
+        // Exactly the tick interval, linear: the target moves once a second
+        // and the browser fills in the second, which is what makes a
+        // once-a-second clock look continuous. `page` never transitions —
+        // design.md's plain-swap rule.
+        transition: animate && !wrapped ? "transform 1s linear" : undefined,
+      }}
+    >
+      {children}
+      {/* The seam. A second copy of the list means the moment the offset
+          reaches the first copy's full height, what is on screen is
+          pixel-identical to the offset being zero — so the reset is
+          invisible. Rendered only while actually scrolling, so a static
+          table has no duplicate in the DOM to confuse a measurement.
+          `aria-hidden` because it is the same content twice. */}
+      {animate && (
+        <div aria-hidden className="w-full">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -206,21 +377,44 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
  *
  * A row is two grid cells rather than a wrapper div, so the times in every
  * row share one column. That is why this returns a fragment.
+ *
+ * NEITHER CELL WRAPS, and that is load-bearing rather than cosmetic: the
+ * paging mode divides the measured content height by the row count to find
+ * one row's height, which is only correct while every row is the same
+ * height. A wrapping label would make one row taller and page boundaries
+ * would start cutting rows in half. `min-w-0` plus clipping is §3's own
+ * overflow answer applied to the width the label has, and §7's reasoning
+ * for the time.
  */
 function Row({ row }: { row: ResolvedZman }) {
   return (
     <>
-      <span className="leading-snug opacity-80">{row.label}</span>
+      <span className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80">{row.label}</span>
       {/* Frank Ruhl Libre and `numeric`, same as Clock and candle lighting:
           it is the one face in the product with a real tabular figure set
           (design.md §3's measurement), which is what keeps this column
-          from jittering row to row. `nowrap` per sizing.md §7 — a wrapped
-          clock reads as broken in a way prose never does. */}
+          from jittering row to row. */}
       <span
         className="numeric font-semibold leading-snug whitespace-nowrap"
         style={{ fontFamily: BOARD_FONTS.sefarim }}
       >
         {row.display}
+      </span>
+    </>
+  );
+}
+
+/** One row's height of nothing — see `spacerCount`. A non-breaking space
+ *  rather than an empty string so the cell has a line box and therefore a
+ *  height; `invisible` rather than `hidden` so it occupies layout. */
+function SpacerRow() {
+  return (
+    <>
+      <span aria-hidden className="invisible leading-snug whitespace-nowrap">
+        &nbsp;
+      </span>
+      <span aria-hidden className="invisible leading-snug whitespace-nowrap">
+        &nbsp;
       </span>
     </>
   );
@@ -235,54 +429,4 @@ function distinctFootnotes(rows: readonly ResolvedZman[]): string[] {
     if (row.footnote) seen.add(row.footnote);
   }
   return [...seen];
-}
-
-/**
- * plan.md §5c: "surface a subtle indicator rather than failing silently,
- * since a wrong zman is worse than a flagged one."
- *
- * Shown when the screen's provider is Chabad and its cache had nothing for
- * at least one row, so that value is @hebcal/core's computation standing
- * in. One notice for the table rather than a marker per row: the board is
- * read from twenty feet and a column of asterisks is noise, while the
- * honest claim — some of these were calculated — is the same either way.
- *
- * `inFlow` IS ABOUT THE SIZING MODE, NOT ABOUT WHICH SURFACE THIS IS —
- * it reads `config.sizingMode`, which is board content, and nothing here
- * can tell the editor from the display route (CLAUDE.md).
- *
- * Absolute is right in `fit` and wrong in the other two. `useFitFontSize`
- * measures `contentRef` against `boxRef`, so an in-flow notice would
- * shrink the times themselves the moment a cache went cold — which is why
- * candle lighting, whose fit mode is its common case, positions this
- * absolutely and always. But a `hug` box's height is exactly its content,
- * so an absolute notice there would sit on top of the last row; and in
- * `fixed`, an in-flow notice that pushes the last row past the frame is
- * §3's documented clip, which is more honest than a notice overlapping a
- * time.
- *
- * This is the renderer's own chrome — the product speaking, not the shul —
- * so it follows CLAUDE.md's chrome rules: one radius from the two-value
- * scale, weight 400, sentence case, no raw colour. `currentColor` for the
- * reason EmptyLocation uses it: a board sets its own text colour on any
- * ground it likes, and a fixed `--ink` here would be invisible on half of
- * them.
- *
- * Not user-removable and no config flag to hide it. A shul cannot opt out
- * of being told its times are computed.
- */
-function CalculatedTimesNotice({ canvas, inFlow }: { canvas: { width: number }; inFlow: boolean }) {
-  return (
-    <span
-      className={`rounded-control border-current/25 pointer-events-none border font-regular whitespace-nowrap opacity-60 ${
-        inFlow ? "mt-[0.6em] self-start" : "absolute right-0 bottom-0"
-      }`}
-      style={{
-        fontSize: boardLength(16, canvas.width),
-        padding: `${boardLength(2, canvas.width)} ${boardLength(6, canvas.width)}`,
-      }}
-    >
-      Showing calculated times
-    </span>
-  );
 }
