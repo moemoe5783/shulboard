@@ -182,6 +182,16 @@ check(
 
 console.log("\n-- the type vocabulary, and nothing unclassified ------------");
 
+/** Only used by the mapping assertion below — the four ids §5c added for
+ *  this data, spelled here so the test states the expectation rather than
+ *  echoing whatever the table happens to say. */
+const TYPE_TO_BAAL_HATANYA: Record<string, string> = {
+  AlosHashachar: "alos_baal_hatanya",
+  LatestShema: "sof_zman_shma_baal_hatanya",
+  LatestTefillah: "sof_zman_tfila_baal_hatanya",
+  Tzeis: "tzeis_baal_hatanya",
+};
+
 const EXPECTED_TYPES = [
   "AlosHashachar", "CandleLighting", "Chatzos", "ChatzosNight", "EarliestTefillin",
   "LatestShema", "LatestTefillah", "MinchahGedolah", "MinchahKetanah", "NetzHachamah",
@@ -211,10 +221,18 @@ check(
   "the two tables don't overlap — nothing is both mapped and declared unmapped",
 );
 check(
-  JSON.stringify(Object.keys(UNMAPPED_ESSENTIAL_ZMAN_TYPES).sort()) ===
-    JSON.stringify(["AlosHashachar", "LatestShema", "LatestTefillah", "ShaahZmanit", "Tzeis"]),
-  "the declared gaps are exactly the five types §5c has no honest id for",
-  Object.keys(UNMAPPED_ESSENTIAL_ZMAN_TYPES).sort().join(","),
+  JSON.stringify(Object.keys(UNMAPPED_ESSENTIAL_ZMAN_TYPES)) === JSON.stringify(["ShaahZmanit"]),
+  "ShaahZmanit is the only declared gap left — §5c named the four Baal HaTanya ids for the others",
+  Object.keys(UNMAPPED_ESSENTIAL_ZMAN_TYPES).join(","),
+);
+check(
+  ["AlosHashachar", "LatestShema", "LatestTefillah", "Tzeis"].every(
+    (type) => CANONICAL_BY_ESSENTIAL_ZMAN_TYPE[type] === `${TYPE_TO_BAAL_HATANYA[type]}`,
+  ),
+  "and those four map to the Baal HaTanya ids, not to the GRA or MGA ones they sit 1-2 minutes from",
+  ["AlosHashachar", "LatestShema", "LatestTefillah", "Tzeis"]
+    .map((t) => `${t}->${CANONICAL_BY_ESSENTIAL_ZMAN_TYPE[t]}`)
+    .join(" "),
 );
 
 console.log("\n-- all thirteen daily zmanim land on every day --------------");
@@ -223,21 +241,21 @@ console.log("\n-- all thirteen daily zmanim land on every day --------------");
 // in the response, so a per-day list asserting both would fail on every
 // Shabbos.
 const ALWAYS = [
-  "chabad:AlosHashachar", "misheyakir", "netz", "chabad:LatestShema", "chabad:LatestTefillah",
-  "chatzos", "mincha_gedola", "mincha_ketana", "plag_hamincha", "shkia",
-  "chatzos_laila", "chabad:ShaahZmanit",
+  "alos_baal_hatanya", "misheyakir", "netz", "sof_zman_shma_baal_hatanya",
+  "sof_zman_tfila_baal_hatanya", "chatzos", "mincha_gedola", "mincha_ketana",
+  "plag_hamincha", "shkia", "chatzos_laila", "chabad:ShaahZmanit",
 ];
 const missing = dates.filter((date) => ALWAYS.some((id) => !(id in times[date])));
 check(missing.length === 0, "the twelve every-day ids are on all 92 days — the thirteenth is nightfall, below", missing.slice(0, 5).join(","));
 
-const withTzeis = dates.filter((date) => "chabad:Tzeis" in times[date]);
+const withTzeis = dates.filter((date) => "tzeis_baal_hatanya" in times[date]);
 const withShabbosEnds = dates.filter((date) => "shabbos_ends" in times[date]);
 check(withTzeis.length === 75 && withShabbosEnds.length === 17,
   "75 days carry a plain nightfall, 17 carry a Shabbos/Yom Tov end time",
   `${withTzeis.length} + ${withShabbosEnds.length}`);
 check(
   withTzeis.length + withShabbosEnds.length === 92 &&
-    !dates.some((date) => "chabad:Tzeis" in times[date] && "shabbos_ends" in times[date]),
+    !dates.some((date) => "tzeis_baal_hatanya" in times[date] && "shabbos_ends" in times[date]),
   "and they are mutually exclusive — exactly one nightfall per day, relabelled rather than doubled",
 );
 
@@ -325,6 +343,49 @@ check(
   "and its text comes through too — the menorah must burn 30 minutes past nightfall",
 );
 
+console.log("\n-- the provider's own label is cached with every value ------");
+
+// Item 2 of this task: the board shows Chabad's words, so nothing
+// downstream needs a label table. The strings come from the response
+// root's GroupHeadings, not from the entries.
+for (const [id, expected] of [
+  ["netz", "Sunrise"],
+  ["sof_zman_shma_baal_hatanya", "Latest Shema"],
+  ["sof_zman_tfila_baal_hatanya", "Latest Shacharit"],
+  ["misheyakir", "Earliest Tallit"],
+  ["alos_baal_hatanya", "Dawn"],
+  ["chatzos", "Midday"],
+  ["mincha_gedola", "Earliest Mincha"],
+  ["shkia", "Sunset"],
+  ["tzeis_baal_hatanya", "Nightfall"],
+  ["chatzos_laila", "Midnight"],
+] as const) {
+  check(clock("2026-09-10", id)?.label === expected,
+    `${id} carries Chabad's own label "${expected}"`, clock("2026-09-10", id)?.label);
+}
+check(clock("2026-09-11", "candle_lighting")?.label === "Candle Lighting",
+  "candle_lighting too, on a day that has one", clock("2026-09-11", "candle_lighting")?.label);
+check(clock("2026-09-12", "shabbos_ends")?.label === "Shabbat Ends",
+  "and shabbos_ends' label is what a substituted nightfall row will show",
+  clock("2026-09-12", "shabbos_ends")?.label);
+
+// "Latest<br />Shacharit" in the response — the tag is Chabad's own
+// two-line column header, not part of the name.
+check(
+  FIXTURE.GroupHeadings.some((h: { EssentialTitle: string }) => h.EssentialTitle.includes("<br />")),
+  "the fixture's own headings really do contain <br />, so the flattening is exercised",
+);
+check(
+  dates.every((date) =>
+    Object.values(times[date]).every((zman) => !(zman.label ?? "").includes("<")),
+  ),
+  "no cached label anywhere carries markup",
+);
+check(
+  dates.every((date) => Object.values(times[date]).every((zman) => Boolean(zman.label))),
+  "every value on every one of the 92 days has a label — no row would fall back to house wording",
+);
+
 console.log("\n-- ShaahZmanit is a duration, not a clock time --------------");
 
 const shaah = times["2026-09-10"]?.["chabad:ShaahZmanit"];
@@ -360,6 +421,34 @@ check(
   "so real elapsed time between the two sunrises is 24h 1m: the IANA zone applied EDT to one day and EST to the next",
 );
 
+/*
+ * THE REGRESSION THIS PAIR OF ROWS CAUGHT, and the reason lib/zmanim/time.ts
+ * now makes two passes instead of one.
+ *
+ * 11/1 falls back at 2 AM = 06:00 UTC. A one-pass offset-by-round-trip
+ * reads the zone's offset at the GUESS (05:27Z for a 5:27 AM alos, which
+ * is still EDT — the transition is 33 minutes away) and applies it to the
+ * ANSWER four hours later, which is EST. Every local time between 2 AM and
+ * 6 AM on a fall-back day was therefore cached exactly an hour early. Alos
+ * and misheyakir are in that window; netz at 6:42 AM is just past it,
+ * which is why the two assertions above passed all along and this one did
+ * not exist to fail.
+ */
+check(clock("2026-11-01", "alos_baal_hatanya")?.iso === "2026-11-01T10:27:00.000Z",
+  "5:27 AM alos on the fall-back day is 10:27 UTC (EST), not 09:27 — the offset is read at the answer, not the guess",
+  clock("2026-11-01", "alos_baal_hatanya")?.iso);
+check(clock("2026-11-01", "misheyakir")?.iso === "2026-11-01T10:58:00.000Z",
+  "and 5:58 AM misheyakir is 10:58 UTC for the same reason",
+  clock("2026-11-01", "misheyakir")?.iso);
+check(
+  ["2026-10-31", "2026-11-01", "2026-11-02"].every((date) => {
+    const alos = clock(date, "alos_baal_hatanya");
+    const sunrise = clock(date, "netz");
+    return Boolean(alos && sunrise) && new Date(alos!.iso) < new Date(sunrise!.iso);
+  }),
+  "and alos still precedes netz on every day around the transition — an hour of drift would have inverted them",
+);
+
 console.log("\n-- ChatzosNight belongs to the FOLLOWING night --------------");
 
 // This is what proves it, and the DST transition is the only thing that
@@ -390,7 +479,7 @@ check(
 // which is the whole reason the rule is per-type and not per-clock.
 check(
   dates.every((date) =>
-    ["chabad:AlosHashachar", "netz", "misheyakir"].every((id) => clock(date, id)?.iso.slice(0, 10) === date),
+    ["alos_baal_hatanya", "netz", "misheyakir"].every((id) => clock(date, id)?.iso.slice(0, 10) === date),
   ),
   "and the morning zmanim, which also read AM, do NOT roll — dawn and sunrise stay on their own date",
 );
