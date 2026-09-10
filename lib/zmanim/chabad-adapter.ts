@@ -64,7 +64,15 @@ import {
  *    ("Saint Petersburg, FL 33701") is what carries the answer — see
  *    `verifyLocationName`, which is load-bearing for the same reason it
  *    is in chabad-embed.ts.
- * 6. `item.Date` no longer exists on the entries at all, which retires
+ * 6. THE DISPLAY LABEL IS AT THE ROOT, NOT ON THE ENTRY. `Zmanim[]`
+ *    entries carry no human-readable name at all — the response root's
+ *    `GroupHeadings[]` holds one `EssentialTitle` per `EssentialZmanType`
+ *    ("Latest Shacharit", "Earliest Tallit", "Shabbat Ends"), with `<br />`
+ *    in it for the two-line column headers their own table renders. Those
+ *    strings are cached onto each value (`ChabadClockZman.label`) so a
+ *    board can show the provider's own words without this project keeping
+ *    a label table of its own — see zman.ts.
+ * 7. `item.Date` no longer exists on the entries at all, which retires
  *    the trap the previous shape had: there, every item within one day
  *    shared one `/Date(...)/` value regardless of its own time of day.
  *    The instant is still built the same three-part way — the DAY's own
@@ -145,6 +153,36 @@ function parseShaahZmanit(value: unknown): number | null {
   const seconds = Number(match[2]);
   if (seconds > 59) return null;
   return Number(match[1]) * 60 + seconds;
+}
+
+/**
+ * `EssentialZmanType` -> the provider's own display label, from the
+ * response root's `GroupHeadings[]`.
+ *
+ * `<br />` becomes a space: the tag is there because Chabad's own table
+ * breaks "Latest\nShacharit" over two lines in a narrow column, which is
+ * their layout decision and not part of the name. A board sets its own
+ * wrapping.
+ *
+ * `GroupHeadings` also carries one entry with an empty `EssentialZmanType`
+ * and the title "Parshah/Holiday" — a column of their table that is not a
+ * zman at all. It is skipped by the empty-key test rather than by
+ * name-matching, so a second such column would be skipped too.
+ */
+function readLabels(value: unknown): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const rawHeading of Array.isArray(value) ? (value as unknown[]) : []) {
+    const heading = (rawHeading ?? {}) as Record<string, unknown>;
+    const type = heading.EssentialZmanType;
+    const title = heading.EssentialTitle;
+    if (typeof type !== "string" || type === "") continue;
+    if (typeof title !== "string" || title.trim() === "") continue;
+    labels[type] = title
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return labels;
 }
 
 /** `FootnoteType` plus the root `Footnotes` text for it. "None" is
@@ -341,6 +379,7 @@ export async function fetchChabadZmanim(input: {
   const location = verifyLocationName(body, input);
 
   const footnotes = (body.Footnotes ?? {}) as Record<string, unknown>;
+  const labels = readLabels(body.GroupHeadings);
   const days = Array.isArray(body.Days) ? (body.Days as unknown[]) : [];
 
   const times: Record<string, Record<string, ChabadZman>> = {};
@@ -364,6 +403,7 @@ export async function fetchChabadZmanim(input: {
       LocationName: body.LocationName ?? null,
       LocationDetails: body.LocationDetails ?? null,
       Footnotes: body.Footnotes ?? null,
+      GroupHeadings: body.GroupHeadings ?? null,
       EndDate: body.EndDate ?? null,
     };
 
@@ -374,6 +414,7 @@ export async function fetchChabadZmanim(input: {
       essentialZmanTypes.add(type);
 
       const footnote = readFootnote(entry.FootnoteType, footnotes);
+      const label = labels[type];
       const display = typeof entry.Zman === "string" ? entry.Zman.replace(/\s+/g, " ").trim() : "";
       // Exact match on the canonical table, then the provider-namespaced
       // key for the four §5c has no id for. Nothing is dropped for want
@@ -384,7 +425,12 @@ export async function fetchChabadZmanim(input: {
       const durationSeconds = parseShaahZmanit(display);
       if (durationSeconds !== null) {
         times[date] ??= {};
-        times[date][id] = { durationSeconds, display, ...(footnote ? { footnote } : {}) };
+        times[date][id] = {
+          durationSeconds,
+          display,
+          ...(footnote ? { footnote } : {}),
+          ...(label ? { label } : {}),
+        };
         continue;
       }
 
@@ -407,7 +453,12 @@ export async function fetchChabadZmanim(input: {
       );
 
       times[date] ??= {};
-      times[date][id] = { iso: instant.toISOString(), display, ...(footnote ? { footnote } : {}) };
+      times[date][id] = {
+        iso: instant.toISOString(),
+        display,
+        ...(footnote ? { footnote } : {}),
+        ...(label ? { label } : {}),
+      };
       if (type === "CandleLighting") candleLightingDates.push(date);
     }
   }
