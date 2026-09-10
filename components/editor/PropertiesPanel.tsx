@@ -188,18 +188,25 @@ function SizingToggle({
 }
 
 /**
- * A widget counts as "text-sized" — worth showing a type-size field for — when
- * its category is one docs/sizing.md actually writes about type filling or
- * declaring a size: `text` and `time`. Not a manifest flag, because no widget
- * needs one yet; `media` (Image, and later Video/Gallery/Collage) is exactly
- * the category docs/sizing.md §2 already carves out as having no font size for
- * a mode to drive. This heuristic is fine for the two widgets that exist
- * today — worth promoting to an explicit manifest field the day a `content`-
- * category widget (a Zmanim table, with a size per row rather than one
- * scalar) needs a genuinely different shape than a single number.
+ * A widget counts as "text-sized" — worth showing a type-size field for —
+ * when its category is one docs/sizing.md actually writes about type filling
+ * or declaring a size: `text`, `time` and `content`. `media` (Image, and
+ * later Video/Gallery/Collage) is exactly the category §2 carves out as
+ * having no font size for a mode to drive.
+ *
+ * `content` IS THE CASE THIS COMMENT USED TO ANTICIPATE, and the answer
+ * turned out to be smaller than expected. It read: "worth promoting to an
+ * explicit manifest field the day a `content`-category widget (a Zmanim
+ * table, with a size per row rather than one scalar) needs a genuinely
+ * different shape than a single number." That widget now exists
+ * (widgets/zmanim) and it does not need a different shape: one type size
+ * drives every row, and the labels and times inside a row are scaled off it
+ * in `em`. So this stays a heuristic on the category rather than becoming a
+ * manifest flag — the flag would have exactly one value on every manifest.
+ * Still worth promoting the day a widget really does want a size per part.
  */
 function isTextSized(manifest: WidgetManifest<never>): boolean {
-  return manifest.category === "text" || manifest.category === "time";
+  return manifest.category === "text" || manifest.category === "time" || manifest.category === "content";
 }
 
 /**
