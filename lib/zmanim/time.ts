@@ -1,9 +1,9 @@
 /*
  * Time-of-day parsing and wall-clock-to-instant conversion, shared by both
- * Chabad readers: the published candle-lighting embed (chabad-embed.ts,
- * live) and the Get_Zmanim JSON adapter (chabad-adapter.ts, kept but
- * unwired). Extracted here so the live one does not import from the
- * unwired one.
+ * Chabad readers: the Get_Zmanim JSON adapter (chabad-adapter.ts, live)
+ * and the published candle-lighting embed (chabad-embed.ts, kept but
+ * unwired as a fallback). Extracted here so neither imports from the
+ * other — which side is live has already swapped once.
  *
  * Neither of them is `server-only` because of this file — it is pure
  * arithmetic over `Intl`, no fetch and no key.
