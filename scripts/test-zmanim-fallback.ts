@@ -32,7 +32,12 @@ import { fileURLToPath } from "node:url";
 import type { BoardLocation } from "../lib/board-location.tsx";
 import { upcomingCandleLighting } from "../lib/hebrew/candle-times.ts";
 import { fetchChabadEmbed } from "../lib/zmanim/chabad-embed.ts";
-import { resolveCandleLighting, type ChabadZmanimByDate } from "../lib/zmanim/resolve.ts";
+import {
+  WEEK_DAYS,
+  resolveCandleLighting,
+  resolveCandleLightings,
+  type ChabadZmanimByDate,
+} from "../lib/zmanim/resolve.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail: string | null | undefined = "") {
@@ -93,7 +98,6 @@ const happy = resolveCandleLighting({
 });
 check(happy?.fellBackToHebcal === false, "chabad + real cached value for the needed date: no fallback");
 check(happy?.event === null, "chabad + cached value: no hebcal event, so the widget uses the generic label");
-check(happy?.source === "chabad", "chabad + cached value: source says chabad", happy?.source);
 check(
   happy !== null && iso(happy.time) === "2026-09-11T23:22:00.000Z",
   "chabad + cached value: the value shown is CHABAD'S, not a recomputation",
@@ -131,7 +135,6 @@ check(
   "a chabad value 3 minutes off hebcal's on the same date is KEPT, not discarded as a miss",
   offset && `${iso(offset.time)} fellBack=${offset.fellBackToHebcal}`,
 );
-check(offset?.source === "chabad", "and it is reported as chabad's, not hebcal's", offset?.source);
 
 // ---- 3. the second Yom Tov night: a real no-match ----------------------
 //
@@ -157,11 +160,6 @@ check(
 );
 check(secondNight?.event !== null, "the fallback carries hebcal's event, so the label is the real one");
 check(
-  secondNight?.source === "hebcal",
-  "and source says hebcal — a fallback value is never attributed to chabad",
-  secondNight?.source,
-);
-check(
   Object.keys(CACHE).length > 0,
   "and the cache it fell back from was NOT empty — the trigger is the needed date, not an empty dict",
   `${Object.keys(CACHE).length} dates cached`,
@@ -184,9 +182,9 @@ const pastWindow = resolveCandleLighting({
   chabadZmanim: CACHE,
 });
 check(
-  pastWindow?.fellBackToHebcal === true && pastWindow.source === "hebcal",
+  pastWindow?.fellBackToHebcal === true,
   "a date past the four-week window falls back to hebcal — expected at this cap, not a failure",
-  pastWindow && `${iso(pastWindow.time)} fellBack=${pastWindow.fellBackToHebcal} source=${pastWindow.source}`,
+  pastWindow && `${iso(pastWindow.time)} fellBack=${pastWindow.fellBackToHebcal}`,
 );
 check(
   Object.keys(CACHE).sort().at(-1) === "2026-10-04",
@@ -268,7 +266,6 @@ for (const instant of PROBE_INSTANTS) {
     after && `${iso(after.time)} ${after.event?.renderBrief("en")}`,
   );
   check(after?.fellBackToHebcal === false, `hebcal at ${instant}: no indicator`);
-  check(after?.source === "hebcal", `hebcal at ${instant}: source says hebcal`, after?.source);
 
   // A hebcal widget is unaffected even when a chabad cache happens to be
   // sitting in context — an org that switched providers, an editor preview
@@ -296,10 +293,6 @@ for (const instant of PROBE_INSTANTS) {
     manualAfter && iso(manualAfter.time),
   );
   check(manualAfter?.fellBackToHebcal === false, `manual(40) at ${instant}: no indicator`);
-  // Manual is Hebcal's computation with a different offset, so it reports
-  // as hebcal rather than growing a third value nothing distinguishes.
-  check(manualAfter?.source === "hebcal", `manual(40) at ${instant}: source says hebcal, not a third value`,
-    manualAfter?.source);
 }
 
 // That the manual parameter is actually load-bearing, checked once at an
@@ -331,6 +324,151 @@ check(
   "chabad's fallback ignores manualMinutesBeforeSunset, same as the manifest says the field is ignored",
   chabadIgnoresManual && iso(chabadIgnoresManual.time),
 );
+
+
+// ---- 5. the fallback is a CHOICE (fallbackToCalculated) ----------------
+//
+// Some shuls would rather show nothing than a time that isn't from the
+// source they picked. With the switch off, a date Chabad has no value for
+// is dropped rather than computed — and a resolution with nothing left is
+// "unavailable", a distinct status the widget renders its own state for.
+
+const chabad = (now: string, fallbackToCalculated: boolean, dict = CACHE) =>
+  resolveCandleLightings({
+    now: new Date(now),
+    provider: "chabad",
+    location: LOCATION,
+    chabadZmanim: dict,
+    days: WEEK_DAYS,
+    fallbackToCalculated,
+  });
+
+{
+  // 9/12: the second night of Rosh Hashanah, which the embed reports as
+  // "Light Holiday Candles after" and the reader excludes. With fallback
+  // ON this is Hebcal's 8:14 PM; with it OFF there is nothing to show for
+  // that date — but 9/18 is inside the week and IS cached, so the week
+  // still has an entry.
+  const on = chabad("2026-09-12T16:00:00Z", true);
+  const off = chabad("2026-09-12T16:00:00Z", false);
+  check(on.status === "ok" && on.entries[0].fellBackToHebcal === true,
+    "fallback ON: the second Yom Tov night is computed and flagged",
+    on.status === "ok" ? String(on.entries[0].fellBackToHebcal) : on.status);
+  check(
+    off.status === "ok" && off.entries.every((e) => !e.fellBackToHebcal),
+    "fallback OFF: no entry in the week is a computed one",
+    off.status === "ok" ? off.entries.map((e) => e.fellBackToHebcal).join(",") : off.status,
+  );
+  check(
+    off.status === "ok" && iso(off.entries[0].time) === "2026-09-18T23:14:00.000Z",
+    "fallback OFF: the next entry shown is Chabad's own 9/18, not a computed 9/12",
+    off.status === "ok" ? iso(off.entries[0].time) : off.status,
+  );
+}
+
+{
+  // Past the four-week window: nothing cached anywhere in the week, so
+  // with fallback off there is genuinely nothing — the "unavailable" state,
+  // which is NOT an offline condition.
+  const off = chabad("2026-10-20T16:00:00Z", false);
+  const on = chabad("2026-10-20T16:00:00Z", true);
+  check(off.status === "unavailable", "fallback OFF past the window: unavailable", off.status);
+  check(on.status === "ok" && on.entries[0].fellBackToHebcal === true,
+    "fallback ON past the window: computed and flagged, same instant",
+    on.status === "ok" ? iso(on.entries[0].time) : on.status);
+}
+
+{
+  // An empty cache with fallback off is the same answer — the widget never
+  // silently shows a computed time it was told not to compute.
+  const off = chabad("2026-09-11T16:00:00Z", false, {});
+  check(off.status === "unavailable", "fallback OFF with a cache that has nothing: unavailable", off.status);
+}
+
+// Hebcal and Manual ARE the computed path, so the switch has nothing to say
+// about them. Turning it off must not blank a Hebcal widget — this is the
+// isolation half of item 2.
+for (const provider of ["hebcal", "manual"] as const) {
+  const off = resolveCandleLightings({
+    now: new Date("2026-09-11T16:00:00Z"),
+    provider,
+    location: LOCATION,
+    chabadZmanim: CACHE,
+    days: WEEK_DAYS,
+    fallbackToCalculated: false,
+    manualMinutesBeforeSunset: 18,
+  });
+  check(
+    off.status === "ok" && off.entries.length > 0 && !off.entries[0].fellBackToHebcal,
+    `${provider} with fallback OFF still resolves — the switch is Chabad-only`,
+    off.status === "ok" ? iso(off.entries[0].time) : off.status,
+  );
+}
+
+// ---- 6. multiple candle lightings in one week -------------------------
+//
+// The real fixture's own week of 9/18: Friday 9/18 and Erev Yom Kippur on
+// Sunday 9/20, both cached. This is the case the "all upcoming" display
+// mode exists for, and the single-value resolver cannot express it.
+
+{
+  const week = chabad("2026-09-17T12:00:00Z", true);
+  check(week.status === "ok" && week.entries.length === 2,
+    "the week of 9/18 has TWO candle lightings — Friday 9/18 and Erev Yom Kippur Sunday 9/20",
+    week.status === "ok" ? String(week.entries.length) : week.status);
+  check(
+    week.status === "ok" &&
+      week.entries.map((e) => iso(e.time)).join(" ") === "2026-09-18T23:14:00.000Z 2026-09-20T23:11:00.000Z",
+    "in order, and both are Chabad's own values",
+    week.status === "ok" ? week.entries.map((e) => iso(e.time)).join(" ") : week.status,
+  );
+  check(
+    week.status === "ok" && week.entries.every((e) => !e.fellBackToHebcal),
+    "neither needed a fallback",
+  );
+}
+
+{
+  // And an ordinary week has one. THE COUNT VARYING is the whole reason
+  // "all upcoming" is a hug-mode widget (sizing.md §2's "content whose
+  // amount, not whose row design, changes at runtime") rather than a
+  // fit- or fixed-mode one.
+  //
+  // Measured with fallback OFF, so this counts only what Chabad actually
+  // published: the week of 9/21 has one such date, 9/25. With fallback ON
+  // it would be two, because Hebcal also produces the second night of
+  // Sukkot on 9/26 — which is itself a nice illustration that the count
+  // moves for two independent reasons.
+  const quiet = chabad("2026-09-21T12:00:00Z", false);
+  const busy = chabad("2026-09-17T12:00:00Z", false);
+  check(
+    quiet.status === "ok" && quiet.entries.length === 1,
+    "the week of 9/21 has ONE — so the count varies week to week, which is why `all` forces hug",
+    quiet.status === "ok" ? String(quiet.entries.length) : quiet.status,
+  );
+  check(
+    busy.status === "ok" && quiet.status === "ok" && busy.entries.length !== quiet.entries.length,
+    "two entries one week, one the next — measured, not assumed",
+    busy.status === "ok" && quiet.status === "ok" ? `${busy.entries.length} vs ${quiet.entries.length}` : "n/a",
+  );
+}
+
+// "Next only" is the first entry of the same list, not a different
+// computation — so it cannot drift from the multi-entry path.
+{
+  const week = chabad("2026-09-17T12:00:00Z", true);
+  const single = resolveCandleLighting({
+    now: new Date("2026-09-17T12:00:00Z"),
+    provider: "chabad",
+    location: LOCATION,
+    chabadZmanim: CACHE,
+  });
+  check(
+    week.status === "ok" && single !== null && iso(week.entries[0].time) === iso(single.time),
+    "the week's first entry is exactly what the single-value resolver returns",
+    week.status === "ok" && single ? `${iso(week.entries[0].time)} == ${iso(single.time)}` : "n/a",
+  );
+}
 
 console.log("");
 const failed = results.filter((r) => !r.ok).length;

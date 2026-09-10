@@ -1,5 +1,6 @@
 "use client";
 
+import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import type { ImageConfig } from "./manifest";
@@ -51,17 +52,13 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ImageConfig>)
         </select>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Corner radius</span>
-        <input
-          type="number"
-          min={0}
-          max={200}
-          value={config.radius}
-          onChange={(event) => onChange({ radius: Number(event.target.value) })}
-          className={`${PANEL_CONTROL} numeric`}
-        />
-      </label>
+      <NumberField
+        label="Corner radius"
+        value={config.radius}
+        onChange={(radius) => onChange({ radius })}
+        min={0}
+        max={200}
+      />
     </div>
   );
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useRef } from "react";
+import type { CandleLightingEvent } from "@hebcal/core";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
 import { formatCandleLightingLabel, formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
-import { resolveCandleLighting } from "@/lib/zmanim/resolve";
+import { WEEK_DAYS, resolveCandleLightings } from "@/lib/zmanim/resolve";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
@@ -15,6 +16,17 @@ import { manifest, type CandleLightingConfig } from "./manifest";
 
 const LABEL_SCALE = 0.4;
 const COUNTDOWN_SCALE = 0.45;
+
+/**
+ * Seconds each entry holds in `rotate` mode.
+ *
+ * Eight, and it is a legibility number rather than a taste one: a
+ * congregant glancing up needs long enough to read a label and a time and
+ * register that it changed, and this is the same box a countdown ticks a
+ * new value into every minute, so anything much faster reads as flicker
+ * rather than rotation.
+ */
+const ROTATE_SECONDS = 8;
 
 export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingConfig>) {
   const location = useBoardLocation();
@@ -33,52 +45,81 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   const isChabad = effectiveProvider === "chabad";
   const chabadUnconfigured = isChabad && !zmanim.hasChabadLocation;
 
+  /*
+   * "all" is stacked and must not be fit-scaled — see manifest.ts's note on
+   * displayMode and docs/sizing.md §2. Settings.tsx switches sizingMode to
+   * hug when the mode is picked; this is the second half of that, so a
+   * config hand-edited back to `fit` degrades to the declared size instead
+   * of rescaling between a one-entry week and a three-entry one and
+   * overflowing at minFontSize.
+   */
+  const isFit = config.sizingMode === "fit" && config.displayMode !== "all";
+
   // Re-resolved every tick: the countdown has to move every minute, and once
   // a candle-lighting time passes, the very next tick has to find the
   // FOLLOWING one (test:hebrew's "advances past an event once it's passed").
   // Keyed on `second`, not `now` — a fresh Date every render would defeat
   // the memo even when the second hasn't actually changed.
   //
-  // One call for every provider: which source wins, and whether Chabad fell
-  // back to Hebcal for the date about to happen, is decided in
-  // lib/zmanim/resolve.ts rather than branched here.
+  // One call for every provider and every display mode: which source wins,
+  // whether a date fell back, and whether the shul allows a fallback at all
+  // is decided in lib/zmanim/resolve.ts rather than branched here. This
+  // always asks for the week — "next only" takes the first entry, since the
+  // horizon has to be wide enough to find one either way.
   const resolution = useMemo(
     () =>
       second !== null && location
-        ? resolveCandleLighting({
+        ? resolveCandleLightings({
             now: new Date(second * 1000),
             provider: effectiveProvider,
             location,
             chabadZmanim: zmanim.chabadZmanim,
             manualMinutesBeforeSunset: config.manualMinutesBeforeSunset,
+            days: WEEK_DAYS,
+            fallbackToCalculated: config.fallbackToCalculated,
           })
         : null,
-    [second, location, effectiveProvider, zmanim.chabadZmanim, config.manualMinutesBeforeSunset],
+    [
+      second,
+      location,
+      effectiveProvider,
+      zmanim.chabadZmanim,
+      config.manualMinutesBeforeSunset,
+      config.fallbackToCalculated,
+    ],
   );
 
-  const resolved =
-    resolution && {
-      time: resolution.time,
-      fellBackToHebcal: resolution.fellBackToHebcal,
-      // A Hebcal-produced value carries its own event name (a Yom Tov's,
-      // not just "Candle lighting"); a value read out of Chabad's cache
-      // doesn't, so it gets the generic label. Note this makes a
-      // fallback-produced value label exactly like an ordinary Hebcal one —
-      // the indicator below, not the label, is what says it was computed.
-      label: resolution.event
-        ? formatEventLabel(resolution.event, { script: config.script, nekudos: config.nekudos })
-        : formatCandleLightingLabel({ script: config.script, nekudos: config.nekudos }),
-    };
+  const entries = resolution?.status === "ok" ? resolution.entries : [];
 
-  const isFit = config.sizingMode === "fit";
+  /*
+   * Which entries this mode actually shows.
+   *
+   * `rotate` steps off the master second tick (lib/tick.ts) rather than its
+   * own setInterval — plan.md §3e: "one master rAF/second-tick that all
+   * time widgets subscribe to. No setInterval accumulation." Integer
+   * division of the tick means every rotating widget on the board advances
+   * on the same boundary, and a screen that has been up for months has
+   * accumulated nothing to leak.
+   */
+  const rotateIndex = second === null ? 0 : Math.floor(second / ROTATE_SECONDS);
+  const shown =
+    config.displayMode === "all"
+      ? entries
+      : config.displayMode === "rotate" && entries.length > 0
+        ? [entries[rotateIndex % entries.length]]
+        : entries.slice(0, 1);
+
   useFitFontSize(boxRef, contentRef, {
     minFontSize: manifest.sizing.minFontSize ?? 14,
     maxFontSize: manifest.sizing.maxFontSize ?? 400,
     canvasWidth: canvas.width,
     enabled: isFit,
     // The countdown ticks every minute without the box needing to resize —
-    // only the event identity (a new Friday) is worth re-fitting for.
-    deps: [resolved ? resolved.time.getTime() : null],
+    // only which entries are on screen is worth re-fitting for. In `rotate`
+    // that legitimately includes the rotation itself: each entry's label
+    // has its own length ("Candle lighting" vs a Yom Tov's own name), so
+    // the fitted size is genuinely different per entry.
+    deps: [shown.map((entry) => entry.time.getTime()).join(",")],
   });
 
   if (!location) {
@@ -87,9 +128,9 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   // A distinct gap from the one above: lat/long can be set while the
   // separate ZIP/Chabad-location fields this provider also needs are not —
   // see the proposal this was built from for why these don't collapse into
-  // one message. Checked before `!resolved` below: an unconfigured Chabad
-  // widget should never read as "no time yet," which is what an ordinary,
-  // temporary cache-not-warmed-yet gap looks like.
+  // one message. Checked first: an unconfigured Chabad widget should never
+  // read as "no time for this date," which is a different and temporary
+  // condition.
   if (chabadUnconfigured) {
     return (
       <EmptyLocation
@@ -98,11 +139,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
       />
     );
   }
-  if (!now || !resolved) return null;
-
-  const { label, time: eventTime, fellBackToHebcal } = resolved;
-  const time = formatTimeOfDay(eventTime, { hour12: config.hour12, timeZone: location.timeZone });
-  const countdown = formatCountdown(eventTime.getTime() - now.getTime());
 
   const align =
     config.align === "center"
@@ -111,66 +147,150 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         ? "items-end text-right"
         : "items-start text-left";
 
+  /*
+   * The shul asked for its own source or nothing, and the source has
+   * nothing for this date.
+   *
+   * DELIBERATELY NOT AN OFFLINE MESSAGE. The display route boots from its
+   * last-known-good bundle (plan.md §3c) and keeps rendering with no
+   * network at all, so a screen showing this is almost certainly online —
+   * it simply has no value for that date, most often because the date is
+   * past Chabad's four-week window (lib/zmanim/warm.ts). "Check the
+   * network" would send a gabbai after a problem that isn't there, and
+   * "offline" is a condition this product handles somewhere else entirely.
+   *
+   * The wording says the true thing and stops: there is no time for this
+   * date. It is read by a room, not only by a gabbai, so it stays calm and
+   * factual rather than diagnostic — no error prefix, no apology, no
+   * instruction to anyone walking past.
+   */
+  if (resolution?.status === "unavailable") {
+    return (
+      <div className={`flex h-full w-full flex-col justify-center ${align}`}>
+        <span
+          className="leading-tight opacity-60"
+          /* Scaled off the widget's own declared type size rather than a
+             fixed number, so it sits at the same visual weight as the
+             label it stands in for. `boardFontSize` returns a CSS length,
+             so the arithmetic is on the design unit, not on its output. */
+          style={{ fontSize: boardLength(config.size * LABEL_SCALE, canvas.width) }}
+        >
+          No candle lighting time for this date
+        </span>
+      </div>
+    );
+  }
+
+  if (!now || shown.length === 0) return null;
+
+  const anyFellBack = shown.some((entry) => entry.fellBackToHebcal);
+
   return (
     <div ref={boxRef} className={`relative flex h-full w-full flex-col justify-center ${align}`}>
       <div
         ref={contentRef}
-        className="flex flex-col gap-[0.1em]"
-        style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
+        className="flex flex-col"
+        style={{
+          fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width),
+          // Between stacked entries only. A single entry keeps the tighter
+          // intra-block rhythm it always had.
+          gap: shown.length > 1 ? "0.35em" : undefined,
+        }}
       >
-        {label.hebrew && (
-          <span
-            dir="rtl"
-            lang="he"
-            className="font-semibold leading-tight opacity-80"
-            style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: `${LABEL_SCALE}em` }}
-          >
-            {label.hebrew}
-          </span>
-        )}
-        {label.english && (
-          <span className="leading-tight opacity-80" style={{ fontSize: `${LABEL_SCALE}em` }}>
-            {label.english}
-          </span>
-        )}
-
-        {/* The time itself — Frank Ruhl Libre, tabular, same as Clock. */}
-        <span
-          className="numeric font-semibold leading-none whitespace-nowrap"
-          style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: "1em" }}
-        >
-          {time}
-        </span>
-
-        {config.showCountdown && (
-          <span
-            className="numeric leading-tight whitespace-nowrap opacity-80"
-            style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: `${COUNTDOWN_SCALE}em` }}
-          >
-            {countdown}
-          </span>
-        )}
+        {shown.map((entry) => (
+          <Entry
+            key={entry.time.getTime()}
+            entry={entry}
+            config={config}
+            timeZone={location.timeZone}
+            now={now}
+          />
+        ))}
       </div>
 
       {/*
         THERE IS NO CHABAD ATTRIBUTION HERE, AND THAT IS NOT AN OVERSIGHT.
 
         A "Times by Chabad.org" notice used to render alongside this one
-        whenever `source` was "chabad". It is gone because the premise was
-        wrong: permission for this data was granted by Chabad.org directly
-        and they did not ask for attribution. The "Shabbat Times Powered by
-        Chabad.org" link in their embed's own markup was an inference from
-        that markup, not a stated term of the permission.
+        whenever the value came from Chabad. It is gone because the premise
+        was wrong: permission for this data was granted by Chabad.org
+        directly and they did not ask for attribution. The "Shabbat Times
+        Powered by Chabad.org" link in their embed's own markup was an
+        inference from that markup, not a stated term of the permission.
 
         So do not re-add it believing it to be a licence requirement. If
         Chabad.org ever does ask for a credit, that is a new instruction
         and this comment is not it.
-
-        `source` stays on the resolver (lib/zmanim/resolve.ts) — the
-        fallback logic reads it and it is still worth having. Only the
-        rendering went.
       */}
-      {fellBackToHebcal && <CalculatedTimesNotice canvas={canvas} />}
+      {anyFellBack && <CalculatedTimesNotice canvas={canvas} />}
+    </div>
+  );
+}
+
+/**
+ * One candle lighting: its label, its time, and optionally its countdown.
+ *
+ * Extracted because `all` and `rotate` render the same block one to three
+ * times and a single entry has to look identical to how it always did —
+ * one shape, so a stacked week and a lone Friday cannot drift apart.
+ */
+function Entry({
+  entry,
+  config,
+  timeZone,
+  now,
+}: {
+  entry: { time: Date; event: CandleLightingEvent | null; fellBackToHebcal: boolean };
+  config: CandleLightingConfig;
+  timeZone: string;
+  now: Date;
+}) {
+  // A Hebcal-produced value carries its own event name (a Yom Tov's, not
+  // just "Candle lighting"); a value read out of Chabad's cache doesn't, so
+  // it gets the generic label. This makes a fallback-produced value label
+  // exactly like an ordinary Hebcal one — the indicator, not the label, is
+  // what says it was computed.
+  const label = entry.event
+    ? formatEventLabel(entry.event, { script: config.script, nekudos: config.nekudos })
+    : formatCandleLightingLabel({ script: config.script, nekudos: config.nekudos });
+
+  const time = formatTimeOfDay(entry.time, { hour12: config.hour12, timeZone });
+  const countdown = formatCountdown(entry.time.getTime() - now.getTime());
+
+  return (
+    <div className="flex flex-col gap-[0.1em]">
+      {label.hebrew && (
+        <span
+          dir="rtl"
+          lang="he"
+          className="font-semibold leading-tight opacity-80"
+          style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: `${LABEL_SCALE}em` }}
+        >
+          {label.hebrew}
+        </span>
+      )}
+      {label.english && (
+        <span className="leading-tight opacity-80" style={{ fontSize: `${LABEL_SCALE}em` }}>
+          {label.english}
+        </span>
+      )}
+
+      {/* The time itself — Frank Ruhl Libre, tabular, same as Clock. */}
+      <span
+        className="numeric font-semibold leading-none whitespace-nowrap"
+        style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: "1em" }}
+      >
+        {time}
+      </span>
+
+      {config.showCountdown && (
+        <span
+          className="numeric leading-tight whitespace-nowrap opacity-80"
+          style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: `${COUNTDOWN_SCALE}em` }}
+        >
+          {countdown}
+        </span>
+      )}
     </div>
   );
 }

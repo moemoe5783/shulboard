@@ -144,6 +144,35 @@ export function upcomingCandleLighting(
   return earliestAfter(upcomingEvents(now, location, undefined, candleLightingMins), now, isCandleLighting);
 }
 
+/**
+ * Every candle lighting in the next `days`, in order — the plural of the
+ * function above, for candle-lighting's "all upcoming in the week" display
+ * mode.
+ *
+ * A week routinely holds more than one: Erev Yom Kippur falling on a
+ * Sunday sits in the same week as the Friday before it, and a two-day Yom
+ * Tov abutting Shabbos produces a run of them. The single-value function
+ * above cannot express that, and computing it by calling that function
+ * repeatedly with a shifting `now` would rebuild @hebcal/core's calendar
+ * once per entry.
+ *
+ * `days` is clamped to SEARCH_WINDOW_DAYS: nine days is what
+ * `upcomingEvents` actually generates, so asking for more would silently
+ * return a short list rather than the window requested.
+ */
+export function upcomingCandleLightings(
+  now: Date,
+  location: BoardLocation,
+  days: number,
+  candleLightingMins?: number,
+): CandleLightingEvent[] {
+  const horizon = now.getTime() + Math.min(days, SEARCH_WINDOW_DAYS) * 24 * 60 * 60 * 1000;
+  return upcomingEvents(now, location, undefined, candleLightingMins)
+    .filter(isCandleLighting)
+    .filter((ev) => ev.eventTime.getTime() > now.getTime() && ev.eventTime.getTime() <= horizon)
+    .sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime());
+}
+
 // Unused today — see the NOT WIRED TO ANY WIDGET note above
 // havdalahShitahSchema. Defaults match that schema's and
 // havdalahCustomMinutesSchema's own `.default()`s, so a future caller that

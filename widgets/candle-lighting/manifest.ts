@@ -33,6 +33,46 @@ export const candleLightingConfigSchema = z.object({
    *  Diaspora default (lib/hebrew/candle-times.ts), not a value invented
    *  for this widget. */
   manualMinutesBeforeSunset: z.number().min(0).max(180).default(18),
+  /**
+   * Whether a date the chosen source has no value for may be computed by
+   * Hebcal instead — plan.md §5c's fallback chain, made a choice rather
+   * than forced.
+   *
+   * `true` is the default and the behaviour before this existed: compute
+   * it and flag it with "Showing calculated times". `false` shows the
+   * unavailable state instead. Some shuls want the time on their board to
+   * be their source's or nothing, and with Chabad capped at four weeks
+   * (lib/zmanim/warm.ts) that is a real and recurring choice rather than a
+   * corner case.
+   *
+   * Read only when the resolved provider is Chabad — Hebcal and Manual are
+   * the computed path, so there is no provider value for them to be
+   * missing and turning this off must not blank them.
+   */
+  fallbackToCalculated: z.boolean().default(true),
+  /**
+   * How many of the week's candle lightings to show at once.
+   *
+   * A week routinely has more than one: Erev Yom Kippur on a Sunday sits
+   * in the same week as the Friday before it, and a two-day Yom Tov
+   * abutting Shabbos produces a run. `"next"` is the behaviour before this
+   * existed.
+   *
+   * `"all"` INTERACTS WITH SIZING — docs/sizing.md §2. The entry count
+   * varies week to week (one most weeks, two or three around the chagim),
+   * which is exactly that section's "content whose amount, not whose row
+   * design, changes at runtime" and therefore exactly what `hug` is for:
+   * overflow is structurally impossible in that mode rather than something
+   * to warn about. In `fixed` the same box either clips the busy week or
+   * sits mostly empty the rest of the year — §2's own words. In `fit` it
+   * is worse than either: the type would rescale between one entry and
+   * three, hit `minFontSize`, and then overflow anyway. So Settings.tsx
+   * switches `sizingMode` to `"hug"` when this is set to `"all"`, and the
+   * Renderer additionally ignores fit measurement in this mode so a
+   * hand-edited `fit` config degrades to the declared size rather than to
+   * a scaling loop.
+   */
+  displayMode: z.enum(["next", "all", "rotate"]).default("next"),
 });
 
 export type CandleLightingConfig = z.infer<typeof candleLightingConfigSchema>;
@@ -59,7 +99,7 @@ function dataNeeds(config: CandleLightingConfig): readonly DataNeed[] {
 export const manifest: WidgetManifest<CandleLightingConfig> = {
   id: "candle-lighting",
   name: "Candle lighting",
-  description: "The next candle-lighting time, with a countdown.",
+  description: "Candle-lighting times, with a countdown.",
   category: "time",
   defaultSize: { w: 640, h: 220 },
   isPro: false,

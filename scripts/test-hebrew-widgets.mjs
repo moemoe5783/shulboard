@@ -257,6 +257,55 @@ try {
     `${gematriaText} -> ${latinText}`);
   check(/\d/.test(latinText), "latin numerals actually show arabic digits", latinText);
 
+  // ---- the "044" bug: a numeric field must not fight the typist --------
+  //
+  // Type size is a controlled numeric input. Written the obvious way —
+  // value={config.size}, onChange={Number(e.target.value)} — clearing it
+  // makes Number("") === 0, the field re-renders as "0", and typing 44
+  // after that leaves "044" in the DOM permanently, because react-dom
+  // guards its write to a number input with a LOOSE comparison and
+  // "044" == 44. components/editor/NumberField.tsx holds the text as a
+  // string instead. This drives the real properties panel through the
+  // exact sequence that produced it.
+
+  const sizeField = page.locator("label", { hasText: "Type size" }).locator("input");
+  await sizeField.waitFor();
+
+  await sizeField.fill("");
+  await settle();
+  check(
+    (await sizeField.inputValue()) === "",
+    "clearing a numeric field leaves it empty — it does not become 0 mid-typing",
+    JSON.stringify(await sizeField.inputValue()),
+  );
+
+  // Typed a character at a time, because the bug only appears when a
+  // re-render lands between keystrokes. `fill` would set the whole value
+  // at once and miss it entirely.
+  await sizeField.pressSequentially("44", { delay: 60 });
+  await settle();
+  check(
+    (await sizeField.inputValue()) === "44",
+    "typing 44 into a cleared field gives exactly 44 — no leading zero",
+    JSON.stringify(await sizeField.inputValue()),
+  );
+
+  // The whole point: the value reached the widget, not just the input.
+  const rendered = await panelHebrewDate.evaluate((el) => getComputedStyle(el.querySelector("span")).fontSize);
+  check(rendered !== "0px", "and the widget actually rendered at that size rather than collapsing", rendered);
+
+  // Below the minimum stays on screen while typing and clamps on blur —
+  // clamping per keystroke would rewrite "4" to "8" under the cursor and
+  // make 44 unreachable.
+  await sizeField.fill("");
+  await sizeField.pressSequentially("4", { delay: 60 });
+  check((await sizeField.inputValue()) === "4", "a below-minimum value is not rewritten while typing",
+    JSON.stringify(await sizeField.inputValue()));
+  await sizeField.blur();
+  await settle();
+  check((await sizeField.inputValue()) === "8", "and clamps to the minimum on blur", 
+    JSON.stringify(await sizeField.inputValue()));
+
   console.log("");
 } finally {
   await browser.close();

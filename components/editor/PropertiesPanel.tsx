@@ -3,7 +3,8 @@
 import { createElement } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
-import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
+import { NumberField } from "@/components/editor/NumberField";
+import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardWidget } from "@/lib/board-doc";
@@ -228,30 +229,23 @@ function TypeSizeField({
 
   if (mode === "fit") {
     return (
-      <label className="mb-3 flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Type size</span>
-        <input
-          type="number"
+      <div className="mb-3">
+        <NumberField
+          label="Type size"
+          value={fitted ?? undefined}
+          onChange={() => {}}
+          min={8}
+          max={400}
           disabled
-          value={fitted ?? ""}
           title="Set by the box in fit mode — drag the box to change it."
-          className={`${PANEL_CONTROL} numeric disabled:opacity-40`}
         />
-      </label>
+      </div>
     );
   }
 
   return (
-    <label className="mb-3 flex flex-col gap-1">
-      <span className={PANEL_LABEL}>Type size</span>
-      <input
-        type="number"
-        min={8}
-        max={400}
-        value={size ?? ""}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className={`${PANEL_CONTROL} numeric`}
-      />
-    </label>
+    <div className="mb-3">
+      <NumberField label="Type size" value={size} onChange={onChange} min={8} max={400} />
+    </div>
   );
 }
