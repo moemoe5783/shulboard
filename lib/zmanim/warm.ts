@@ -151,6 +151,12 @@ export async function warmChabadLocation(
     const result = await fetchChabadZmanim({
       locationId: target.locationId,
       locationType: target.locationType,
+      // What the response's own LocationName is checked against for a city
+      // id — the whole reason a searched location stores its Title. A
+      // mismatch throws, lands in the catch below, and this location is
+      // reported failed rather than cached (chabad-adapter.ts's
+      // verifyLocationName).
+      expectedName: target.expectedName,
       startDate,
       endDate,
       timeZone: target.timezone,

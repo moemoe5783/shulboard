@@ -654,6 +654,8 @@ export type Database = {
           timezone: string
           updated_at: string
           zmanim_location_id: string | null
+          zmanim_location_name: string | null
+          zmanim_location_type: string | null
           zmanim_provider: Database["public"]["Enums"]["zmanim_provider"]
         }
         Insert: {
@@ -678,6 +680,8 @@ export type Database = {
           timezone?: string
           updated_at?: string
           zmanim_location_id?: string | null
+          zmanim_location_name?: string | null
+          zmanim_location_type?: string | null
           zmanim_provider?: Database["public"]["Enums"]["zmanim_provider"]
         }
         Update: {
@@ -702,6 +706,8 @@ export type Database = {
           timezone?: string
           updated_at?: string
           zmanim_location_id?: string | null
+          zmanim_location_name?: string | null
+          zmanim_location_type?: string | null
           zmanim_provider?: Database["public"]["Enums"]["zmanim_provider"]
         }
         Relationships: []
