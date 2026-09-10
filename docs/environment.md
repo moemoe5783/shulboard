@@ -111,7 +111,8 @@ everywhere it's called, so —
   now" reports that Supabase isn't configured — no Chabad zmanim are ever
   cached, so those Candle Lighting widgets fall back to Hebcal with the
   "showing calculated times" indicator (plan.md §5c) rather than going
-  blank. The one failure here that degrades instead of breaking.
+  blank, and a Zmanim widget on a Chabad screen has no fetched rows to
+  read at all. The one failure here that degrades instead of breaking.
 
 None of this throws an error a person sees. It looks like every screen in
 the shul quietly stopped working at once, which is the scenario CLAUDE.md's
@@ -276,11 +277,14 @@ check is what actually stops any request reaching chabad.org.
 
 **Where it comes from.** Nowhere but you, same as `CRON_SECRET` — there is
 no default that turns this on. This is the "off by default so it can't
-reach a real shul until I turn it on myself" switch: chabad.org's zmanim
-endpoint is unofficial, undocumented, and has no ToS with this project
-(plan.md §10.4's still-open conversation). Turning this on is a decision to
-start relying on it before that conversation has happened, not a
-configuration step to complete along with everything else in this file.
+reach a real shul until I turn it on myself" switch, and it stays that way
+even though plan.md §10.4's permission question is now settled: permission
+for the data was granted directly by Chabad.org, but the endpoint the
+product actually reads (`Get_Zmanim`, plan.md §5c) is undocumented and
+carries no published contract about its shape, its parameters or how far
+ahead it will answer. Turning this on is a decision to depend on that,
+not a configuration step to complete along with everything else in this
+file.
 
 **What breaks — or rather, doesn't happen — without it.** Nothing breaks.
 Hebcal and Manual are unaffected either way; they never read this flag.
@@ -299,13 +303,14 @@ willingness to offer the option.
 from `CRON_SECRET`'s build-bundles one: a task hitting
 `POST https://<your-domain>/api/cron/warm-zmanim` with
 `Authorization: Bearer <CRON_SECRET>` **once a day**, not every 5 minutes —
-candle-lighting minutes don't change fast enough to need more, and it is a
-courtesy to a published endpoint this product is a guest on. Daily does
-matter, though: Chabad's embed only serves about four weeks at a time
-(plan.md §5c), so each run slides that window forward. Skipping this step
-after turning the flag on leaves the option selectable and every Candle
-Lighting widget permanently on the Hebcal fallback with its "showing
-calculated times" indicator, since nothing ever populates `zmanim_cache`.
+zmanim don't change fast enough to need more, and it is a courtesy to an
+endpoint this product is a guest on. Daily still matters for coverage:
+each run slides Chabad's 92-day window forward (plan.md §5c), so the
+schedule can lapse for weeks before any date starts falling through to
+Hebcal — but it will. Skipping this step entirely after turning the flag
+on leaves the option selectable and every Candle Lighting widget
+permanently on the Hebcal fallback with its "showing calculated times"
+indicator, since nothing ever populates `zmanim_cache`.
 
 ---
 

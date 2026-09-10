@@ -81,7 +81,7 @@ browser** from lat/long + system clock. No network needed, ever.
 
 Zmanim are the exception, because of the multi-provider decision (see §5c): when
 the source is Chabad.org or MyZmanim, the values come from a remote source
-(for Chabad, their published candle-lighting embed — §5c). But
+(for Chabad, their `Get_Zmanim` endpoint — §5c). But
 zmanim are deterministic and known in advance, so the bundle ships **90 days of
 resolved zmanim** for the screen's location and provider. Offline behavior is
 identical; the screen just needs to reconnect sometime within three months.
@@ -306,7 +306,7 @@ their wall, and these three genuinely differ by a minute or two.
 |---|---|---|---|
 | Hebcal | Official REST API + `@hebcal/core` JS lib | Free | Only one that runs client-side. Default. |
 | MyZmanim | Official REST/SOAP, `api.myzmanim.com`, User+Key | $15/mo/10 locations, $40/mo/100, then $0.10 each | Requires internal `LocationID`. **Decided: ZIP-level only** — resolve via `searchPostal` at onboarding and cache the LocationID on the org. Street-address and shul-specific lookups are manual through their mobile app; don't build for them, and don't market address-level precision. |
-| Chabad.org | **Candle lighting: the published embed**, `candlelighting.js.asp?locationid=<ZIP>&locationtype=2&ln=2&weeks=4` — the surface Chabad.org pointed at when asked (§10.4). Sanctioned and server-side; permission granted directly, no attribution asked for. **Zmanim beyond candle lighting: still unresolved** — see below. | Free | **`weeks` caps at 4 — about 24 days.** 13 and 52 both return byte-identical responses to 4, silently coerced, never rejected. Only Fridays, Shabbos and Yom Tov days come back, never ordinary weekdays. Params are case-sensitive and fail SILENTLY too: `locationId` is ignored and falls back to Brooklyn. |
+| Chabad.org | **`Get_Zmanim`, one request for everything** — `webservices/zmanim/zmanim/Get_Zmanim?locationid=<ZIP>&locationtype=2&save=1&tdate=<M-D-YYYY>&jewish=Zmanim-Halachic-Times.htm&startdate=<M/D/YYYY>&enddate=<M/D/YYYY>&before=18&after=42&ShabbosEnds=1&bdef=0`. **92 days verified**, every day in the span, carrying all thirteen daily zmanim *and* candle lighting on every Erev Shabbos and Yom Tov. Permission for the data granted directly, no attribution asked for; the endpoint itself is undocumented, which is why `ZMANIM_CHABAD_ENABLED` still gates it. `lib/zmanim/chabad-adapter.ts`. | Free | **The trailing four parameters are not optional.** Without `before`/`after`/`ShabbosEnds`/`bdef` the same request returns the full day count and zero candle-lighting times, with nothing anywhere saying why. **The date formats deliberately differ** — `tdate` is M-D-YYYY, `startdate`/`enddate` are M/D/YYYY. Params are case-sensitive and fail SILENTLY: `locationId` is ignored and falls back to Brooklyn, so the `LocationName` check is load-bearing. `ShabbosEnds` is genuinely mixed-case; don't normalize either. |
 | Manual | You | — | Per-zman override or fixed offset. `lib/hebrew/candle-times.ts`'s `havdalahShitahSchema` already has a `"custom"` value that is this same idea at the grain of one zman (fixed minutes after sunset) — built for a standalone Havdalah widget that shipped, then got removed in favor of this section. Decide whether it becomes this Manual provider's own Havdalah row or stays separate when this section is built. |
 
 **Canonical zman IDs.** Providers name things differently (`tzeit7083deg` /
@@ -333,7 +333,10 @@ it.**
 
 **Capability matrix.** Each provider declares which canonical IDs it supplies.
 The settings UI greys out unavailable ones — never render a blank row on a
-screen someone is standing in front of.
+screen someone is standing in front of. Chabad's half of that matrix is
+already written as data, in `lib/zmanim/zman.ts` — deliberately client-safe
+(no `server-only`) so a settings panel can read it without a server
+round-trip for a static table.
 
 **Settings UI:** pick source → capability-filtered checkbox list → reorder rows
 → per-row custom label (English/Hebrew/transliterated) → per-row time format.
@@ -346,18 +349,60 @@ screen someone is standing in front of.
    deliberately (candle lighting down, latest-shma down, etc.). Display verbatim.
    Offer an optional attribution line on the board ("Zmanim: MyZmanim").
 
-**Chabad-sourced zmanim beyond candle lighting is still open.** §10.4's
-conversation resolved candle lighting and only candle lighting: Chabad.org
-pointed at their published candle-lighting embed, which carries exactly
-what it says — candle lighting and Shabbos/Yom Tov end times, nothing
-else. There is no sanctioned bulk source for alos, netz, the shma and
-tfila deadlines, shkia or tzeis: **the published zmanim RSS feed returns
-one day only and takes no date parameter, so it cannot fill a 90-day
-cache.** The undocumented `Get_Zmanim` JSON endpoint does carry all
-thirteen, which is why `lib/zmanim/chabad-adapter.ts` is kept unwired
-rather than deleted — but wiring it back is a permission question, not a
-refactor, and it needs its own conversation. Until then a shul choosing
-Chabad.org gets Chabad's candle lighting and Hebcal's everything else.
+**Chabad-sourced zmanim beyond candle lighting — RESOLVED.** `Get_Zmanim`
+supplies all of it, 92 days at a time, in the same request as candle
+lighting. The two surfaces this section used to weigh are both retired
+for the purpose: the published candle-lighting **embed** covers four
+weeks of candle lighting only (kept unwired in
+`lib/zmanim/chabad-embed.ts` as a fallback if `Get_Zmanim` ever changes),
+and the published zmanim **RSS feed** returns one day per request with no
+date parameter and could never fill a cache at all.
+
+**What Chabad.org actually supplies, measured.** Every zman in a real
+92-day response was compared against `@hebcal/core`'s own implementations
+across all 92 days, and the answer is uniform: **Chabad.org publishes the
+Baal HaTanya (Alter Rebbe) shitah.** `alosBaalHatanya` and
+`sofZmanTfilaBaalHatanya` match to the minute on every single day;
+`sofZmanShmaBaalHatanya`, `minchaGedolaBaalHatanya`,
+`minchaKetanaBaalHatanya` and `plagHaminchaBaalHatanya` to within one.
+Candle lighting is exactly 18 minutes before sunset (the request's own
+`before=18`, echoed back in `LocationDetails`), and `ShabbatEndTime`
+tracks 8.5° tzeis rather than the `after=42` the request sends.
+
+`Tzeis` and `ShabbatEndTime` are **mutually exclusive**: the 17 days in a
+92-day span that carry `ShabbatEndTime` are exactly the 17 with no
+`Tzeis`. Chabad publishes one nightfall per day and relabels it, so a
+widget reading `Tzeis` unconditionally is blank every Shabbos.
+
+**FOUR CANONICAL IDS ARE MISSING FROM THE LIST ABOVE, and this is the
+one open item this endpoint created.** Because the shitah is Baal
+HaTanya, four of Chabad's fifteen types have no honest id here:
+
+| Chabad type | Why no id fits |
+|---|---|
+| `AlosHashachar` | Not `alos_72` (73–79 min before netz, so it varies with the season) and not `alos_16.1deg` (3–4 min earlier than it). Needs `alos_baal_hatanya`. |
+| `LatestShema` | 1–2 min from GRA, 34–35 min later than MGA — close enough to GRA to be tempting and still a third shitah. Needs `sof_zman_shma_baal_hatanya`. |
+| `LatestTefillah` | Same. Needs `sof_zman_tfila_baal_hatanya`. |
+| `Tzeis` | 6°, earlier than all three of `tzeis_3_stars` / `tzeis_medium_stars` / `tzeis_72`. Needs `tzeis_baal_hatanya`. |
+
+Plus `ShaahZmanit`, which is a **duration** ("62:51 min.") and has no
+canonical id because this list has no concept of one. All five are cached
+under `chabad:<EssentialZmanType>` rather than being dropped or given an
+id they haven't earned — `lib/zmanim/zman.ts` holds both tables and the
+measurement for each omission. **Naming those four is a halachic
+decision, not a refactor; the Zmanim widget build is where it has to
+happen, because that is where they become rows on a board.**
+
+Two mappings that DO hold, and are worth stating because they look like
+gaps: `EarliestTefillin` ("Earliest Tallit", measured as misheyakir
+machmir at 10.2°) maps to `misheyakir`, and `ChatzosNight` maps to
+`chatzos_laila` — the latter with the one quirk in the whole cache, that
+its instant falls on the day AFTER the row it is filed under, because it
+is the midpoint of the following night. That is proven rather than
+assumed, off the Nov 1 DST fall-back: chatzos halayla differs by under a
+minute between two adjacent nights normally, but across a fall-back the
+two candidate readings are an hour apart, and the response matches the
+following-night one.
 
 **Caching.** Postgres table keyed `(provider, location_id, date)`. Twenty Crown
 Heights shuls share the same rows, so one API call serves all of them. This is
@@ -365,25 +410,27 @@ what keeps MyZmanim's per-location billing manageable and limits blast radius if
 Chabad's endpoint breaks. Warm 90 days ahead on a cron; bundle reads
 from cache only, never calls a provider inline.
 
-**Chabad is the exception to the 90 days, and it is the provider's limit,
-not a choice.** Its embed caps at four weeks (~24 days, measured — see the
-table above), so a Chabad-configured shul has roughly a month of fetched
-candle lighting and everything past that resolves through the Hebcal
-fallback with the "showing calculated times" indicator. The 90-day figure
-still holds for Hebcal, which computes client-side and needs no cache at
-all. Sliding that four-week window forward is what makes the daily cron
-matter for coverage rather than only for freshness.
+**Chabad is no longer an exception to the 90 days.** `Get_Zmanim` returns
+the whole span in one request, so `lib/zmanim/warm.ts` warms **92 days**
+(inclusive of today, two days of slack over the figure above so a daily
+cron can never leave a same-day gap). Note the difference in kind from
+the embed's four weeks: four **was** a measured cap, silently coerced from
+any larger value. 92 is simply the largest span anyone has verified — what
+happens at 183 or 365 days is unknown, so the warmer reports the
+response's own `EndDate` alongside the range it asked for rather than
+assuming they agree. `scripts/probe-chabad.ts` is what would settle it.
 
 **Fallback chain:** requested provider → cache → Hebcal (client-side, always
 works) → last known good. Surface a subtle "showing calculated times" indicator
 rather than failing silently, since a wrong zman is worse than a flagged one.
 
 **Open items:** MyZmanim attribution/ToS requirements for commercial resale;
-Chabad-sourced zmanim beyond candle lighting (see above). ~~Chabad.org
-permission for programmatic access~~ — **resolved for candle lighting,
-§10.4.** The Hayom Yom / Chitas licensing question is still worth bundling
-into the next Chabad.org conversation, alongside the zmanim one — same
-organization, one ask.
+**naming the four Baal HaTanya canonical IDs above** (a halachic decision
+for the Zmanim widget build, not a refactor); and how far past 92 days
+`Get_Zmanim` will actually go. ~~Chabad.org permission for programmatic
+access~~ and ~~Chabad-sourced zmanim beyond candle lighting~~ — **both
+resolved, §10.4 and above.** The Hayom Yom / Chitas licensing question is
+the one that still wants a Chabad.org conversation.
 
 ### Hebrew/format options (per screen, override per widget)
 - Hebrew script vs transliterated: `כ״ג אלול` / `23 Elul` / `23 Elul 5786`
@@ -565,17 +612,25 @@ is your biggest conversion lever), screen-count limits.
    MyZmanim / manual), see §5c. Remaining sub-question: does MyZmanim ship in v1
    given it's a paid per-location dependency, or is it a paid-tier feature added
    after launch?
-4. ~~**Chabad.org + MyZmanim terms**~~ — **partly decided.** Chabad.org, asked
-   directly, pointed at their **published candle-lighting embed**
-   (`/tools/shared/candlelighting/candlelighting.js.asp`) rather than at the
-   undocumented `Get_Zmanim` JSON endpoint. Candle lighting therefore runs on
-   a sanctioned, public surface with an attribution condition — the widget
-   shows "Times by Chabad.org" whenever the value on screen is theirs, and
-   that credit is not user-removable, because a shul cannot license it away
-   on Chabad's behalf. `lib/zmanim/chabad-embed.ts` is that reader.
-   **Still open:** Chabad-sourced zmanim beyond candle lighting (§5c — the
-   RSS feed is one day at a time and cannot fill a cache), MyZmanim's own
-   resale terms, and Hayom Yom / Chitas text licensing.
+4. ~~**Chabad.org terms**~~ — **decided.** Permission for the data was
+   granted directly by Chabad.org, and **no attribution was asked for** —
+   the credit link in their embed markup was an inference from the markup,
+   not a stated term, and the widget does not render one. Don't re-add it
+   assuming it is a licence condition; `widgets/candle-lighting/Renderer
+   .tsx` carries a comment at the removal site saying so.
+
+   **The reader is `Get_Zmanim`** (`lib/zmanim/chabad-adapter.ts`), which
+   supplies all thirteen daily zmanim and candle lighting together, 92 days
+   per request — see §5c for the measured detail. The published
+   candle-lighting embed (`/tools/shared/candlelighting/candlelighting.js
+   .asp`, `lib/zmanim/chabad-embed.ts`) is kept unwired as a fallback: it
+   is four weeks of candle lighting only, so a strict subset, but it is
+   Chabad's own public embed and `Get_Zmanim` is not documented anywhere.
+   That last point is why `ZMANIM_CHABAD_ENABLED` still gates the whole
+   provider.
+
+   **Still open:** MyZmanim's own resale terms, and Hayom Yom / Chitas text
+   licensing.
 5. **Screen count pricing** — per-screen or per-org? Shapes the schema.
 6. **Shared infra with the yeshiva system?** Both are multi-tenant Supabase apps
    for frum institutions with overlapping customers. Worth deciding now whether

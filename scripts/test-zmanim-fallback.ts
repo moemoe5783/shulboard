@@ -8,17 +8,24 @@
  * decision lives there rather than inside the Renderer's JSX.
  *
  * THE CACHE VALUES BELOW ARE THE REAL FIXTURE'S. They are read straight out
- * of test/fixtures/chabad-embed-33701-4w.js — a hand-captured response from
- * chabad.org's published candle-lighting embed for ZIP 33701 (Saint
- * Petersburg, FL) — through the real reader, not hand-typed here. That is
- * deliberately the SAME source that fills `zmanim_cache` in production
- * (lib/zmanim/warm.ts), so this suite exercises the fallback against the
- * values a screen would really have.
+ * of test/fixtures/chabad-zmanim-33701-92day.json — a real 92-day
+ * Get_Zmanim response for ZIP 33701 (Saint Petersburg, FL) — through the
+ * real reader, not hand-typed here. That is deliberately the SAME source
+ * that fills `zmanim_cache` in production (lib/zmanim/warm.ts), so this
+ * suite exercises the fallback against the values a screen would really
+ * have. It used to load the published embed's 4-week capture instead; that
+ * surface is no longer what production reads.
  *
- * The fixture's 9/11 candle lighting (7:22 PM) and its 9/12 "Light Holiday
- * Candles after 8:14 PM" — the second night of Rosh Hashanah, which the
- * reader deliberately excludes — are the two entries this fallback exists
- * for.
+ * The fixture's 9/11 candle lighting (7:22 PM) and its 9/12 entry — the
+ * second night of Rosh Hashanah, which Chabad files as a `ShabbatEndTime`
+ * with a `LightCandlesAfter` footnote so it never lands under
+ * `candle_lighting` — are the two cases this fallback exists for. That
+ * pair reads differently through this reader than through the embed and it
+ * matters: the 9/12 DATE is now present in the cache dict, carrying twelve
+ * other zmanim, with only `candle_lighting` missing from it. A resolver
+ * that asked "is this date cached" rather than "is this VALUE cached"
+ * would now answer wrongly, so the case is asserted below rather than
+ * assumed.
  *
  * Run with: npm run test:zmanim-fallback — not plain `node`. Loading the
  * fixture through the adapter means importing a module that imports
@@ -31,13 +38,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { BoardLocation } from "../lib/board-location.tsx";
 import { upcomingCandleLighting } from "../lib/hebrew/candle-times.ts";
-import { fetchChabadEmbed } from "../lib/zmanim/chabad-embed.ts";
+import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
 import {
   WEEK_DAYS,
   resolveCandleLighting,
   resolveCandleLightings,
   type ChabadZmanimByDate,
 } from "../lib/zmanim/resolve.ts";
+import { isClockZman } from "../lib/zmanim/zman.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail: string | null | undefined = "") {
@@ -55,7 +63,7 @@ const LOCATION: BoardLocation = {
 
 // ---- load the real fixture through the real adapter ----------------------
 
-const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-embed-33701-4w.js", import.meta.url));
+const FIXTURE_PATH = fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33701-92day.json", import.meta.url));
 const FIXTURE = readFileSync(FIXTURE_PATH, "utf8");
 
 const originalFetch = globalThis.fetch;
@@ -65,21 +73,36 @@ globalThis.fetch = (async () => ({
   statusText: "OK",
   text: async () => FIXTURE,
 })) as unknown as typeof fetch;
-const { times: CACHE } = await fetchChabadEmbed({
+const { times: CACHE } = await fetchChabadZmanim({
   locationId: "33701",
-  weeks: 4,
+  locationType: "2",
+  startDate: "2026-09-10",
+  endDate: "2026-12-10",
   timeZone: "America/New_York",
 });
 globalThis.fetch = originalFetch;
 
+/** The cached value for one date and id, only if it is a clock time —
+ *  `zmanim_cache.times` also holds a duration (`chabad:ShaahZmanit`), and
+ *  nothing here may read one as an instant. */
+const cached = (date: string, id = "candle_lighting") => {
+  const value = CACHE[date]?.[id];
+  return value && isClockZman(value) ? value : undefined;
+};
+
 check(
-  CACHE["2026-09-11"]?.candle_lighting?.iso === "2026-09-11T23:22:00.000Z",
-  "fixture loaded through the real embed reader: 9/11 carries the real 7:22 PM value",
-  CACHE["2026-09-11"]?.candle_lighting?.iso,
+  cached("2026-09-11")?.iso === "2026-09-11T23:22:00.000Z",
+  "fixture loaded through the real reader: 9/11 carries the real 7:22 PM value",
+  cached("2026-09-11")?.iso,
 );
 check(
-  CACHE["2026-09-12"] === undefined,
-  "fixture loaded through the real embed reader: 9/12 (second night Rosh Hashanah) carries none",
+  CACHE["2026-09-12"] !== undefined && !("candle_lighting" in CACHE["2026-09-12"]),
+  "9/12 (second night Rosh Hashanah) IS in the cache with its other zmanim, and has no candle_lighting",
+  Object.keys(CACHE["2026-09-12"] ?? {}).length + " ids, candle_lighting absent",
+);
+check(
+  cached("2026-09-12", "shabbos_ends")?.footnote?.type === "LightCandlesAfter",
+  "and what it has instead is a shabbos_ends carrying the LightCandlesAfter footnote",
 );
 
 const iso = (d: Date) => d.toISOString();
@@ -165,40 +188,43 @@ check(
   `${Object.keys(CACHE).length} dates cached`,
 );
 
-// ---- 3b. past the window's end: the ordinary case, not an edge --------
+// ---- 3b. past the window's end: still a real case, just a far one -----
 //
-// The embed caps at four weeks (WARM_WEEKS in lib/zmanim/warm.ts), and this
-// fixture's last entry is 10/4. So a screen asking in late October is past
-// everything Chabad will ever have cached, and falls through to Hebcal with
-// the indicator. That is the designed behaviour of §5c's fallback chain at
-// this window size — NOT a warming failure and NOT what the
-// zero-candle-lighting alarm is for. Asserted explicitly because the four
-// week cap makes this the common path rather than a corner.
+// The window is 92 days (WARM_DAYS in lib/zmanim/warm.ts) and this
+// fixture's last day is 12/10, so a screen asking after that is past
+// everything cached and falls through to Hebcal with the indicator. That
+// is the designed behaviour of §5c's fallback chain — NOT a warming
+// failure and NOT what the zero-candle-lighting alarm is for.
+//
+// Three months out this is no longer the common path it was at four weeks,
+// which is exactly why it is still asserted: the case now only shows up
+// for a location whose cron has stopped, where nothing else would catch a
+// regression in it.
 
 const pastWindow = resolveCandleLighting({
-  now: new Date("2026-10-20T16:00:00Z"),
+  now: new Date("2026-12-20T16:00:00Z"),
   provider: "chabad",
   location: LOCATION,
   chabadZmanim: CACHE,
 });
 check(
   pastWindow?.fellBackToHebcal === true,
-  "a date past the four-week window falls back to hebcal — expected at this cap, not a failure",
+  "a date past the 92-day window falls back to hebcal — expected, not a failure",
   pastWindow && `${iso(pastWindow.time)} fellBack=${pastWindow.fellBackToHebcal}`,
 );
 check(
-  Object.keys(CACHE).sort().at(-1) === "2026-10-04",
-  "and the cache really does end at 10/4 — four weeks of coverage, nothing beyond",
+  Object.keys(CACHE).sort().at(-1) === "2026-12-10",
+  "and the cache really does end at 12/10 — 92 days of coverage, nothing beyond",
   Object.keys(CACHE).sort().at(-1),
 );
 
 // The zero-candle-lighting alarm is `> 0`, not a count tuned to a span, so
-// shortening the window from a notional thirteen weeks to the real four did
-// not weaken it: four weeks still contain four Fridays.
+// widening the window from four weeks to 92 days only strengthened it:
+// thirteen Fridays plus Erev Yom Kippur on a Sunday.
 const candleLightingCount = Object.values(CACHE).filter((day) => day.candle_lighting).length;
 check(
-  candleLightingCount === 5,
-  "a healthy four-week response carries five candle lightings, so the zero alarm stays meaningful",
+  candleLightingCount === 14,
+  "a healthy 92-day response carries fourteen candle lightings, so the zero alarm stays meaningful",
   String(candleLightingCount),
 );
 
@@ -344,8 +370,8 @@ const chabad = (now: string, fallbackToCalculated: boolean, dict = CACHE) =>
   });
 
 {
-  // 9/12: the second night of Rosh Hashanah, which the embed reports as
-  // "Light Holiday Candles after" and the reader excludes. With fallback
+  // 9/12: the second night of Rosh Hashanah, which Chabad files as a
+  // ShabbatEndTime with a LightCandlesAfter footnote. With fallback
   // ON this is Hebcal's 8:14 PM; with it OFF there is nothing to show for
   // that date — but 9/18 is inside the week and IS cached, so the week
   // still has an entry.
@@ -367,11 +393,11 @@ const chabad = (now: string, fallbackToCalculated: boolean, dict = CACHE) =>
 }
 
 {
-  // Past the four-week window: nothing cached anywhere in the week, so
-  // with fallback off there is genuinely nothing — the "unavailable" state,
+  // Past the 92-day window: nothing cached anywhere in the week, so with
+  // fallback off there is genuinely nothing — the "unavailable" state,
   // which is NOT an offline condition.
-  const off = chabad("2026-10-20T16:00:00Z", false);
-  const on = chabad("2026-10-20T16:00:00Z", true);
+  const off = chabad("2026-12-20T16:00:00Z", false);
+  const on = chabad("2026-12-20T16:00:00Z", true);
   check(off.status === "unavailable", "fallback OFF past the window: unavailable", off.status);
   check(on.status === "ok" && on.entries[0].fellBackToHebcal === true,
     "fallback ON past the window: computed and flagged, same instant",
@@ -435,7 +461,9 @@ for (const provider of ["hebcal", "manual"] as const) {
   // fit- or fixed-mode one.
   //
   // Measured with fallback OFF, so this counts only what Chabad actually
-  // published: the week of 9/21 has one such date, 9/25. With fallback ON
+  // published as a CandleLighting: the week of 9/21 has one such date,
+  // 9/25 — 9/26 is a shabbos_ends carrying LightCandlesAfter, which is
+  // not candle lighting. With fallback ON
   // it would be two, because Hebcal also produces the second night of
   // Sukkot on 9/26 — which is itself a nice illustration that the count
   // moves for two independent reasons.

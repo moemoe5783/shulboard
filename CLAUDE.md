@@ -20,14 +20,18 @@ Environment variables: @docs/environment.md
   route does, immediately, for the screens the just-published board reaches,
   rather than a second copy of the build logic. `warm-zmanim` is the Chabad
   cache-warming cron (plan.md §5c) — once daily, not the 5-minute cadence
-  `build-bundles` runs at, because it's refreshing about four weeks of
-  candle lighting from Chabad.org's published embed, not serving a live
-  edit. **Four weeks is that endpoint's measured cap, not a setting:** it
-  silently coerces any larger `weeks` value, so a Chabad shul has ~24 days
-  of fetched candle lighting — Fridays, Shabbos and Yom Tov days only,
-  never ordinary weekdays — and every date past that resolves through the
-  Hebcal fallback. Sliding the window forward is why the daily schedule
-  matters for coverage and not just freshness. It
+  `build-bundles` runs at, because it's refreshing 92 days of zmanim from
+  Chabad.org's `Get_Zmanim` endpoint, not serving a live edit. One request
+  returns the whole span: every day in it, all thirteen daily zmanim, plus
+  candle lighting on every Erev Shabbos and Yom Tov. **92 days is verified,
+  not a measured cap** — nobody has established where this endpoint stops,
+  which is why the warmer reports the response's own `EndDate` next to the
+  range it asked for rather than assuming they agree. (The published
+  candle-lighting embed, which this replaced, *did* have a measured
+  four-week cap; `lib/zmanim/chabad-embed.ts` is kept unwired as a
+  fallback.) Daily still matters for coverage as well as freshness, just
+  far less urgently than at four weeks: each run slides a three-month
+  window forward. It
   earns the key for a reason separate from the warming itself: it sweeps
   every org and screen to discover which locations are referenced at all,
   a cross-tenant read no RLS policy can express.

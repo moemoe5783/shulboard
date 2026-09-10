@@ -1,92 +1,122 @@
 import "server-only";
 import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
+import {
+  CANONICAL_BY_ESSENTIAL_ZMAN_TYPE,
+  providerNamespacedId,
+  rollsIntoNextDay,
+  type ChabadFootnote,
+  type ChabadZman,
+} from "./zman.ts";
 
 /*
- * Chabad.org's undocumented Get_Zmanim endpoint, read into this project's
- * own `{iso, display}` vocabulary — plan.md §5c.
+ * Chabad.org's Get_Zmanim endpoint, read into this project's own
+ * `zmanim_cache.times` vocabulary — plan.md §5c.
  *
- * NOT WIRED TO ANYTHING. THIS IS NOT DEAD CODE, AND IT IS NOT THE CANDLE
- * LIGHTING PATH ANY MORE.
+ * THIS IS THE LIVE READER AGAIN, and it now covers both halves of §5c's
+ * Chabad support in ONE request: all thirteen daily zmanim AND candle
+ * lighting, 92 days at a time. It supersedes both of the two surfaces
+ * that were previously thought to be the only sanctioned options — the
+ * published candle-lighting embed (chabad-embed.ts, four weeks, candle
+ * lighting only, now kept unwired as a fallback) and the published zmanim
+ * RSS feed (one day per request, no date parameter, so it could never
+ * fill a cache at all).
  *
- * plan.md §10.4's conversation happened. Asked directly, Chabad.org
- * pointed at their PUBLISHED candle-lighting embed rather than at this
- * endpoint, so candle lighting now goes through `chabad-embed.ts` — a
- * supported, public integration surface with an attribution condition —
- * and nothing calls this module. That closes §10.4 for candle lighting.
+ * WHAT CHANGED, AND IT WAS THE REQUEST, NOT THE ENDPOINT. An earlier
+ * 91-day call against this same endpoint returned 91 days and zero
+ * candle-lighting times. The cause was four missing trailing parameters
+ * (`before`, `after`, `ShabbosEnds`, `bdef`) plus a date format this code
+ * had guessed at. With the full parameter set the endpoint returns 92
+ * days — verified by hand, Sep 10 through Dec 10 2026 — carrying
+ * `CandleLighting` on every Erev Shabbos and Yom Tov in the span.
  *
- * It is kept, rather than deleted, because it remains the only source
- * anyone has found for Chabad-sourced zmanim BEYOND candle lighting: alos,
- * netz, the shma and tfila deadlines, shkia, tzeis — the thirteen types
- * the captured JSON response carries on every day. That is a separate,
- * still-unresolved conversation (plan.md §5c): the published alternative
- * is a zmanim RSS feed that returns one day only, with no date parameter,
- * so it cannot fill a 90-day cache. Until that is settled, this endpoint
- * stays undocumented and unsanctioned and this module stays uncalled —
- * wiring it back up is a decision about permission, not a refactor.
+ * THE RESPONSE SHAPE IS THE FLAT ONE, NOT THE NESTED ONE. `Days[]`
+ * entries carry a flat `Zmanim[]` array keyed by `EssentialZmanType`.
+ * They do NOT carry the `TimeGroups[].Items[]` nesting keyed by `ZmanType`
+ * that an earlier, narrower capture of this endpoint showed and that a
+ * previous version of this file parsed. The old fixture is gone; the
+ * shape below comes from test/fixtures/chabad-zmanim-33701-92day.json,
+ * a real 92-day capture for ZIP 33701.
  *
- * `ZMANIM_CHABAD_ENABLED` (docs/environment.md) still gates the whole
- * Chabad provider, embed included.
+ * Structural facts measured off that capture, each of which a plausible
+ * reading of the response would have got wrong:
  *
- * THE RESPONSE SHAPE BELOW IS CONFIRMED, not reconstructed — checked by
- * hand against a real 4-day response for ZIP 33710 (Thu 9/10/2026 through
- * Sun 9/13/2026, spanning an ordinary Thursday and Erev/both days of Rosh
- * Hashanah), test/fixtures/chabad-zmanim-33710-sep2026.json, exercised by
- * scripts/test-chabad-adapter.ts. Two things that real response corrected
- * from an earlier, unverified version of this file:
- *
- * 1. The match key is `item.ZmanType`, an exact machine-readable enum
- *    (`"CandleLighting"`), not a substring guess over `Name`/`Caption`/
- *    `Title`/`Type`. The fixture's own 9/12 entry — `Title: "Candle
- *    Lighting after"`, `ZmanType: "ShabbatEndTime"`,
- *    `FootnoteType: "LightCandlesAfter"` — is exactly the item a
- *    substring-on-Title match would have wrongly matched: it is the
- *    second night of a two-day Yom Tov, when candles are lit only after
- *    nightfall from an existing flame, not the regular pre-sunset
- *    candle-lighting `CandleLighting` items carry. Matching on `ZmanType`
- *    excludes it by construction. THIS EXCLUSION IS DELIBERATE, not a gap
- *    discovered later: this adapter does not attempt second-night/
- *    "light after" candle lighting at all yet. See isCandleLightingItem's
- *    own comment.
- * 2. `item.Date` is not a timestamp — every item within one day shares
- *    the identical `/Date(...)/` value regardless of that item's own time
- *    of day (confirmed: every item on 9/11 carries `/Date(1789099200000)/`
- *    whether it's a 5:59 AM or an 8:05 PM zman), and it isn't even the
- *    same value as that day's own `GmtDate`. It cannot be used to build
- *    the instant. The real instant is built from three things instead:
- *    the calendar date, from the DAY's own `DisplayDate` ("9/11/2026" —
- *    unambiguous and per-day, unlike the shared, GMT-anchored `Date`/
- *    `GmtDate` fields); the time of day, parsed out of the item's own
- *    `Zman` string ("7:22 PM" — a plain rendered time, not a date at
- *    all); and the org/screen's own stored IANA timezone, already a
- *    parameter to this function. Chabad's `LocationDetails` field (e.g.
- *    "-5 GMT | DST in effect") was deliberately NOT used for this: it is
- *    one fixed offset for the whole response, with no per-day breakdown,
- *    so a request spanning a DST transition has no way to tell from that
- *    field alone which of its days the offset actually applies to. The
- *    org/screen's own IANA timezone (which already knows its own DST
- *    rules for any date) is the only one of the three inputs reliable
- *    enough to use for this.
+ * 1. `Tzeis` and `ShabbatEndTime` are MUTUALLY EXCLUSIVE. The 17 days
+ *    carrying `ShabbatEndTime` are exactly the 17 with no `Tzeis`, so
+ *    Chabad publishes one nightfall per day and relabels it rather than
+ *    publishing two. Anything reading `Tzeis` unconditionally is blank on
+ *    every Shabbos.
+ * 2. `ShaahZmanit`'s `Zman` is "62:51 min." — a DURATION in MM:SS, on
+ *    every day, in the same array as the clock times. Handed to
+ *    `parseZmanTime` it reads as an hour of 62, which that function
+ *    rejects; the row would have been silently dropped. See
+ *    `parseShaahZmanit`.
+ * 3. `ChatzosNight` reads "1:27 AM" and belongs to the night AFTER its
+ *    row's date, so its instant is a day later than the row it is filed
+ *    under — see `rollsIntoNextDay` in zman.ts for the DST measurement
+ *    that proves it.
+ * 4. `FootnoteType` is halachically meaningful. `LightCandlesAfter` on a
+ *    `ShabbatEndTime` (9/12, 9/26, 10/3) is the second night of a two-day
+ *    Yom Tov — candles lit after nightfall from an existing flame, which
+ *    is emphatically NOT `candle_lighting`. The root `Footnotes` object
+ *    holds each type's display text. Both are carried into the cache.
+ * 5. `LocationId` comes back NULL even for a request that resolved
+ *    correctly, so it cannot be the location check. `LocationName`
+ *    ("Saint Petersburg, FL 33701") is what carries the answer — see
+ *    `verifyLocationName`, which is load-bearing for the same reason it
+ *    is in chabad-embed.ts.
+ * 6. `item.Date` no longer exists on the entries at all, which retires
+ *    the trap the previous shape had: there, every item within one day
+ *    shared one `/Date(...)/` value regardless of its own time of day.
+ *    The instant is still built the same three-part way — the DAY's own
+ *    `DisplayDate`, the entry's own rendered `Zman`, and the org/screen's
+ *    stored IANA timezone. Chabad's `LocationDetails` ("-5 GMT | DST in
+ *    effect") is still deliberately not used for the offset: it is one
+ *    fixed value for the whole response with no per-day breakdown, and a
+ *    92-day span crosses a DST transition. The IANA zone knows its own
+ *    rules for every day in the range; that string cannot.
  */
 
 const ENDPOINT = "https://www.chabad.org/webservices/zmanim/zmanim/Get_Zmanim";
 
-export type ChabadZman = { iso: string; display: string };
-
 export type ChabadZmanimResult = {
-  /** Canonical zman id -> value. Only `candle_lighting` today (plan §5c's
-   *  own spelling) — the one thing widgets/candle-lighting needs. */
+  /** ISO date -> canonical zman id (or `chabad:<Type>` for the four §5c
+   *  has no id for) -> value. One entry per day the response carried. */
   times: Record<string, Record<string, ChabadZman>>;
-  /** The untouched fetch body, one entry per returned day, keyed the same
-   *  way `times` is. Stored verbatim in zmanim_cache.raw_response — this
-   *  endpoint can change shape with no notice, and this is the only way to
-   *  tell why a mapping started coming back empty. */
+  /**
+   * The untouched response, sliced one entry per day and keyed the same
+   * way `times` is, for `zmanim_cache.raw_response`.
+   *
+   * PER-DAY, not the whole body on every row. At 92 days the body is
+   * ~105KB; writing all of it onto each of 92 rows would be ~10MB per
+   * location per warm, for one copy of the same bytes. Each slice
+   * carries that day's own entry plus the response-level metadata a day
+   * cannot be interpreted without (`LocationName`, `Footnotes`,
+   * `LocationDetails`), which is a few hundred bytes.
+   */
   rawResponseByDate: Record<string, unknown>;
+  /** `LocationName`, already verified against the requested id. */
+  location: string;
+  /** The response's OWN `EndDate`, echoed back. Reported rather than
+   *  trusted: the requested span and this are compared by the caller, so
+   *  a silently coerced window shows up as a number instead of as a
+   *  cache that is quietly short. */
+  echoedEndDate: string | null;
+  /** Every distinct `EssentialZmanType` seen, sorted — a changed
+   *  vocabulary is then visible in one log line. */
+  essentialZmanTypes: string[];
+  /** Dates that carried a `CandleLighting`. WHICH days, not how many:
+   *  candle lighting on every Friday is a working response, candle
+   *  lighting on one day only is the signature of the bug this
+   *  parameter set fixed. */
+  candleLightingDates: string[];
+  firstDate: string | null;
+  lastDate: string | null;
+  bytes: number;
 };
 
-/** "9/11/2026" -> {year, month, day}. The per-DAY calendar date — see this
- *  file's header comment on why this, and not either of the two
- *  GMT-anchored `Date`/`GmtDate` fields, is what the instant is built
- *  from. */
+/** "9/11/2026" -> {year, month, day}. The per-DAY calendar date, and the
+ *  only date in the response that is per-day rather than
+ *  response-wide. */
 function parseDisplayDate(value: unknown): { year: number; month: number; day: number } | null {
   if (typeof value !== "string") return null;
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
@@ -94,106 +124,168 @@ function parseDisplayDate(value: unknown): { year: number; month: number; day: n
   return { month: Number(match[1]), day: Number(match[2]), year: Number(match[3]) };
 }
 
-/**
- * Exact match on `ZmanType`, nothing looser. See this file's header
- * comment for the real response that replaced an earlier substring guess
- * over `Name`/`Caption`/`Title`/`Type`, and for why this deliberately
- * excludes "Candle Lighting after" (`ZmanType: "ShabbatEndTime"`,
- * `FootnoteType: "LightCandlesAfter"`) — the second-night candle lighting
- * of a two-day Yom Tov, lit after nightfall from an existing flame rather
- * than before sunset. That case is known and excluded by this exact match,
- * not missed: this adapter does not attempt it yet.
- */
-function isCandleLightingItem(item: Record<string, unknown>): boolean {
-  return item.ZmanType === "CandleLighting";
-}
-
-function formatDisplay(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone,
-  }).format(date);
+function isoDate(parts: { year: number; month: number; day: number }): string {
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
 /**
- * One line per request, at `console.info` so it lands in Vercel's function
- * logs without a log-level flag.
+ * "62:51 min." -> 3771 seconds. MM:SS, not HH:MM — a shaah zmanis runs
+ * roughly 45 to 75 minutes, and the fixture's own range is "52:44 min."
+ * to "62:51 min.", both of which are impossible as hours.
  *
- * WHY THIS EXISTS: a live 91-day warm for ZIP 33710 came back with 91 days
- * and zero candle-lighting times. The warming code's own alarm caught it
- * (lib/zmanim/warm.ts's `warmed-no-candle-lighting`), but the alarm can
- * only say "zero" — it cannot say whether the request was malformed, the
- * range was honoured, or the response shape changed. Every field below is
- * chosen to answer one of those without a second guess:
- *
- * - the full URL, so a wrong date format or a missing parameter is visible
- *   rather than inferred (the three date parameters are the live suspects —
- *   the hand-verified working request uses M-D-YYYY for `tdate` and
- *   M/D/YYYY for `startdate`/`enddate`, and this code sends ISO for all
- *   three);
- * - status and byte length, which separate a truncated or error body from
- *   a full one;
- * - `days`, plus the FIRST and LAST `DisplayDate`, which is what actually
- *   says whether chabad.org honoured the range it was asked for or
- *   substituted its own — a count alone cannot tell those apart;
- * - the range chabad.org echoes back in its own top-level `EndDate` /
- *   `GmtStartDate` / `GmtEndDate`, its side of the same question;
- * - every distinct `ZmanType` across the whole response, so a changed
- *   vocabulary is obvious (the fixture's own set is 13 halachic types plus
- *   `CandleLighting` and `ShabbatEndTime`);
- * - and the dates that carried a `CandleLighting`, not just how many.
- *   WHICH days is the discriminating fact: candle lighting on every Friday
- *   in the range is a working response, candle lighting only on the `tdate`
- *   day means one wide request can never return more than one and the
- *   whole 91-day-single-fetch approach is wrong.
- *
- * Deliberately not logged: the response body. It is up to a megabyte at 91
- * days, it is already stored verbatim in `zmanim_cache.raw_response` where
- * it can be read at leisure, and a log line nobody can scroll through is
- * not a diagnostic.
+ * Returns null for anything that isn't this shape, so a `ShaahZmanit`
+ * whose rendering changes fails the same way an unparseable clock time
+ * does — skipped, with the raw day still cached — rather than becoming a
+ * wrong number.
  */
-function logRequest(url: URL, status: number, bytes: number, body: unknown, days: unknown[]): void {
-  const record = (body ?? {}) as Record<string, unknown>;
-  const displayDates = days.map((day) => (day as Record<string, unknown>)?.DisplayDate);
+function parseShaahZmanit(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,3}):(\d{2})\s*min\.?$/i.exec(value.trim());
+  if (!match) return null;
+  const seconds = Number(match[2]);
+  if (seconds > 59) return null;
+  return Number(match[1]) * 60 + seconds;
+}
 
-  const zmanTypes = new Set<string>();
-  const candleLightingDates: unknown[] = [];
+/** `FootnoteType` plus the root `Footnotes` text for it. "None" is
+ *  Chabad's own no-footnote value and is not one. */
+function readFootnote(value: unknown, footnotes: Record<string, unknown>): ChabadFootnote | undefined {
+  if (typeof value !== "string" || value === "" || value === "None") return undefined;
+  const text = footnotes[value];
+  return { type: value, text: typeof text === "string" ? text : null };
+}
 
-  for (const day of days) {
-    const dayRecord = (day ?? {}) as Record<string, unknown>;
-    let hasCandleLighting = false;
-    for (const group of Array.isArray(dayRecord.TimeGroups) ? dayRecord.TimeGroups : []) {
-      for (const item of Array.isArray((group as Record<string, unknown>)?.Items)
-        ? ((group as Record<string, unknown>).Items as unknown[])
-        : []) {
-        const type = (item as Record<string, unknown>)?.ZmanType;
-        if (typeof type === "string") {
-          zmanTypes.add(type);
-          if (type === "CandleLighting") hasCandleLighting = true;
-        }
-      }
-    }
-    if (hasCandleLighting) candleLightingDates.push(dayRecord.DisplayDate);
+/*
+ * LOWERCASE PARAMETER NAMES, EXCEPT `ShabbosEnds`. DO NOT "NORMALIZE"
+ * EITHER DIRECTION.
+ *
+ * Chabad's query parameter names are case-sensitive and the failure mode
+ * is silent: `locationid` and `locationtype` work, while `locationId` and
+ * `locationType` are ignored and the endpoint falls back to a default
+ * location — Brooklyn — returning a completely normal-looking response
+ * for the wrong city with no error at all. Verified by hand: same ZIP,
+ * same URL, only capitalization differing, returned Saint Petersburg vs.
+ * Brooklyn.
+ *
+ * `ShabbosEnds` is genuinely mixed-case in the hand-verified working
+ * request, and lowercasing it for consistency is exactly as unsafe as
+ * camelCasing the other two — the verified URL is the contract here, not
+ * a naming convention. The whole parameter list below is spelled the way
+ * the request that was proven to work spells it.
+ *
+ * What makes this a live trap rather than a curiosity: every other
+ * identifier in this codebase is camelCase, and the candle-lighting
+ * embed's own response markup links to `?locationId=...&locationType=2`,
+ * so the provider appears to endorse the spelling that breaks the
+ * request. `verifyLocationName` below is the compensating control, which
+ * is why that check is load-bearing rather than defensive.
+ *
+ * THE DATE FORMATS DIFFER ON PURPOSE AND ARE NOT A TYPO. `tdate` is
+ * M-D-YYYY with hyphens; `startdate` and `enddate` are M/D/YYYY with
+ * slashes, which `URLSearchParams` percent-encodes to `%2F`. Both were
+ * verified by hand in that combination. This is the single most
+ * "tidy-able" thing in this file and the previous version of this code
+ * sent ISO for all three, which is how a call came back with zero candle
+ * lighting.
+ */
+function chabadDate(iso: string, separator: "-" | "/"): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return `${month}${separator}${day}${separator}${year}`;
+}
+
+function zmanimUrl(input: { locationId: string; locationType: "1" | "2"; startDate: string; endDate: string }): URL {
+  const url = new URL(ENDPOINT);
+  url.searchParams.set("locationid", input.locationId);
+  url.searchParams.set("locationtype", input.locationType);
+  url.searchParams.set("save", "1");
+  url.searchParams.set("tdate", chabadDate(input.startDate, "-"));
+  url.searchParams.set("jewish", "Zmanim-Halachic-Times.htm");
+  url.searchParams.set("startdate", chabadDate(input.startDate, "/"));
+  url.searchParams.set("enddate", chabadDate(input.endDate, "/"));
+  // `before` is candle-lighting minutes before sunset, and it takes
+  // effect: measured at exactly -18 minutes from `Shkiah` on all 14
+  // candle-lighting days in the fixture, and echoed back in
+  // `LocationDetails` ("Candle Lighting is 18 mins. before sunset"). 18 is
+  // Chabad's own Diaspora default and the same number @hebcal/core uses
+  // (lib/hebrew/candle-times.ts), so nothing diverges by hardcoding it —
+  // and making it a setting later is a one-parameter change.
+  url.searchParams.set("before", "18");
+  // `after` is passed exactly as verified, and its effect is NOT visible
+  // in the response: `ShabbatEndTime` comes back 34–38 minutes after
+  // sunset, tracking 8.5° tzeis rather than a fixed 42. So this is not a
+  // Shabbos-end offset knob despite reading like one. Sent verbatim
+  // because the verified request sends it; not reinterpreted, and not
+  // dropped on a guess that it is inert.
+  url.searchParams.set("after", "42");
+  url.searchParams.set("ShabbosEnds", "1");
+  url.searchParams.set("bdef", "0");
+  // Deliberately no `aid` parameter — confirmed by hand not to be required.
+  return url;
+}
+
+/**
+ * The requested location has to appear in the `LocationName` the response
+ * returns, or the whole response is refused and nothing is cached.
+ *
+ * This is the case-sensitivity control above, so it is not optional and
+ * not a warning: a wrong-location response is byte-for-byte normal apart
+ * from this one string. A refusal sends the widget down §5c's Hebcal
+ * fallback, which computes the right city's times from the org's own
+ * coordinates — strictly better than caching another city's.
+ *
+ * ONLY ENFORCEABLE FOR A ZIP (`locationtype=2`). Chabad's opaque city
+ * numbering (`locationtype=1`, resolved by lib/zmanim/location.ts only
+ * when a shul has no US ZIP on file) does not appear in the returned
+ * name, and `LocationId` comes back null, so there is nothing to compare
+ * against. That case is logged rather than checked, and the log line says
+ * which city was actually served so a wrong id is at least visible after
+ * the fact.
+ */
+function verifyLocationName(body: Record<string, unknown>, input: { locationId: string; locationType: "1" | "2" }): string {
+  const location = typeof body.LocationName === "string" ? body.LocationName.trim() : "";
+  if (!location) throw new Error("Chabad zmanim: no LocationName in the response");
+
+  if (input.locationType === "2" && !location.includes(input.locationId)) {
+    throw new Error(
+      `Chabad zmanim: asked for ${input.locationId} but the response is for "${location}" — ` +
+        "refusing it rather than caching another city's times (see this module's note on parameter case)",
+    );
   }
+  return location;
+}
 
+/**
+ * One line per request, at `console.info` so it lands in Vercel's
+ * function logs without a log-level flag.
+ *
+ * Every field answers a question a count alone cannot. The full URL, so a
+ * wrong date format or a missing parameter is visible rather than
+ * inferred. Status and byte length, which separate a truncated body from
+ * a full one. `days` plus the first and last `DisplayDate` AND the
+ * response's own `EndDate`, which is what says whether chabad.org
+ * honoured the range it was asked for or substituted its own. Every
+ * distinct `EssentialZmanType`, so a changed vocabulary is obvious. And
+ * the dates that carried a `CandleLighting`, because which days is the
+ * discriminating fact.
+ *
+ * Deliberately not logged: the response body. It is ~105KB at 92 days,
+ * it is already in `zmanim_cache.raw_response` where it can be read at
+ * leisure, and a log line nobody can scroll through is not a diagnostic.
+ */
+function logRequest(url: URL, status: number, result: ChabadZmanimResult, days: number): void {
   console.info(
     "[chabad-zmanim] " +
       JSON.stringify({
         url: url.toString(),
         status,
-        bytes,
-        days: days.length,
-        firstDisplayDate: displayDates[0] ?? null,
-        lastDisplayDate: displayDates[displayDates.length - 1] ?? null,
-        echoedLocation: record.LocationName ?? null,
-        echoedLocationId: record.LocationId ?? null,
-        echoedEndDate: record.EndDate ?? null,
-        echoedGmtStartDate: record.GmtStartDate ?? null,
-        echoedGmtEndDate: record.GmtEndDate ?? null,
-        zmanTypes: [...zmanTypes].sort(),
-        candleLightingDates,
+        bytes: result.bytes,
+        days,
+        firstDate: result.firstDate,
+        lastDate: result.lastDate,
+        echoedLocation: result.location,
+        echoedEndDate: result.echoedEndDate,
+        essentialZmanTypes: result.essentialZmanTypes,
+        candleLightingDates: result.candleLightingDates,
       }),
   );
 }
@@ -202,14 +294,17 @@ function logRequest(url: URL, status: number, bytes: number, body: unknown, days
  * One (chabad, location) pair's zmanim for the given date range, ready to
  * upsert into `zmanim_cache` one row per date.
  *
- * `timeZone` is the org/screen's own stored IANA zone — used both to build
- * the actual instant (see this file's header comment) and to render
- * `display` the way this project's own `formatTimeOfDay` would
- * (lib/hebrew/format.ts). Plan §5c's "never re-round or recompute provider
- * output" is about the *value*, not its string rendering, and Chabad's own
- * rendered string isn't reachable from this endpoint's raw items the way
- * it is from their HTML pages, so this project renders it instead of
- * inventing a second display convention.
+ * `startDate` and `endDate` are ISO `YYYY-MM-DD` — this project's own date
+ * vocabulary. Chabad's two incompatible date formats are built inside
+ * `zmanimUrl`, where the comment explaining them lives, so no caller has
+ * to know about them.
+ *
+ * `timeZone` is the org/screen's own stored IANA zone, used to turn each
+ * entry's rendered clock time into an instant. `display` is Chabad's own
+ * string verbatim, never re-rendered — plan.md §5c's "never re-round or
+ * recompute provider output." (The previous version of this file
+ * re-rendered through `Intl` because the older, nested shape was thought
+ * not to expose the string; it does, in `Zman`.)
  */
 export async function fetchChabadZmanim(input: {
   locationId: string;
@@ -218,15 +313,7 @@ export async function fetchChabadZmanim(input: {
   endDate: string;
   timeZone: string;
 }): Promise<ChabadZmanimResult> {
-  const url = new URL(ENDPOINT);
-  url.searchParams.set("locationid", input.locationId);
-  url.searchParams.set("locationtype", input.locationType);
-  url.searchParams.set("save", "1");
-  url.searchParams.set("tdate", input.startDate);
-  url.searchParams.set("startdate", input.startDate);
-  url.searchParams.set("enddate", input.endDate);
-  url.searchParams.set("jewish", "Zmanim-Halachic-Times.htm");
-  // Deliberately no `aid` parameter — confirmed by hand not to be required.
+  const url = zmanimUrl(input);
 
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) {
@@ -234,13 +321,13 @@ export async function fetchChabadZmanim(input: {
     throw new Error(`Chabad zmanim request failed: ${response.status} ${response.statusText}`);
   }
 
-  // Read as text, not `.json()`, for two reasons: the byte length is part of
-  // what the log below has to report, and a body that isn't JSON at all
-  // becomes a diagnosable error with a snippet rather than an opaque throw.
+  // Read as text, not `.json()`: the byte length is part of what the log
+  // has to report, and a body that isn't JSON at all becomes a
+  // diagnosable error with a snippet rather than an opaque throw.
   const raw = await response.text();
-  let body: unknown;
+  let parsed: unknown;
   try {
-    body = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     console.error(
       `[chabad-zmanim] 200 but unparseable body, ${raw.length} bytes, for ${url.toString()} — starts: ${JSON.stringify(raw.slice(0, 200))}`,
@@ -248,45 +335,95 @@ export async function fetchChabadZmanim(input: {
     throw new Error("Chabad zmanim response was not JSON");
   }
 
-  const days = Array.isArray((body as { Days?: unknown[] })?.Days) ? (body as { Days: unknown[] }).Days : [];
+  const body = (parsed ?? {}) as Record<string, unknown>;
 
-  logRequest(url, response.status, raw.length, body, days);
+  // Before any parsing. A response for the wrong city parses perfectly.
+  const location = verifyLocationName(body, input);
+
+  const footnotes = (body.Footnotes ?? {}) as Record<string, unknown>;
+  const days = Array.isArray(body.Days) ? (body.Days as unknown[]) : [];
 
   const times: Record<string, Record<string, ChabadZman>> = {};
   const rawResponseByDate: Record<string, unknown> = {};
+  const dates: string[] = [];
+  const essentialZmanTypes = new Set<string>();
+  const candleLightingDates: string[] = [];
 
-  for (const day of days) {
-    const dayRecord = day as Record<string, unknown>;
-    const calendarDate = parseDisplayDate(dayRecord.DisplayDate);
+  for (const rawDay of days) {
+    const day = (rawDay ?? {}) as Record<string, unknown>;
+    const calendarDate = parseDisplayDate(day.DisplayDate);
     if (!calendarDate) continue;
-    const isoDate = `${calendarDate.year}-${String(calendarDate.month).padStart(2, "0")}-${String(calendarDate.day).padStart(2, "0")}`;
+    const date = isoDate(calendarDate);
+    dates.push(date);
 
-    rawResponseByDate[isoDate] = day;
+    // Per-day slice plus the response-level fields a day cannot be read
+    // without — see `rawResponseByDate`'s own note on why not the whole
+    // body 92 times.
+    rawResponseByDate[date] = {
+      Day: day,
+      LocationName: body.LocationName ?? null,
+      LocationDetails: body.LocationDetails ?? null,
+      Footnotes: body.Footnotes ?? null,
+      EndDate: body.EndDate ?? null,
+    };
 
-    const groups = Array.isArray(dayRecord.TimeGroups) ? (dayRecord.TimeGroups as unknown[]) : [];
-    for (const group of groups) {
-      const items = Array.isArray((group as Record<string, unknown>).Items)
-        ? ((group as Record<string, unknown>).Items as unknown[])
-        : [];
-      for (const rawItem of items) {
-        const item = rawItem as Record<string, unknown>;
-        if (!isCandleLightingItem(item)) continue;
-        const time = parseZmanTime(item.Zman);
-        if (!time) continue;
+    for (const rawEntry of Array.isArray(day.Zmanim) ? (day.Zmanim as unknown[]) : []) {
+      const entry = (rawEntry ?? {}) as Record<string, unknown>;
+      const type = entry.EssentialZmanType;
+      if (typeof type !== "string" || type === "") continue;
+      essentialZmanTypes.add(type);
 
-        const instant = zonedTimeToUtc(
-          calendarDate.year,
-          calendarDate.month,
-          calendarDate.day,
-          time.hour,
-          time.minute,
-          input.timeZone,
-        );
-        times[isoDate] ??= {};
-        times[isoDate].candle_lighting = { iso: instant.toISOString(), display: formatDisplay(instant, input.timeZone) };
+      const footnote = readFootnote(entry.FootnoteType, footnotes);
+      const display = typeof entry.Zman === "string" ? entry.Zman.replace(/\s+/g, " ").trim() : "";
+      // Exact match on the canonical table, then the provider-namespaced
+      // key for the four §5c has no id for. Nothing is dropped for want
+      // of a mapping, and nothing gets a canonical id it hasn't earned —
+      // see zman.ts.
+      const id = CANONICAL_BY_ESSENTIAL_ZMAN_TYPE[type] ?? providerNamespacedId(type);
+
+      const durationSeconds = parseShaahZmanit(display);
+      if (durationSeconds !== null) {
+        times[date] ??= {};
+        times[date][id] = { durationSeconds, display, ...(footnote ? { footnote } : {}) };
+        continue;
       }
+
+      const clock = parseZmanTime(display);
+      if (!clock) continue;
+
+      // The row's own date, except for the one type whose clock time
+      // belongs to the following night — zman.ts's `rollsIntoNextDay`.
+      // Only the instant moves; the value stays keyed under this row's
+      // date, which is where Chabad prints it.
+      const shift = rollsIntoNextDay(type, clock.hour) ? 1 : 0;
+      const anchor = new Date(Date.UTC(calendarDate.year, calendarDate.month - 1, calendarDate.day + shift));
+      const instant = zonedTimeToUtc(
+        anchor.getUTCFullYear(),
+        anchor.getUTCMonth() + 1,
+        anchor.getUTCDate(),
+        clock.hour,
+        clock.minute,
+        input.timeZone,
+      );
+
+      times[date] ??= {};
+      times[date][id] = { iso: instant.toISOString(), display, ...(footnote ? { footnote } : {}) };
+      if (type === "CandleLighting") candleLightingDates.push(date);
     }
   }
 
-  return { times, rawResponseByDate };
+  const result: ChabadZmanimResult = {
+    times,
+    rawResponseByDate,
+    location,
+    echoedEndDate: typeof body.EndDate === "string" ? body.EndDate : null,
+    essentialZmanTypes: [...essentialZmanTypes].sort(),
+    candleLightingDates,
+    firstDate: dates[0] ?? null,
+    lastDate: dates[dates.length - 1] ?? null,
+    bytes: raw.length,
+  };
+
+  logRequest(url, response.status, result, days.length);
+  return result;
 }

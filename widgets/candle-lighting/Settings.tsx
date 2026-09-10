@@ -137,7 +137,7 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         <span className={PANEL_LABEL}>
           {config.provider === "hebcal" || config.provider === "manual"
             ? "Only applies to Chabad.org, which is the one source that can be missing a date."
-            : "Chabad.org only publishes about four weeks ahead. With this off, a date it hasn't published shows no time rather than a calculated one."}
+            : "Chabad.org times are fetched about three months ahead. With this off, a date outside that shows no time rather than a calculated one."}
         </span>
       </label>
 
