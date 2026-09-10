@@ -180,12 +180,14 @@ try {
     !/calculated times/i.test((await page.locator("body").textContent()) ?? ""),
     "and nothing anywhere else on a Hebcal board renders it either",
   );
-  // The Chabad attribution shares that corner and is equally
-  // source-conditional: the value here is Hebcal's, so crediting Chabad.org
-  // would be a false claim about where the time came from.
+  // There is no Chabad attribution on any board any more — permission for
+  // the data was granted directly and no credit was asked for (see the
+  // comment at the removal site in widgets/candle-lighting/Renderer.tsx).
+  // Kept as a guard against it being re-added on the assumption that it is
+  // a licence requirement.
   check(
     !/chabad/i.test(candleLightingText),
-    "a Hebcal-provider candle lighting widget renders no Chabad.org attribution",
+    "no Chabad.org attribution renders on a board",
     candleLightingText.trim(),
   );
 

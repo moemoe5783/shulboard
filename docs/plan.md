@@ -306,7 +306,7 @@ their wall, and these three genuinely differ by a minute or two.
 |---|---|---|---|
 | Hebcal | Official REST API + `@hebcal/core` JS lib | Free | Only one that runs client-side. Default. |
 | MyZmanim | Official REST/SOAP, `api.myzmanim.com`, User+Key | $15/mo/10 locations, $40/mo/100, then $0.10 each | Requires internal `LocationID`. **Decided: ZIP-level only** — resolve via `searchPostal` at onboarding and cache the LocationID on the org. Street-address and shul-specific lookups are manual through their mobile app; don't build for them, and don't market address-level precision. |
-| Chabad.org | **Candle lighting: the published embed**, `candlelighting.js.asp?locationid=<ZIP>&locationtype=2&ln=2&weeks=<n>` — the surface Chabad.org pointed at when asked (§10.4). Sanctioned, server-side, attribution required. **Zmanim beyond candle lighting: still unresolved** — see below. | Free | Params are case-sensitive and fail SILENTLY: `locationId` is ignored and falls back to Brooklyn. `weeks` is coverage, not rows — `weeks=4` returns 13 entries over 24 days. |
+| Chabad.org | **Candle lighting: the published embed**, `candlelighting.js.asp?locationid=<ZIP>&locationtype=2&ln=2&weeks=4` — the surface Chabad.org pointed at when asked (§10.4). Sanctioned and server-side; permission granted directly, no attribution asked for. **Zmanim beyond candle lighting: still unresolved** — see below. | Free | **`weeks` caps at 4 — about 24 days.** 13 and 52 both return byte-identical responses to 4, silently coerced, never rejected. Only Fridays, Shabbos and Yom Tov days come back, never ordinary weekdays. Params are case-sensitive and fail SILENTLY too: `locationId` is ignored and falls back to Brooklyn. |
 | Manual | You | — | Per-zman override or fixed offset. `lib/hebrew/candle-times.ts`'s `havdalahShitahSchema` already has a `"custom"` value that is this same idea at the grain of one zman (fixed minutes after sunset) — built for a standalone Havdalah widget that shipped, then got removed in favor of this section. Decide whether it becomes this Manual provider's own Havdalah row or stays separate when this section is built. |
 
 **Canonical zman IDs.** Providers name things differently (`tzeit7083deg` /
@@ -362,8 +362,17 @@ Chabad.org gets Chabad's candle lighting and Hebcal's everything else.
 **Caching.** Postgres table keyed `(provider, location_id, date)`. Twenty Crown
 Heights shuls share the same rows, so one API call serves all of them. This is
 what keeps MyZmanim's per-location billing manageable and limits blast radius if
-Chabad's unofficial endpoint breaks. Warm 90 days ahead on a cron; bundle reads
+Chabad's endpoint breaks. Warm 90 days ahead on a cron; bundle reads
 from cache only, never calls a provider inline.
+
+**Chabad is the exception to the 90 days, and it is the provider's limit,
+not a choice.** Its embed caps at four weeks (~24 days, measured — see the
+table above), so a Chabad-configured shul has roughly a month of fetched
+candle lighting and everything past that resolves through the Hebcal
+fallback with the "showing calculated times" indicator. The 90-day figure
+still holds for Hebcal, which computes client-side and needs no cache at
+all. Sliding that four-week window forward is what makes the daily cron
+matter for coverage rather than only for freshness.
 
 **Fallback chain:** requested provider → cache → Hebcal (client-side, always
 works) → last known good. Surface a subtle "showing calculated times" indicator

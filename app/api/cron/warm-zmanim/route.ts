@@ -4,15 +4,21 @@ import { warmChabadLocation } from "@/lib/zmanim/warm";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
 /*
- * The Chabad cache-warming cron — plan.md §5c: "warm 90 days ahead on a
- * cron; bundle reads from cache only, never calls a provider inline."
+ * The Chabad cache-warming cron — plan.md §5c: "bundle reads from cache
+ * only, never calls a provider inline."
  *
  * ONCE DAILY, not the build worker's 5 minutes (app/api/cron/build-bundles).
  * That route polls fast because a gabbai fixing a davening time before
- * Mincha needs it live; this one refreshes thirteen weeks of candle
+ * Mincha needs it live; this one refreshes about four weeks of candle
  * lighting, which does not change from one hour to the next. Daily is
  * generous against how slowly those minutes move, and it is a courtesy to
  * a published endpoint this product is a guest on.
+ *
+ * FOUR WEEKS IS THE ENDPOINT'S CAP, measured, not a choice — see
+ * WARM_WEEKS in lib/zmanim/warm.ts. Daily therefore also matters for
+ * coverage rather than only for freshness: each run slides the window
+ * forward, and skipping the schedule for a month means dates start
+ * falling through to Hebcal.
  *
  * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
  * the key for its own reason, separate from the warming it delegates: it
@@ -141,8 +147,8 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   // Serially, same reasoning as build-bundles: this is a small, deduped list
   // (twenty Crown Heights shuls collapse to one target — plan.md §5c's own
-  // point of the cache), and an undocumented endpoint is exactly the kind
-  // this project should not hammer concurrently.
+  // point of the cache), and a published endpoint this product is a guest
+  // on is not one to hit concurrently.
   for (const target of targets.values()) {
     results.push({ cacheKey: target.cacheKey, ...(await warmChabadLocation(target)) });
   }

@@ -299,11 +299,13 @@ willingness to offer the option.
 from `CRON_SECRET`'s build-bundles one: a task hitting
 `POST https://<your-domain>/api/cron/warm-zmanim` with
 `Authorization: Bearer <CRON_SECRET>` **once a day**, not every 5 minutes —
-this endpoint is warming 90 days of an endpoint that has no obligation to
-answer quickly, or at all, and candle-lighting minutes don't change fast
-enough to need more than daily. Skipping this step after turning the flag
-on leaves the option selectable and the widget silently stuck on "no time
-yet" forever, since nothing ever populates `zmanim_cache` for it.
+candle-lighting minutes don't change fast enough to need more, and it is a
+courtesy to a published endpoint this product is a guest on. Daily does
+matter, though: Chabad's embed only serves about four weeks at a time
+(plan.md §5c), so each run slides that window forward. Skipping this step
+after turning the flag on leaves the option selectable and every Candle
+Lighting widget permanently on the Hebcal fallback with its "showing
+calculated times" indicator, since nothing ever populates `zmanim_cache`.
 
 ---
 

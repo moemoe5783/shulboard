@@ -26,8 +26,15 @@ import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
  * 1. `weeks=4` DOES NOT MEAN FOUR ENTRIES. It returned 13, spanning 24
  *    days (Fri 9/11 to Sun 10/4) — four Fridays plus each one's Shabbat
  *    plus the extra holiday-ending days around Rosh Hashanah, Yom Kippur
- *    and Sukkot. So `weeks` is weeks of coverage, and a 90-day cache
- *    window needs `weeks=13`.
+ *    and Sukkot. So `weeks` is weeks of coverage.
+ *
+ *    AND FOUR IS THE MAXIMUM. Measured afterwards at two values:
+ *    `weeks=13` and `weeks=52` both return byte-identical responses to
+ *    `weeks=4`, with the response's own final URL rewritten to `weeks=4`.
+ *    Larger values are silently coerced, never rejected — nothing errors
+ *    and nothing warns — so the only way to know is to compare the bodies.
+ *    See `WARM_WEEKS` in warm.ts, which is why that constant is a literal
+ *    4 rather than arithmetic over a day count.
  *
  * 2. THE WEEKDAY IS SOMETIMES "Shabbat", NOT "Saturday" — "Shabbat,
  *    September 12, 2026". V8's `Date.parse` happens to tolerate the
@@ -208,11 +215,11 @@ function verifyLocation(inner: string, locationId: string): string {
  * One location's candle lighting and Shabbos-end times from the published
  * embed.
  *
- * `weeks` is the embed's own unit of coverage, not a day count — see this
- * file's header. The caller asks for what its cache window needs and
- * caches whatever comes back; nothing here assumes the request was
- * honoured in full, and the span is reported so a cap shows up in the log
- * rather than as a quietly short cache.
+ * `weeks` is the embed's own unit of coverage, not a day count, and it
+ * caps at 4 — see this file's header. This function does not enforce that:
+ * it passes whatever it is given, caches whatever comes back, and reports
+ * the span, so a future change to the cap shows up in the log rather than
+ * as a quietly wrong window.
  */
 export async function fetchChabadEmbed(input: {
   locationId: string;
