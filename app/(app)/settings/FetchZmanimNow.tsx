@@ -10,9 +10,8 @@ import { fetchChabadZmanimNow, type FetchZmanimNowState } from "../actions";
  * The warming cron is right for steady state, but after picking Chabad.org
  * a gabbai has nothing to do but wait, and no way to tell "the cron hasn't
  * run yet" from "the cron is broken". This answers that where the setting
- * was changed, and reports the day counts rather than a checkmark: how many
- * days came back, how many carry a candle-lighting time, or the provider's
- * own error.
+ * was changed, and reports how far ahead the screens are now covered
+ * rather than a checkmark — or the provider's own error verbatim.
  *
  * Only rendered when Chabad.org is the selected source — it does nothing
  * for Hebcal or Manual, which never read the cache. The action re-checks
@@ -37,8 +36,9 @@ export function FetchZmanimNow() {
           {pending ? "Fetching" : "Fetch now"}
         </Button>
         <p className="text-meta text-ink-soft">
-          Warms 90 days from chabad.org for the saved ZIP. Runs daily on its
-          own; this is for checking it works.
+          Reads the coming weeks&rsquo; candle lighting and Shabbos end
+          times from chabad.org for the saved ZIP. This runs on its own once
+          a day — use this to check it works, or after changing the ZIP.
         </p>
       </div>
 

@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   const { data, error } = await supabase
     .from("orgs")
-    .select("name, timezone, latitude, longitude, zmanim_provider, postal_code, zmanim_location_id")
+    .select("name, timezone, latitude, longitude, location_label, zmanim_provider, postal_code, zmanim_location_id")
     .eq("id", org.orgId)
     .single();
 
@@ -44,6 +44,7 @@ export default async function SettingsPage() {
           timezone={data.timezone}
           latitude={data.latitude}
           longitude={data.longitude}
+          locationLabel={data.location_label}
           zmanimProvider={data.zmanim_provider}
           postalCode={data.postal_code}
           zmanimLocationId={data.zmanim_location_id}

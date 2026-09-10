@@ -61,6 +61,26 @@ export type GeocodedPlace = {
   label: string;
   latitude: number;
   longitude: number;
+  /**
+   * The result's own postal code, read from LocationIQ's STRUCTURED
+   * `address.postcode`. `geocodeAddress` sends `addressdetails=1`, which
+   * is what makes the endpoint return an `address` object at all; the
+   * other two functions here don't, and don't need to — the ZIP lookup
+   * already knows its own postcode and the reverse lookup is only ever
+   * asked for a place name.
+   *
+   * Deliberately not regexed out of `display_name`. The postcode is in
+   * that string too ("... Pinellas County, Florida, 33701, USA"), but its
+   * position varies by country and a five-digit run in it could equally be
+   * a house number or a road name — parsing prose for a field the response
+   * already gives you structured is how a Florida shul ends up with a ZIP
+   * of 533.
+   *
+   * `null` for a result that carries no postcode: a country that doesn't
+   * use them, or a coarse match like a city centroid. Callers must treat
+   * that as "no new value", never as "clear the stored one".
+   */
+  postcode: string | null;
 };
 
 export type GeocodeOutcome =
@@ -98,7 +118,13 @@ function readPlace(candidate: unknown): GeocodedPlace | null {
   if (latitude === null || longitude === null) return null;
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
 
-  return { label, latitude, longitude };
+  // A missing `address` object is not a failure — `addressdetails=1` is
+  // only sent on the forward search, and a coordinate is still a
+  // coordinate without it.
+  const address = record.address as Record<string, unknown> | undefined;
+  const rawPostcode = address && typeof address.postcode === "string" ? address.postcode.trim() : "";
+
+  return { label, latitude, longitude, postcode: rawPostcode || null };
 }
 
 /**

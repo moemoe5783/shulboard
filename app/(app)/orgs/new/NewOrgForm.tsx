@@ -57,7 +57,14 @@ export function NewOrgForm({
           coordinates" wall first, so this is where the lookup matters most.
           Nothing here is required: createOrg accepts a shul with no
           location and settings can fill it in later. */}
-      <LocationLookup latitude={null} longitude={null} timezone={zone} geocodingConfigured={geocodingConfigured} />
+      <LocationLookup
+        latitude={null}
+        longitude={null}
+        postalCode={null}
+        locationLabel={null}
+        timezone={zone}
+        geocodingConfigured={geocodingConfigured}
+      />
 
       <div>
         <Button type="submit" variant="primary" disabled={pending}>

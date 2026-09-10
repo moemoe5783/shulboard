@@ -78,6 +78,19 @@ const DOCUMENTED_SEARCH_HIT = [
     class: "place",
     type: "house",
     importance: 0.001,
+    // The `address` object `addressdetails=1` adds. `postcode` is the
+    // field the settings form derives the ZIP from — documented, and the
+    // reason the form never regexes the display_name for it.
+    address: {
+      house_number: "770",
+      road: "Eastern Parkway",
+      city: "Brooklyn",
+      county: "Kings County",
+      state: "New York",
+      postcode: "11213",
+      country: "United States",
+      country_code: "us",
+    },
   },
 ];
 
@@ -107,6 +120,96 @@ process.env.GEOCODING_API_KEY = "test-key";
     captured.url?.searchParams.toString(),
   );
   check(captured.url?.searchParams.get("q") === "770 Eastern Parkway Brooklyn", "the query is passed through verbatim");
+}
+
+// ---- the structured postcode the settings form derives the ZIP from ----
+
+{
+  const restore = stubFetch({ body: DOCUMENTED_SEARCH_HIT });
+  const outcome = await geocodeAddress("770 Eastern Parkway Brooklyn");
+  restore();
+  check(
+    outcome.ok && outcome.place.postcode === "11213",
+    "the postcode comes from the STRUCTURED address.postcode, not from display_name",
+    outcome.ok ? String(outcome.place.postcode) : "",
+  );
+}
+
+// The display_name carries the postcode too, which is exactly the trap: a
+// regex over that string is position-dependent and could equally match a
+// house number. A hit with an address object that has no postcode must
+// report null so the form leaves the stored ZIP alone.
+for (const [label, address] of [
+  ["no address object at all (a result without addressdetails)", undefined],
+  ["an address object with no postcode (a city centroid)", { city: "Brooklyn", country_code: "us" }],
+  ["an empty postcode string", { postcode: "   " }],
+  ["a non-string postcode", { postcode: 11213 }],
+] as [string, unknown][]) {
+  const restore = stubFetch({
+    body: [
+      {
+        display_name: "770, Eastern Parkway, Brooklyn, New York, 11213, USA",
+        lat: "40.6693616",
+        lon: "-73.9421534",
+        ...(address === undefined ? {} : { address }),
+      },
+    ],
+  });
+  const outcome = await geocodeAddress("x");
+  restore();
+  check(
+    outcome.ok && outcome.place.postcode === null,
+    `${label}: postcode is null, even though 11213 is in the display_name`,
+    outcome.ok ? String(outcome.place.postcode) : "not ok",
+  );
+  check(
+    outcome.ok && outcome.place.latitude === 40.6693616,
+    `${label}: and the coordinates still resolve — a missing postcode is not a failure`,
+  );
+}
+
+// A non-US result: a real place, a real coordinate, no US-style ZIP. The
+// form must not clear a stored ZIP on the strength of this.
+{
+  const restore = stubFetch({
+    body: [
+      {
+        display_name: "Beit Chabad, Rehov Yafo, Jerusalem, Israel",
+        lat: "31.7857",
+        lon: "35.2007",
+        address: { city: "Jerusalem", country_code: "il" },
+      },
+    ],
+  });
+  const outcome = await geocodeAddress("Jerusalem");
+  restore();
+  check(
+    outcome.ok && outcome.place.postcode === null && outcome.place.latitude === 31.7857,
+    "a non-US result resolves with postcode null rather than failing",
+    outcome.ok ? `${outcome.place.latitude} postcode=${outcome.place.postcode}` : "not ok",
+  );
+}
+
+// A non-US postcode IS returned when the provider gives one — the "leave
+// the stored value alone" rule is about absence, not about country.
+{
+  const restore = stubFetch({
+    body: [
+      {
+        display_name: "Golders Green, London, NW11, United Kingdom",
+        lat: "51.5721",
+        lon: "-0.1943",
+        address: { postcode: "NW11 8LL", country_code: "gb" },
+      },
+    ],
+  });
+  const outcome = await geocodeAddress("Golders Green");
+  restore();
+  check(
+    outcome.ok && outcome.place.postcode === "NW11 8LL",
+    "a non-US postcode is passed through verbatim, not filtered for US shape",
+    outcome.ok ? String(outcome.place.postcode) : "not ok",
+  );
 }
 
 // A numeric lat/lon (were the documented shape ever to change) is accepted

@@ -54,6 +54,21 @@ function parseLocationFields(formData: FormData): { latitude: number | null; lon
   return { latitude, longitude };
 }
 
+/**
+ * The place name the coordinates came from — a cached label for the
+ * settings page to show instead of two decimal numbers.
+ *
+ * Coupled to the coordinates on purpose: a label with no coordinates
+ * describes nothing, so it is dropped in that case rather than stored
+ * alone. The form already clears it whenever the coordinates are edited by
+ * hand (LocationLookup.tsx), and this is the server-side half of the same
+ * rule — a hand-posted label against a blank location cannot get in.
+ */
+function parseLocationLabel(formData: FormData, hasCoordinates: boolean): string | null {
+  if (!hasCoordinates) return null;
+  return String(formData.get("locationLabel") ?? "").trim().slice(0, 300) || null;
+}
+
 const ZMANIM_PROVIDERS = ["hebcal", "chabad", "manual"] as const;
 
 /**
@@ -114,6 +129,12 @@ export async function createOrg(
   if ("error" in location) return { error: location.error };
   const { latitude, longitude } = location;
 
+  // The location lookup derives this from its result (LocationLookup.tsx),
+  // so the new-shul form posts it too. Persisted here rather than dropped:
+  // a gabbai who looks up an address at signup should not have to find the
+  // ZIP again the first time he picks Chabad.org as a zmanim source.
+  const postalCode = String(formData.get("postalCode") ?? "").trim() || null;
+
   const base = slugify(name) || "shul";
   const supabase = await createClient();
 
@@ -135,7 +156,16 @@ export async function createOrg(
     // the policy passes. Slugs are globally unique, so this identifies the row.
     const { error } = await supabase
       .from("orgs")
-      .insert({ name, slug, timezone, latitude, longitude, created_by: user.id });
+      .insert({
+        name,
+        slug,
+        timezone,
+        latitude,
+        longitude,
+        postal_code: postalCode,
+        location_label: parseLocationLabel(formData, latitude !== null),
+        created_by: user.id,
+      });
 
     if (!error) {
       const { data, error: readError } = await supabase
@@ -175,7 +205,18 @@ export async function createOrg(
 
 export type LocationLookupState =
   | { status: "idle" }
-  | { status: "found"; label: string; latitude: number; longitude: number; candleLighting: string | null; candleLightingWhen: string | null }
+  | {
+      status: "found";
+      label: string;
+      latitude: number;
+      longitude: number;
+      /** From LocationIQ's structured `address.postcode`, not scraped out
+       *  of the label. `null` for a result that has none — the form leaves
+       *  the stored ZIP alone in that case rather than clearing it. */
+      postcode: string | null;
+      candleLighting: string | null;
+      candleLightingWhen: string | null;
+    }
   | { status: "failed"; message: string };
 
 /**
@@ -220,7 +261,7 @@ export async function lookupShulLocation(
   const outcome = await geocodeAddress(query);
   if (!outcome.ok) return { status: "failed", message: outcome.message };
 
-  const { label, latitude, longitude } = outcome.place;
+  const { label, latitude, longitude, postcode } = outcome.place;
 
   // A timezone the gabbai hasn't picked yet, or a hand-posted junk value:
   // the preview is worth less without it but the coordinates are still
@@ -228,7 +269,7 @@ export async function lookupShulLocation(
   // the whole lookup.
   const preview = previewCandleLighting({ latitude, longitude, timeZone: timezone });
 
-  return { status: "found", label, latitude, longitude, ...preview };
+  return { status: "found", label, latitude, longitude, postcode, ...preview };
 }
 
 /** Non-throwing on a bad timezone (`Intl` throws on an unknown zone) and on
@@ -346,7 +387,14 @@ export async function updateOrgSettings(
   const supabase = await createClient();
   const { error } = await supabase
     .from("orgs")
-    .update({ name, timezone, latitude, longitude, ...zmanim })
+    .update({
+      name,
+      timezone,
+      latitude,
+      longitude,
+      location_label: parseLocationLabel(formData, latitude !== null),
+      ...zmanim,
+    })
     .eq("id", org.orgId);
 
   if (error) {
@@ -434,7 +482,7 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
     orgZmanimLocationId: data.zmanim_location_id,
   });
   if (!location) {
-    return { status: "failed", message: "Add a US ZIP above and save, then fetch." };
+    return { status: "failed", message: "This shul has no ZIP on file. Look up its address, save, then fetch." };
   }
 
   // Readable under RLS by any signed-in user (the table's one policy), so
@@ -468,19 +516,38 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
     return { status: "failed", message: `Fetching ${location.locationId} failed: ${outcome.error}` };
   }
 
-  const { days, daysWithCandleLighting } = outcome;
-  if (daysWithCandleLighting === 0) {
+  const { datesWithCandleLighting, lastDate } = outcome;
+
+  if (datesWithCandleLighting === 0) {
     return {
       status: "done",
       message:
-        `Fetched ${days} days for ${location.locationId}, but none of them had a candle-lighting time. ` +
-        `That's worth reporting — 90 days always contains Fridays, so it points at chabad.org having changed its response.`,
+        `Fetched ${location.locationId}, but not one date had a candle-lighting time. ` +
+        `Worth reporting — every week in the window has a Friday, so this points at chabad.org ` +
+        `having changed what it sends.`,
     };
   }
+
+  // How far ahead the screens are covered, which is the only thing this
+  // answers that a gabbai can act on. A count of dates alone doesn't say
+  // that, and a count of DAYS would be a fiction: the embed returns only
+  // candle-lighting and Shabbos/Yom-Tov-end days, never the weekdays
+  // between them.
   return {
     status: "done",
-    message: `Fetched ${days} days for ${location.locationId}. ${daysWithCandleLighting} have a candle-lighting time.`,
+    message: `Fetched candle lighting for ${location.locationId} through ${formatCoverageDate(lastDate)}. ${datesWithCandleLighting} dates.`,
   };
+}
+
+/** "2026-10-04" -> "October 4". Read out of a date the embed itself
+ *  returned, so it is already the right calendar day in the shul's own
+ *  zone — parsed as UTC noon rather than midnight so no timezone this
+ *  formatter runs in can roll it back a day. */
+function formatCoverageDate(isoDate: string | null): string {
+  if (!isoDate) return "no date";
+  const parsed = new Date(`${isoDate}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return isoDate;
+  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "UTC" }).format(parsed);
 }
 
 /**

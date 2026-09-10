@@ -22,13 +22,19 @@ import { lookupShulLocation, type LocationLookupState } from "./actions";
  * Chabad.org resolves from. So what shows is what the location IS, as
  * text, and the inputs live behind a disclosure.
  *
- * WHAT THE SUMMARY CAN AND CANNOT SAY. A place name exists only for the
- * page session in which the lookup ran: there is no column storing it, and
- * reverse-geocoding on every settings view to recover a label would be a
- * network call to render a caption. So an org configured before this — or
- * revisited after a reload — shows its actual stored coordinates as text
- * instead. That is less pretty and completely truthful, which is the trade
- * this section exists to make.
+ * WHAT THE SUMMARY SAYS. The resolved place name is persisted
+ * (`orgs.location_label`) and read back on every visit, so returning to
+ * this page shows where the shul is rather than two decimal numbers. That
+ * label is a cached string and nothing computes from it — latitude and
+ * longitude remain the only inputs to any zmanim calculation.
+ *
+ * It can still legitimately be absent: coordinates typed by hand have no
+ * label, and neither do orgs saved before the column existed. The summary
+ * falls back to the coordinates as text there rather than inventing
+ * something, and editing the coordinates by hand clears the label rather
+ * than leaving one that names the wrong place. Nothing reverse-geocodes on
+ * load to fill the gap — that would be a network call and a quota unit
+ * spent rendering a caption.
  *
  * THE LOOKUP IS NEVER A GATE. Manual latitude and longitude are always
  * reachable, and are shown open rather than collapsed when there is no
@@ -43,20 +49,30 @@ import { lookupShulLocation, type LocationLookupState } from "./actions";
 export function LocationLookup({
   latitude,
   longitude,
+  postalCode,
+  locationLabel,
   timezone,
   geocodingConfigured,
   children,
 }: {
   latitude: number | null;
   longitude: number | null;
+  /** The org's stored `postal_code`. Derived from the lookup in the normal
+   *  path and hand-editable under the same disclosure as the coordinates —
+   *  it is plumbing, not a question a gabbai should be asked. */
+  postalCode: string | null;
+  /** The stored place name the coordinates came from — `orgs.location_label`.
+   *  A cached label, never a source of truth: null for coordinates typed by
+   *  hand or saved before the column existed, and the summary falls back to
+   *  the coordinates themselves there rather than pretending. */
+  locationLabel: string | null;
   /** The form's own currently-selected timezone, so the previewed candle
    *  lighting is checked against the zone the gabbai is about to save
    *  rather than the one on file. */
   timezone: string;
   geocodingConfigured: boolean;
-  /** Provider-specific location inputs — the settings form's ZIP and
-   *  Chabad.org location id. Rendered inside this section because they
-   *  answer the same question; the new-shul form passes none. */
+  /** Anything else that belongs to this question — the settings form's
+   *  hidden Chabad location id. The new-shul form passes none. */
   children?: ReactNode;
 }) {
   const [query, setQuery] = useState("");
@@ -68,13 +84,14 @@ export function LocationLookup({
   // survive being typed.
   const [latitudeValue, setLatitudeValue] = useState(latitude === null ? "" : String(latitude));
   const [longitudeValue, setLongitudeValue] = useState(longitude === null ? "" : String(longitude));
+  const [postalCodeValue, setPostalCodeValue] = useState(postalCode ?? "");
 
-  // Which place the coordinates were filled from, cleared the moment they
-  // are edited by hand — a label claiming a place the numbers no longer
-  // match would be the same lie the old coordinate placeholders told.
-  // Null on every fresh page load, by design: see the header comment on
-  // what the summary can and cannot say.
-  const [filledFrom, setFilledFrom] = useState<string | null>(null);
+  // The place name shown in the summary and posted back on save. Seeded
+  // from the stored label, replaced when a lookup is confirmed, and cleared
+  // the moment the coordinates are edited by hand — a label naming a place
+  // the numbers no longer match would be the same lie the old coordinate
+  // placeholders told.
+  const [filledFrom, setFilledFrom] = useState<string | null>(locationLabel);
 
   const hasCoordinates = latitudeValue.trim() !== "" && longitudeValue.trim() !== "";
 
@@ -85,9 +102,19 @@ export function LocationLookup({
     });
   };
 
-  const confirm = (place: { label: string; latitude: number; longitude: number }) => {
+  const confirm = (place: {
+    label: string;
+    latitude: number;
+    longitude: number;
+    postcode: string | null;
+  }) => {
     setLatitudeValue(String(place.latitude));
     setLongitudeValue(String(place.longitude));
+    // Only when the result actually carried one. A lookup that resolved a
+    // place with no postcode — a country that doesn't use them, or a city
+    // centroid — must not wipe a ZIP a gabbai already has on file, since
+    // that is the one field Chabad.org resolves its times from.
+    if (place.postcode) setPostalCodeValue(place.postcode);
     setFilledFrom(place.label);
     setResult({ status: "idle" });
   };
@@ -107,7 +134,15 @@ export function LocationLookup({
           confirming a lookup or editing by hand is reflected immediately. */}
       <div className="rounded-panel border-rule bg-paper border px-4 py-3">
         {filledFrom ? (
-          <p className="text-body text-ink">{filledFrom}</p>
+          <>
+            <p className="text-body text-ink">{filledFrom}</p>
+            {/* The numbers stay visible, quietly. They are what every zmanim
+                calculation actually reads, so a gabbai checking the place
+                name shouldn't have to open the disclosure to see them. */}
+            <p className="text-meta text-ink-soft numeric mt-1">
+              {latitudeValue}, {longitudeValue}
+            </p>
+          </>
         ) : hasCoordinates ? (
           <>
             <p className="text-body text-ink numeric">
@@ -259,8 +294,24 @@ export function LocationLookup({
             For a shul the lookup can&rsquo;t find. Fill in both, or leave
             both blank.
           </p>
+
+          <Field
+            id="postalCode"
+            name="postalCode"
+            label="ZIP code"
+            className="mt-2"
+            value={postalCodeValue}
+            onChange={(event) => setPostalCodeValue(event.target.value)}
+            hint="US only, and the lookup fills it in. Chabad.org can't take coordinates, so it resolves its times from this ZIP's center rather than from the coordinates above — expect a minute's difference from Hebcal. A lookup outside the US leaves this alone instead of clearing it, so check it by hand there."
+          />
         </div>
       </details>
+
+      {/* Posted so the place name survives the page. Hidden rather than a
+          field: it is not something a gabbai should type or correct, it is
+          a record of what the lookup resolved, and it is cleared above the
+          moment the coordinates stop matching it. */}
+      <input type="hidden" name="locationLabel" value={filledFrom ?? ""} />
 
       {children}
     </div>

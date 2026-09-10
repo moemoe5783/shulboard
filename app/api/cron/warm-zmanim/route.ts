@@ -4,16 +4,15 @@ import { warmChabadLocation } from "@/lib/zmanim/warm";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
 /*
- * The Chabad cache-warming cron — plan.md §5c: "Warm 90 days ahead on a
+ * The Chabad cache-warming cron — plan.md §5c: "warm 90 days ahead on a
  * cron; bundle reads from cache only, never calls a provider inline."
  *
  * ONCE DAILY, not the build worker's 5 minutes (app/api/cron/build-bundles).
  * That route polls fast because a gabbai fixing a davening time before
- * Mincha needs it live; this one is warming 90 days of an unofficial,
- * undocumented endpoint that doesn't need or want to be hit every five
- * minutes — daily is already generous against how slowly candle-lighting
- * minutes actually change, and it's kinder to an endpoint this project has
- * no ToS with (plan.md §10.4).
+ * Mincha needs it live; this one refreshes thirteen weeks of candle
+ * lighting, which does not change from one hour to the next. Daily is
+ * generous against how slowly those minutes move, and it is a courtesy to
+ * a published endpoint this product is a guest on.
  *
  * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
  * the key for its own reason, separate from the warming it delegates: it
@@ -124,14 +123,19 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   // Three outcomes per target, not two — the distinction between "fetched
   // fine, nothing to light" and "the fetch broke" is made in
-  // lib/zmanim/warm.ts, which explains why zero candle lightings across a
-  // 90-day window is a signal rather than a failure. This route only counts
-  // them up.
+  // lib/zmanim/warm.ts, which explains why zero candle lightings across the
+  // whole coverage window is a signal rather than a failure. This route
+  // only counts them up.
+  //
+  // `dates`, not days: the embed returns only candle-lighting and
+  // Shabbos/Yom-Tov-end days, so there is no window-length day count to
+  // report and never was.
   const results: {
     cacheKey: string;
     status: "warmed" | "warmed-no-candle-lighting" | "failed";
-    days?: number;
-    daysWithCandleLighting?: number;
+    dates?: number;
+    datesWithCandleLighting?: number;
+    lastDate?: string | null;
     error?: string;
   }[] = [];
 

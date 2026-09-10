@@ -62,22 +62,29 @@ export type WarmOutcome =
        * deliberately excludes (test/fixtures/chabad-zmanim-33710-sep2026
        * .json's 9/12 entry).
        *
-       * Over 90 days, though, zero is a different claim from "this Thursday
-       * has none": a real location always has Fridays in a 90-day window,
-       * so zero across the whole span is the signature of a silent
-       * response-shape regression — exactly what bit this adapter, when
-       * `item.Date` parsing skipped every day and nothing anywhere said so.
-       * Telling the two apart is the point, for the cron's JSON and for the
-       * gabbai reading the settings page's own "Fetch now" line alike.
+       * Across thirteen weeks, though, zero is a different claim: every
+       * one of those weeks contains a Friday, so zero candle lightings in
+       * the whole response is the signature of a silent shape change —
+       * which is exactly what bit the previous reader, when a parsing bug
+       * skipped every day and nothing anywhere said so. Telling the two
+       * apart is the point, for the cron's JSON and for the gabbai reading
+       * the settings page's own "Fetch now" line alike.
        */
       status: "warmed" | "warmed-no-candle-lighting";
-      days: number;
-      daysWithCandleLighting: number;
+      /** Dates the response carried a value for — candle lighting or a
+       *  Shabbos/Yom Tov end time. NOT a day count of the window: the
+       *  embed returns only those days, never ordinary weekdays. */
+      dates: number;
+      datesWithCandleLighting: number;
+      /** The last date covered, `YYYY-MM-DD`, or null if nothing came
+       *  back. This is the number that answers "how far ahead am I
+       *  covered", which is the only thing a gabbai wants from a fetch. */
+      lastDate: string | null;
     }
   | { status: "failed"; error: string };
 
 /**
- * Fetches and upserts 90 days for one location. Never throws: every caller
+ * Fetches and upserts one location's coverage window. Never throws: every caller
  * reports an outcome rather than a stack trace — the cron into its JSON
  * response, the settings button into a line a gabbai reads.
  *
@@ -142,11 +149,12 @@ export async function warmChabadLocation(
         }),
     );
 
-    const daysWithCandleLighting = Object.values(times).filter((day) => day.candle_lighting).length;
+    const datesWithCandleLighting = Object.values(times).filter((day) => day.candle_lighting).length;
     return {
-      status: daysWithCandleLighting > 0 ? "warmed" : "warmed-no-candle-lighting",
-      days: rows.length,
-      daysWithCandleLighting,
+      status: datesWithCandleLighting > 0 ? "warmed" : "warmed-no-candle-lighting",
+      dates: rows.length,
+      datesWithCandleLighting,
+      lastDate,
     };
   } catch (cause) {
     return { status: "failed", error: cause instanceof Error ? cause.message : String(cause) };

@@ -12,6 +12,7 @@ export function OrgSettingsForm({
   timezone,
   latitude,
   longitude,
+  locationLabel,
   zmanimProvider,
   postalCode,
   zmanimLocationId,
@@ -24,6 +25,7 @@ export function OrgSettingsForm({
   timezone: string;
   latitude: number | null;
   longitude: number | null;
+  locationLabel: string | null;
   zmanimProvider: string;
   postalCode: string | null;
   zmanimLocationId: string | null;
@@ -92,28 +94,11 @@ export function OrgSettingsForm({
         <LocationLookup
           latitude={latitude}
           longitude={longitude}
+          postalCode={postalCode}
+          locationLabel={locationLabel}
           timezone={zone}
           geocodingConfigured={geocodingConfigured}
         >
-          {isChabad ? (
-            <>
-              <Field
-                id="postalCode"
-                name="postalCode"
-                label="ZIP code"
-                defaultValue={postalCode ?? ""}
-                hint="US only. Chabad.org has no way to accept coordinates, so it resolves its times from the center of this ZIP rather than from the location above — expect its times to differ from Hebcal's by a minute or so."
-              />
-              <FetchZmanimNow />
-            </>
-          ) : (
-            /* Hebcal and Manual don't read the ZIP, so the field is hidden —
-               but the form is what the save reads, so without this the
-               stored value would be wiped the first time a gabbai saved on
-               Hebcal, and switching back to Chabad.org would find it gone. */
-            <input type="hidden" name="postalCode" value={postalCode ?? ""} />
-          )}
-
           {/*
             THERE IS NO "Chabad.org location" FIELD, and that is deliberate.
 
@@ -122,21 +107,23 @@ export function OrgSettingsForm({
             shul with no US ZIP. Nothing can use it: lib/zmanim/chabad-embed
             .ts hardcodes locationtype=2, and every path a gabbai can reach
             resolves to a ZIP anyway.
-            There was also no way for a gabbai to tell the two kinds of
-            number apart, so the field collected ZIPs — which resolve as
-            city ids, silently asking Chabad for the wrong place if the ZIP
-            field above were ever cleared.
 
             THE COLUMN STAYS (supabase/migrations/20260909090000_orgs_zmanim
             _location_id.sql) and is still read by resolveChabadLocation, the
             bundle builder and the warming cron. Non-US shuls are where it
             comes back: that is the case a ZIP cannot express, and it needs a
             locationtype selector beside it to be usable at all rather than
-            one more numeric box. Any stored value is preserved below rather
+            one more numeric box. Any stored value is preserved here rather
             than dropped by this field's removal.
           */}
           <input type="hidden" name="zmanimLocationId" value={zmanimLocationId ?? ""} />
         </LocationLookup>
+
+        {/* Chabad.org is the only source that reads the ZIP, so this is the
+            only source that gets a button to fetch from. The field itself
+            lives with the location above, derived by the lookup, because it
+            is plumbing either way. */}
+        {isChabad && <FetchZmanimNow />}
       </fieldset>
 
       {canEdit ? (
