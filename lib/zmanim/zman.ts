@@ -22,6 +22,7 @@ export type ChabadClockZman = {
   display: string;
   footnote?: ChabadFootnote;
   label?: string;
+  hebrewLabel?: string;
 };
 
 /**
@@ -44,6 +45,7 @@ export type ChabadDurationZman = {
   display: string;
   footnote?: ChabadFootnote;
   label?: string;
+  hebrewLabel?: string;
 };
 
 /**
@@ -82,6 +84,20 @@ export type ChabadFootnote = { type: string; text: string | null };
  * back to `ZMAN_PANEL_LABEL` below, which is the only place house
  * vocabulary is allowed to reach a board — and only in the absence of the
  * provider's own.
+ *
+ * `hebrewLabel` IS THE PROVIDER'S OWN HEBREW, and it only exists when the
+ * response carried the nested `TimeGroups` shape — the flat one has no
+ * Hebrew at all (chabad-adapter.ts's note on the two shapes). It is
+ * per-day rather than per-type on purpose: Chabad sent "הדלקת נרות" for
+ * `ShabbatEndTime` on the second night of a two-day Yom Tov and "צאת החג"
+ * for the same type the next day, a halachic distinction its own English
+ * title flattens away.
+ *
+ * THERE IS DELIBERATELY NO HOUSE HEBREW TABLE. When a row has no
+ * `hebrewLabel`, the Hebrew option falls back to the provider's English
+ * rather than to names this project asserted — showing a zman under a
+ * Hebrew name the provider did not send would be this product making a
+ * halachic claim, which is a different thing from displaying theirs.
  */
 
 export type ChabadZman = ChabadClockZman | ChabadDurationZman;
