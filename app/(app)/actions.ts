@@ -11,6 +11,8 @@ import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, re
 import { SIGN_IN_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { searchChabadLocations } from "@/lib/zmanim/chabad-locations";
+import { fetchChabadZmanim } from "@/lib/zmanim/chabad-adapter";
 import { warmChabadLocation } from "@/lib/zmanim/warm";
 
 const YEAR = 60 * 60 * 24 * 365;
@@ -93,13 +95,40 @@ function parseLocationLabel(formData: FormData, hasCoordinates: boolean): string
  */
 function parseZmanimFields(
   formData: FormData,
-): { postal_code: string | null; zmanim_location_id: string | null } {
+): {
+  postal_code: string | null;
+  zmanim_location_id: string | null;
+  zmanim_location_type: string | null;
+  zmanim_location_name: string | null;
+} {
   const postalCode = String(formData.get("postalCode") ?? "").trim();
   const zmanimLocationId = String(formData.get("zmanimLocationId") ?? "").trim();
+  const zmanimLocationType = String(formData.get("zmanimLocationType") ?? "").trim();
+  const zmanimLocationName = String(formData.get("zmanimLocationName") ?? "").trim();
+
+  /*
+   * THE THREE SEARCHED FIELDS MOVE TOGETHER OR NOT AT ALL. An id without
+   * its type is an id whose meaning is a guess, and an id without its name
+   * cannot be verified against the zmanim response — which is the whole
+   * defence against caching another country's times
+   * (lib/zmanim/chabad-adapter.ts). So a post carrying only some of them
+   * clears all three rather than storing a half-configured location that
+   * looks configured.
+   *
+   * The type is checked against the same two values the column's own CHECK
+   * constraint allows, so a hand-crafted POST cannot get a third value as
+   * far as a database error.
+   */
+  const searched =
+    zmanimLocationId && (zmanimLocationType === "1" || zmanimLocationType === "2") && zmanimLocationName
+      ? { id: zmanimLocationId, type: zmanimLocationType, name: zmanimLocationName }
+      : null;
 
   return {
     postal_code: postalCode || null,
-    zmanim_location_id: zmanimLocationId || null,
+    zmanim_location_id: searched?.id ?? null,
+    zmanim_location_type: searched?.type ?? null,
+    zmanim_location_name: searched?.name ?? null,
   };
 }
 
@@ -297,6 +326,148 @@ function previewCandleLighting(location: {
   }
 }
 
+export type ChabadCitySearchState =
+  | { status: "idle" }
+  | { status: "failed"; message: string }
+  | {
+      status: "found";
+      suggestions: { value: string; type: "1" | "2"; title: string }[];
+      truncated: boolean;
+    };
+
+/**
+ * Chabad.org's own location search, for a shul with no US ZIP — plan.md
+ * §5c, and the thing that makes `locationtype=1` reachable at all.
+ *
+ * ADMIN, and not merely signed-in like `lookupShulLocation` is. That one is
+ * deliberately looser because it also runs on the new-shul form, where the
+ * user has no org yet; this only ever runs in settings, and it puts
+ * requests on an endpoint this product is a guest on — so the narrower
+ * gate is the right one and costs nothing.
+ *
+ * Gated on ZMANIM_CHABAD_ENABLED too. Searching is harmless in itself, but
+ * offering a search whose result cannot be fetched against would be
+ * offering a dead end.
+ */
+export async function searchChabadCity(query: string): Promise<ChabadCitySearchState> {
+  const org = await requireActiveOrg();
+  if (!hasRoleAtLeast(org.role, "admin")) {
+    return { status: "failed", message: "Only an owner or admin can change shul settings." };
+  }
+  if (process.env.ZMANIM_CHABAD_ENABLED !== "true") {
+    return { status: "failed", message: "Chabad.org isn't turned on for this product yet." };
+  }
+
+  const outcome = await searchChabadLocations(query);
+  if (!outcome.ok) return { status: "failed", message: outcome.message };
+
+  return {
+    status: "found",
+    suggestions: outcome.suggestions.map(({ value, type, title }) => ({ value, type, title })),
+    truncated: outcome.truncated,
+  };
+}
+
+export type ChabadCityCheckState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "failed"; message: string }
+  | {
+      status: "confirmed";
+      /** The name chabad.org's zmanim endpoint itself returned for this id
+       *  — the thing being confirmed, not the thing that was asked for. */
+      locationName: string;
+      candleLighting: string | null;
+      candleLightingWhen: string | null;
+    };
+
+/**
+ * Confirms a searched location by actually fetching zmanim for it, and
+ * showing back what chabad.org says the place is called and when it lights
+ * this Friday.
+ *
+ * THIS IS THE CONFIRM STEP, and it is a stronger one than the address
+ * lookup's. That one previews a candle lighting @hebcal/core computes from
+ * the coordinates it just resolved — a good sanity check on coordinates and
+ * a timezone. This one exercises the entire path the board will use: the
+ * id, the type, the case-sensitive parameters, and the verification of the
+ * response's own `LocationName` against the Title the search returned. A
+ * mismatch surfaces here, before anything is written, instead of silently
+ * at the next warm.
+ *
+ * EIGHT DAYS, not the ninety-two a warm asks for. A confirmation needs one
+ * Friday in range and nothing more, and this runs on a button a gabbai may
+ * press several times while choosing between suggestions — putting a
+ * hundred-kilobyte request behind each press on an endpoint this product is
+ * a guest on would be rude for no gain.
+ *
+ * Nothing is cached by this. It reads and reports; the warming cron and the
+ * "Fetch now" button are what write `zmanim_cache`.
+ */
+export async function checkChabadCity(
+  value: string,
+  type: string,
+  title: string,
+): Promise<ChabadCityCheckState> {
+  const org = await requireActiveOrg();
+  if (!hasRoleAtLeast(org.role, "admin")) {
+    return { status: "failed", message: "Only an owner or admin can change shul settings." };
+  }
+  if (process.env.ZMANIM_CHABAD_ENABLED !== "true") {
+    return { status: "failed", message: "Chabad.org isn't turned on for this product yet." };
+  }
+  if (type !== "1" && type !== "2") {
+    return { status: "failed", message: "That location came back in a shape this app didn't understand." };
+  }
+
+  const supabase = await createClient();
+  const { data } = await supabase.from("orgs").select("timezone").eq("id", org.orgId).single();
+  // The saved timezone, not one posted from the form: this call converts
+  // wall-clock strings to instants with it, and a wrong zone would move
+  // the previewed time by an hour while the id itself was perfectly good.
+  const timeZone = data?.timezone ?? "UTC";
+
+  const today = new Date().toISOString().slice(0, 10);
+  const [year, month, day] = today.split("-").map(Number);
+  const end = new Date(Date.UTC(year, month - 1, day + 7)).toISOString().slice(0, 10);
+
+  try {
+    const result = await fetchChabadZmanim({
+      locationId: value,
+      locationType: type,
+      expectedName: title,
+      startDate: today,
+      endDate: end,
+      timeZone,
+    });
+
+    const lightingDate = result.candleLightingDates[0];
+    const lighting = lightingDate ? result.times[lightingDate]?.candle_lighting : undefined;
+
+    return {
+      status: "confirmed",
+      locationName: result.location,
+      // Chabad's own rendered string, verbatim — §5c, and the point of
+      // showing it: a gabbai judges the time, not the id.
+      candleLighting: lighting && "display" in lighting ? lighting.display : null,
+      candleLightingWhen: lightingDate
+        ? new Intl.DateTimeFormat("en-US", {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            timeZone: "UTC",
+          }).format(new Date(`${lightingDate}T12:00:00Z`))
+        : null,
+    };
+  } catch (cause) {
+    // The verification failure verbatim, not a paraphrase. If the response
+    // came back for Brooklyn, the message names Brooklyn — which is the
+    // one sentence that tells a gabbai the suggestion he picked is not the
+    // place he wanted.
+    return { status: "failed", message: cause instanceof Error ? cause.message : String(cause) };
+  }
+}
+
 export type UpdateOrgSettingsState = { error?: string; saved?: boolean; warning?: string };
 
 /** ~30 miles. Wide enough that a shul's ZIP centroid and its actual
@@ -467,7 +638,7 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orgs")
-    .select("timezone, postal_code, zmanim_location_id")
+    .select("timezone, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
     .eq("id", org.orgId)
     .single();
 
@@ -478,9 +649,15 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
   const location = resolveChabadLocation({
     orgPostalCode: data.postal_code,
     orgZmanimLocationId: data.zmanim_location_id,
+    orgZmanimLocationType: data.zmanim_location_type,
+    orgZmanimLocationName: data.zmanim_location_name,
   });
   if (!location) {
-    return { status: "failed", message: "This shul has no ZIP on file. Look up its address, save, then fetch." };
+    return {
+      status: "failed",
+      message:
+        "This shul has no ZIP or Chabad.org city on file. Look one up in the location section, save, then fetch.",
+    };
   }
 
   // Readable under RLS by any signed-in user (the table's one policy), so

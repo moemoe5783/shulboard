@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   const { data, error } = await supabase
     .from("orgs")
-    .select("name, timezone, latitude, longitude, location_label, postal_code, zmanim_location_id")
+    .select("name, timezone, latitude, longitude, location_label, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
     .eq("id", org.orgId)
     .single();
 
@@ -47,10 +47,14 @@ export default async function SettingsPage() {
           locationLabel={data.location_label}
           postalCode={data.postal_code}
           zmanimLocationId={data.zmanim_location_id}
-          // Off by default (docs/environment.md) — an admin can't select an
-          // option this build isn't ready to serve. The action that saves
-          // this form checks the same flag again server-side; this only
-          // controls what the form offers.
+          zmanimLocationType={data.zmanim_location_type}
+          zmanimLocationName={data.zmanim_location_name}
+          // Off by default (docs/environment.md). There is no longer a
+          // provider option for this to hide — Chabad.org is the only
+          // source — so what it controls now is whether the city search
+          // reaches chabad.org at all, and the form says so when it is
+          // off. Both server actions behind that search re-check the same
+          // flag; this only controls what the form offers.
           chabadEnabled={process.env.ZMANIM_CHABAD_ENABLED === "true"}
           // Whether GEOCODING_API_KEY is set (docs/environment.md). Without
           // it the form says so and points at the coordinate fields, rather

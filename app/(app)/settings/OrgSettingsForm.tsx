@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { updateOrgSettings, type UpdateOrgSettingsState } from "../actions";
+import { ChabadCityLookup } from "./ChabadCityLookup";
 import { FetchZmanimNow } from "./FetchZmanimNow";
 import { LocationLookup } from "../LocationLookup";
 
@@ -15,6 +16,8 @@ export function OrgSettingsForm({
   locationLabel,
   postalCode,
   zmanimLocationId,
+  zmanimLocationType,
+  zmanimLocationName,
   chabadEnabled,
   geocodingConfigured,
   timezones,
@@ -27,6 +30,8 @@ export function OrgSettingsForm({
   locationLabel: string | null;
   postalCode: string | null;
   zmanimLocationId: string | null;
+  zmanimLocationType: string | null;
+  zmanimLocationName: string | null;
   chabadEnabled: boolean;
   geocodingConfigured: boolean;
   timezones: string[];
@@ -95,7 +100,8 @@ export function OrgSettingsForm({
           commit message.
         */}
         <p className="text-meta text-ink-soft">
-          Zmanim and candle lighting come from Chabad.org, looked up by the ZIP below.
+          Zmanim and candle lighting come from Chabad.org, looked up by the ZIP below — or, for a shul outside
+          the US, by a city from Chabad.org&rsquo;s own list.
           {!chabadEnabled && " Chabad.org isn't turned on for this deployment yet, so nothing is fetched."}
         </p>
 
@@ -108,31 +114,29 @@ export function OrgSettingsForm({
           geocodingConfigured={geocodingConfigured}
         >
           {/*
-            THERE IS NO "Chabad.org location" FIELD, and that is deliberate.
+            THE "Chabad.org location" FIELD IS BACK, AS A SEARCH.
 
-            It wrote orgs.zmanim_location_id, and its purpose was Chabad's
-            locationtype=1 — their own opaque internal city numbering, for a
-            shul with no US ZIP. No path a gabbai can reach produces one:
-            resolveChabadLocation only returns locationtype=1 for a value
-            already in that column, and the lookup only ever writes a ZIP.
+            It was removed as a bare text box because it was unusable three
+            ways over: a gabbai had to dig an opaque numeric id out of a
+            chabad.org URL, nothing said whether that id was a city or a
+            ZIP, and a wrong one cached another country's times silently
+            because the response carried nothing to check it against. The
+            note that stood here said a field needed that gap closed too,
+            not just a box.
 
-            The reader would now honour one — lib/zmanim/chabad-adapter.ts
-            passes locationType through rather than hardcoding 2, which the
-            embed did — but honouring it is not the same as being able to
-            verify it: verifyLocationName can only check a ZIP against the
-            returned LocationName, so a wrong city id would be cached
-            silently. A field here needs that gap closed too, not just a
-            box.
-
-            THE COLUMN STAYS (supabase/migrations/20260909090000_orgs_zmanim
-            _location_id.sql) and is still read by resolveChabadLocation, the
-            bundle builder and the warming cron. Non-US shuls are where it
-            comes back: that is the case a ZIP cannot express, and it needs a
-            locationtype selector beside it to be usable at all rather than
-            one more numeric box. Any stored value is preserved here rather
-            than dropped by this field's removal.
+            `Get_Locations` closes all three — id, type, and a Title the
+            zmanim response's own LocationName is verified against — so
+            what replaces the box is ChabadCityLookup below, inside this
+            same "where is this shul?" question rather than beside it as a
+            fourth competing field.
           */}
-          <input type="hidden" name="zmanimLocationId" value={zmanimLocationId ?? ""} />
+          <ChabadCityLookup
+            postalCode={postalCode}
+            locationId={zmanimLocationId}
+            locationType={zmanimLocationType}
+            locationName={zmanimLocationName}
+            chabadEnabled={chabadEnabled}
+          />
         </LocationLookup>
 
         {/* Unconditional now — Chabad.org is the only source, so there is
