@@ -154,40 +154,56 @@ try {
   const added = boxesText.slice(-4);
   check(added.every((t) => t.length > 0), "every new widget renders non-empty text", added.join(" | "));
 
-  // ---- the fallback indicator stays OFF on a Hebcal board ----------------
+  // ---- neither notice exists on a board any more -------------------------
   //
-  // lib/zmanim/resolve.ts's "showing calculated times" notice
-  // (widgets/candle-lighting/Renderer.tsx) fires only when the resolved
-  // provider is Chabad and its cache has nothing for the date about to
-  // happen. editor-lab is a plain Hebcal board — DEFAULT_BOARD_ZMANIM,
-  // lib/board-zmanim.tsx — so the indicator must not render here at all.
-  // This is the rendered half of that isolation proof; the value-level half,
-  // across every provider and a real cache dict, is
-  // scripts/test-zmanim-fallback.ts.
+  // Two things used to render alongside candle lighting and both are gone,
+  // for unrelated reasons, so these are guards against either coming back:
   //
-  // The indicator APPEARING is not asserted here, and can't be: editor-lab
-  // has no way to seed a Chabad provider or a cache dict, and adding a
-  // surface-specific one would be the editor/display fork CLAUDE.md forbids
-  // arriving as a test fixture. It's covered at the resolver instead.
+  //   "Showing calculated times" went with the calculated path itself.
+  //   Chabad.org is the only zmanim source (lib/zmanim/provider.ts), so a
+  //   date it hasn't published shows the unavailable state rather than a
+  //   computed time with a caveat. An indicator that can never fire is
+  //   worse than no indicator, and one that fires now would mean the
+  //   Hebcal fallback had been quietly wired back in.
+  //
+  //   "Times by Chabad.org" went because the premise was wrong: permission
+  //   for the data was granted directly and no credit was asked for. See
+  //   the comment at the removal site in
+  //   widgets/candle-lighting/Renderer.tsx before re-adding it on the
+  //   assumption that it is a licence requirement.
+  //
+  // WHAT THIS BOARD ACTUALLY SHOWS NOW. editor-lab carries no zmanim
+  // context, so it gets DEFAULT_BOARD_ZMANIM (lib/board-zmanim.tsx) —
+  // Chabad, with no location on file — and the widget renders its "hasn't
+  // set a ZIP or Chabad.org location yet" empty state. That is the same
+  // state a real shul with no ZIP sees, which makes this page a truer
+  // preview than it was when it showed a Hebcal-computed time.
   const candleLightingBox = page.locator("[data-widget-id]").nth(7);
   const candleLightingText = (await candleLightingBox.textContent()) ?? "";
   check(
     !/calculated times/i.test(candleLightingText),
-    "a Hebcal-provider candle lighting widget renders no 'showing calculated times' indicator",
+    "the candle lighting widget renders no 'showing calculated times' indicator",
     candleLightingText.trim(),
   );
   check(
     !/calculated times/i.test((await page.locator("body").textContent()) ?? ""),
-    "and nothing anywhere else on a Hebcal board renders it either",
+    "and nothing anywhere else on the board renders it either",
   );
-  // There is no Chabad attribution on any board any more — permission for
-  // the data was granted directly and no credit was asked for (see the
-  // comment at the removal site in widgets/candle-lighting/Renderer.tsx).
-  // Kept as a guard against it being re-added on the assumption that it is
-  // a licence requirement.
+  // NARROWED FROM /chabad/i ON PURPOSE. That regex was right while nothing
+  // on a board could legitimately say the word; the empty state now names
+  // Chabad.org as the thing needing a location, which is exactly the
+  // sentence a gabbai needs and is not an attribution. So this asserts the
+  // attribution's own shape — "by Chabad.org", "powered by Chabad.org" —
+  // rather than the brand name, and the assertion below keeps the empty
+  // state honest so narrowing it did not just make it pass.
   check(
-    !/chabad/i.test(candleLightingText),
+    !/(times|powered)\s+by\s+chabad/i.test(candleLightingText),
     "no Chabad.org attribution renders on a board",
+    candleLightingText.trim(),
+  );
+  check(
+    /hasn't set a ZIP or Chabad\.org location/i.test(candleLightingText),
+    "and the widget is in its no-location empty state, which is what makes that mention legitimate",
     candleLightingText.trim(),
   );
 

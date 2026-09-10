@@ -467,10 +467,31 @@ check(clock("2026-09-10", "chatzos_laila")?.iso === "2026-09-11T05:27:00.000Z",
 check(clock("2026-10-31", "chatzos_laila")?.iso === "2026-11-01T05:14:00.000Z",
   "and 10/31's 1:14 AM resolves to the FIRST of the two 1:14 AMs on 11/1 (EDT), which is the solar midpoint",
   clock("2026-10-31", "chatzos_laila")?.iso);
+/*
+ * BY LOCAL CALENDAR DATE IN THE SHUL'S ZONE, not by slicing the ISO
+ * string. Those agree here — America/New_York is west of Greenwich, so a
+ * 1:27 AM local instant has a UTC date one day ahead and a slice reads the
+ * rollover correctly — and they disagree east of it, where 01:30 local can
+ * be 23:30 UTC the previous day. The slice version of this assertion
+ * failed the first time it was pointed at Europe/Zurich, on values that
+ * were entirely correct; scripts/test-zmanim-international.ts keeps that
+ * failure as its own assertion. This is the honest expression of the rule
+ * in either hemisphere.
+ */
+const localDate = (instant: Date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: REQUEST.timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+};
 check(
   dates.every((date) => {
     const value = times[date]["chatzos_laila"];
-    return value !== undefined && isClockZman(value) && value.iso.slice(0, 10) !== date;
+    return value !== undefined && isClockZman(value) && localDate(new Date(value.iso)) !== date;
   }),
   "every one of the 92 chatzos_laila instants falls on the day after its own cache row — the one place date and iso differ",
 );
@@ -497,9 +518,9 @@ check(FIXTURE.LocationId === null,
 const brooklyn = { ...FIXTURE, LocationName: "Brooklyn, NY 11213" };
 const restoreBrooklyn = stubFetch(brooklyn);
 await expectThrow(
-  "a response for another city is refused rather than cached",
+  "a ZIP response for another city is refused rather than cached",
   () => fetchChabadZmanim(REQUEST),
-  'asked for 33701 but the response is for "Brooklyn, NY 11213"',
+  'asked for ZIP 33701 but the response is for "Brooklyn, NY 11213"',
 );
 restoreBrooklyn();
 
@@ -511,6 +532,67 @@ await expectThrow(
   "no LocationName in the response",
 );
 restoreNameless();
+
+console.log("\n-- a city id verifies against its searched Title ------------");
+
+/*
+ * THE GAP THIS CLOSES. A `locationtype=1` response carries no id to match
+ * and `LocationId` comes back null, so until `Get_Locations` existed there
+ * was nothing to check a city id against — "Brooklyn, NY" is a perfectly
+ * normal-looking answer to a request that was supposed to be Lugano, and
+ * the settings form said so where the field would have been.
+ *
+ * These reuse the 33701 fixture body and vary only the LocationName, which
+ * is the one field the check reads. That is the same thing the ZIP
+ * assertions above do, and it is legitimate here for the same reason: a
+ * wrong-location response is byte-for-byte normal apart from that string.
+ */
+const CITY = {
+  locationId: "872",
+  locationType: "1" as const,
+  expectedName: "Lugano, Switzerland",
+  startDate: "2026-09-10",
+  endDate: "2026-12-10",
+  timeZone: "Europe/Zurich",
+};
+
+for (const [servedName, label] of [
+  ["Lugano, Switzerland", "the exact Title"],
+  ["Lugano,  Switzerland", "the Title with chabad.org's own doubled space"],
+  ["LUGANO, SWITZERLAND", "a different case"],
+  ["Lugano TI, Switzerland", "a region spelled differently — the city token is what is compared"],
+] as const) {
+  const restoreCity = stubFetch({ ...FIXTURE, LocationName: servedName });
+  const result = await fetchChabadZmanim(CITY);
+  restoreCity();
+  check(result.location === servedName, `city id accepted with ${label}`, servedName);
+}
+
+for (const [servedName, label] of [
+  ["Brooklyn, NY 11213", "the default location a case-wrong parameter serves"],
+  ["Zurich, Switzerland", "the right country, the wrong city"],
+] as const) {
+  const restoreCity = stubFetch({ ...FIXTURE, LocationName: servedName });
+  await expectThrow(
+    `city id REFUSED when served ${label}`,
+    () => fetchChabadZmanim(CITY),
+    `asked for "Lugano, Switzerland" (locationid 872) but the response is for "${servedName}"`,
+  );
+  restoreCity();
+}
+
+{
+  // An id stored before the search existed has no name to verify. Logged
+  // loudly, not refused: that configuration worked unverified before this
+  // check, and blanking a board to enforce a check it predates would be
+  // this change breaking what it was meant to protect.
+  const restoreCity = stubFetch({ ...FIXTURE, LocationName: "Brooklyn, NY 11213" });
+  const result = await fetchChabadZmanim({ ...CITY, expectedName: null });
+  restoreCity();
+  check(result.location === "Brooklyn, NY 11213",
+    "a city id with NO stored name is cached unverified rather than refused",
+    result.location);
+}
 
 console.log("");
 const failed = results.filter((r) => !r.ok).length;

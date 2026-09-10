@@ -269,18 +269,22 @@ is present and bad; the latter means it never reached the deployment at all.
 §5c and §10.4. Set to the exact string `true` to turn it on; anything else,
 including unset, means off.
 
-`app/api/cron/warm-zmanim/route.ts` is the check that matters: it no-ops —
+Three things read it. `app/api/cron/warm-zmanim/route.ts` no-ops —
 returns `{"enabled": false, "warmed": 0}` without touching the database or
-chabad.org — when this isn't `true`. That is what actually stops any
-request reaching chabad.org, and it is why the flag is defence in depth
-rather than a UI preference.
+chabad.org — when this isn't `true`; and the two server actions behind the
+org settings page's Chabad.org **city search** (`searchChabadCity` and
+`checkChabadCity`) refuse before making a request. Together those are what
+actually stop anything reaching chabad.org, which is why the flag is
+defence in depth rather than a UI preference.
 
-**It no longer gates a settings option, because there isn't one.**
+**It no longer gates a provider option, because there isn't one.**
 Chabad.org is the only zmanim source (`lib/zmanim/provider.ts`), so the org
 settings page's "Zmanim source" select is gone rather than reduced to a
-single item. What the flag decides now is whether the ZIP that page
-collects is ever fetched against; the page says so in one line when it is
-off, and the "Fetch now" button reports it back verbatim when pressed.
+single item. What the flag decides now is whether the location that page
+collects — a US ZIP, or a city from Chabad.org's own search for a shul
+outside the US — is ever fetched against. The page says so in a line when
+it is off, the city search is disabled, and the "Fetch now" button reports
+it back verbatim when pressed.
 
 **Where it comes from.** Nowhere but you, same as `CRON_SECRET` — there is
 no default that turns this on. This is the "off by default so it can't
