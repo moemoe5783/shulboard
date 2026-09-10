@@ -17,10 +17,16 @@
  * and which days carry candle lighting — and several of those invariants
  * are re-asserted below so a transcription slip cannot pass silently.
  *
- * The previous 4-day fixture for ZIP 33710 is gone, not kept alongside
- * this one: it showed a `TimeGroups[].Items[]` nesting this endpoint does
- * not return under the full parameter set, so keeping it would mean
- * testing the parser against a shape production never sees.
+ * THE 4-DAY 33710 FIXTURE IS BACK, and the reversal is on the record
+ * rather than quiet. It was deleted with the reasoning that its
+ * `TimeGroups[].Items[]` nesting was "a shape production never sees", so
+ * keeping it would invite a parser fix back to it. That reasoning has
+ * stopped holding for one specific reason: the nested shape is the ONLY
+ * one that carries `HebrewTitle`, so the reader now parses both
+ * deliberately, and the fixture has a real job — it is the only evidence
+ * anywhere of what Hebrew names Chabad actually sends.
+ * test/fixtures/chabad-zmanim-33710-nested-4day.json, restored verbatim
+ * from git.
  *
  * Run with: npm run test:chabad-adapter — not plain `node`. The module
  * under test imports `server-only`, which throws unless the `react-server`
@@ -593,6 +599,105 @@ for (const [servedName, label] of [
     "a city id with NO stored name is cached unverified rather than refused",
     result.location);
 }
+
+console.log("\n-- the NESTED shape, and the Hebrew only it carries ---------");
+
+/*
+ * WHICH PARAMETER SWITCHES THE SHAPE IS UNKNOWN — see the adapter's own
+ * note. Two captures exist: a 92-day request returned flat `Zmanim[]` with
+ * no Hebrew anywhere, and a 4-day request returned nested
+ * `TimeGroups[].Items[]` with `HebrewTitle` on every group. Their roots are
+ * structurally identical, `IsAdvanced: false` in both, so it is a per-day
+ * difference and not a whole-response mode.
+ *
+ * Which means the reader has to handle both, and this is where that is
+ * proved against the real nested body rather than a reconstruction.
+ */
+const NESTED = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710-nested-4day.json", import.meta.url)), "utf8"),
+);
+
+const restoreNested = stubFetch(NESTED);
+const nested = await fetchChabadZmanim({
+  locationId: "33710",
+  locationType: "2",
+  startDate: "2026-09-10",
+  endDate: "2026-09-13",
+  timeZone: "America/New_York",
+});
+restoreNested();
+
+const nestedClock = (date: string, id: string) => {
+  const value = nested.times[date]?.[id];
+  return value && isClockZman(value) ? value : undefined;
+};
+
+check(Object.keys(nested.times).length === 4, "all four nested days parsed",
+  String(Object.keys(nested.times).length));
+check(
+  JSON.stringify(nested.essentialZmanTypes.slice(0, 4)) ===
+    JSON.stringify(["AlosHashachar", "CandleLighting", "Chatzos", "ChatzosNight"]),
+  "and the same EssentialZmanType vocabulary comes out of the nested shape",
+  nested.essentialZmanTypes.join(","),
+);
+check(nestedClock("2026-09-11", "candle_lighting")?.iso === "2026-09-11T23:22:00.000Z",
+  "7:22 PM on 9/11 builds the same instant from either shape — the group's item, not a flat entry",
+  nestedClock("2026-09-11", "candle_lighting")?.iso);
+check(nestedClock("2026-09-11", "chatzos_laila")?.iso === "2026-09-12T05:27:00.000Z",
+  "and the chatzos halayla rollover holds through the nested reader too",
+  nestedClock("2026-09-11", "chatzos_laila")?.iso);
+
+// THE HEBREW. Chabad's own names, from the group, for every type.
+for (const [id, hebrew] of [
+  ["alos_baal_hatanya", "עלות השחר"],
+  ["misheyakir", "משיכיר"],
+  ["netz", "הנץ החמה"],
+  ["sof_zman_shma_baal_hatanya", "סוף זמן קריאת שמע"],
+  ["sof_zman_tfila_baal_hatanya", "סוף זמן תפילה"],
+  ["chatzos", "חצות היום"],
+  ["mincha_gedola", "מנחה גדולה"],
+  ["mincha_ketana", "מנחה קטנה"],
+  ["plag_hamincha", "פלג המנחה"],
+  ["candle_lighting", "הדלקת נרות"],
+  ["shkia", "שקיעת החמה"],
+  ["tzeis_baal_hatanya", "צאת הכוכבים"],
+  ["chatzos_laila", "חצות הלילה"],
+] as const) {
+  check(nestedClock("2026-09-11", id)?.hebrewLabel === hebrew,
+    `${id} carries Chabad's own Hebrew "${hebrew}"`, nestedClock("2026-09-11", id)?.hebrewLabel);
+}
+check(nestedClock("2026-09-11", "netz")?.label === "Sunrise",
+  "and the English still comes through beside it", nestedClock("2026-09-11", "netz")?.label);
+
+/*
+ * THE HEBREW IS PER-DAY, NOT PER-TYPE, and this is the assertion that says
+ * why it is cached on the value rather than harvested once. `ShabbatEndTime`
+ * came back as "הדלקת נרות" — candle lighting — on 9/12, where the footnote
+ * is `LightCandlesAfter` and the time is when to light on the second night
+ * of a two-day Yom Tov; and as "צאת החג", the festival ends, for the same
+ * type the next day. Chabad's Hebrew carries a halachic distinction its own
+ * English flattens to "Shabbat Ends" on both days.
+ */
+check(nestedClock("2026-09-12", "shabbos_ends")?.hebrewLabel === "הדלקת נרות",
+  "9/12's Shabbos-end row is Hebrew-labelled as candle lighting — the second night of a two-day Yom Tov",
+  nestedClock("2026-09-12", "shabbos_ends")?.hebrewLabel);
+check(nestedClock("2026-09-13", "shabbos_ends")?.hebrewLabel === "צאת החג",
+  "and 9/13's as the festival ending — same type, same English, different Hebrew",
+  nestedClock("2026-09-13", "shabbos_ends")?.hebrewLabel);
+check(
+  nestedClock("2026-09-12", "shabbos_ends")?.label === nestedClock("2026-09-13", "shabbos_ends")?.label,
+  "which the English does NOT distinguish, so harvesting one Hebrew name per type would lose it",
+  nestedClock("2026-09-12", "shabbos_ends")?.label,
+);
+check(nestedClock("2026-09-12", "shabbos_ends")?.footnote?.type === "LightCandlesAfter",
+  "and the footnote reads from the group, where the nested shape puts it");
+
+// The flat 92-day fixture has none, which is the gap the setting has to
+// cope with rather than paper over.
+check(
+  dates.every((date) => Object.values(times[date]).every((zman) => zman.hebrewLabel === undefined)),
+  "the flat 92-day response carries NO Hebrew on any row — the setting falls back to English there",
+);
 
 console.log("");
 const failed = results.filter((r) => !r.ok).length;

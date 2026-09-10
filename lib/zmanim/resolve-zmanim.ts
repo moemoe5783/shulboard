@@ -37,6 +37,17 @@ export type ResolvedZman = {
    * `harvestLabels`.
    */
   label: string;
+  /**
+   * The provider's own Hebrew name for this row, when the response carried
+   * one — `ChabadClockZman.hebrewLabel`, per-day.
+   *
+   * `null` where it did not, which is every row from a flat-shape response
+   * (chabad-adapter.ts's note on the two shapes). The widget's Hebrew
+   * option renders the English label in that case rather than a Hebrew name
+   * this project invented: showing a zman under a name the provider did not
+   * send would be asserting a halachic claim rather than displaying theirs.
+   */
+  hebrewLabel: string | null;
   /** The instant. Used for ordering and for "which is next", never
    *  rendered directly — `display` is. */
   time: Date;
@@ -128,6 +139,19 @@ function harvestLabels(cache: ChabadZmanimByDate | null): Record<string, string>
   return labels;
 }
 
+/*
+ * THE HEBREW LABEL IS NOT HARVESTED, and that asymmetry is the point.
+ *
+ * English titles are per-type and identical on every date, so taking one
+ * from any cached day is safe and is what lets a substituted row carry the
+ * right words. Hebrew is per-DAY: Chabad sent "הדלקת נרות" for
+ * `ShabbatEndTime` on the second night of a two-day Yom Tov and "צאת החג"
+ * for the same type the next day. Harvesting one and reusing it would put
+ * "candle lighting" on an ordinary Shabbos-end row, which is exactly the
+ * distinction the Hebrew is carrying. So it is read from the row itself and
+ * from nowhere else — and a row that has none shows English.
+ */
+
 /** A cached clock value for one id on one date, or undefined. Narrows the
  *  union: `chabad:ShaahZmanit` is a duration and must never be read as an
  *  instant. */
@@ -174,6 +198,7 @@ export function resolveZmanimForDate(input: {
       rows.push({
         id,
         label: labelFor(id),
+        hebrewLabel: direct.hebrewLabel ?? null,
         time: new Date(direct.iso),
         display: direct.display,
         footnote: direct.footnote?.text ?? null,
@@ -204,6 +229,10 @@ export function resolveZmanimForDate(input: {
           // rather than calling an 8.5° time "Nightfall". That relabel is
           // the whole disclosure — nothing else flags this row.
           label: labelFor(substituteId),
+          // And its own Hebrew, read from the row that supplied the value
+          // rather than from the id that was asked for — which is what
+          // makes the Yom Tov distinction above land on the right day.
+          hebrewLabel: substitute.hebrewLabel ?? null,
           time: new Date(substitute.iso),
           display: substitute.display,
           footnote: substitute.footnote?.text ?? null,

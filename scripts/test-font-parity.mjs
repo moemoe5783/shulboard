@@ -122,6 +122,61 @@ async function widgetFont(page, half, widgetId) {
   );
 }
 
+/**
+ * Does a board face actually HAVE tabular figures?
+ *
+ * design.md §3 settled this for dashboard chrome by measurement — Assistant
+ * ships no tabular figure set, so `font-variant-numeric: tabular-nums` is a
+ * measurable no-op on it, while Frank Ruhl Libre responds. CLAUDE.md turns
+ * that into a rule with a caveat attached: apply the numeric utility anyway,
+ * but never RELY on it to align a column set in Assistant.
+ *
+ * The board is a different context from chrome — its own font tokens, its
+ * own `cqw` sizing, its own next/font faces — so the Zmanim widget's
+ * right-aligned column of times is only safe if the same thing is true
+ * there. This measures it rather than inheriting the conclusion: `11111`
+ * against `00000` in each board face, with and without the property, inside
+ * the real board so the real tokens apply.
+ */
+async function measureNumerals(page, half) {
+  return page.evaluate(
+    ({ half }) => {
+      const root = document.querySelector(`[data-parity-half="${half}"]`);
+      const box = root?.querySelector("[data-widget-id]");
+      if (!box) return null;
+
+      const width = (family, tabular, text) => {
+        const probe = document.createElement("span");
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.whiteSpace = "pre";
+        probe.style.fontFamily = family;
+        probe.style.fontSize = "15px";
+        probe.style.fontVariantNumeric = tabular ? "tabular-nums" : "normal";
+        probe.textContent = text;
+        box.appendChild(probe);
+        const measured = probe.getBoundingClientRect().width;
+        probe.remove();
+        return measured;
+      };
+
+      const faces = {};
+      for (const [name, family] of [
+        ["sefarim", "var(--type-sefarim)"],
+        ["ui", "var(--type-ui)"],
+      ]) {
+        faces[name] = {
+          normal: width(family, false, "11111") - width(family, false, "00000"),
+          tabular: width(family, true, "11111") - width(family, true, "00000"),
+          resolved: getComputedStyle(box).getPropertyValue("--type-sefarim").trim(),
+        };
+      }
+      return faces;
+    },
+    { half },
+  );
+}
+
 const executablePath = findChromium();
 if (!executablePath) {
   console.log("No Chromium found. Set CHROME_PATH to run the font-parity test.");
@@ -173,6 +228,47 @@ try {
         `${label}: font-style matches`,
         `editor ${editor.fontStyle} / display ${display.fontStyle}`,
       );
+    }
+
+    // Once per theme is enough for the parity loop above; the numeral
+    // measurement only needs one, and the `sefarim` pass is the one whose
+    // board is actually using the face the Zmanim widget's time column
+    // sets.
+    if (font === "sefarim") {
+      const faces = await measureNumerals(page, "display");
+      if (!faces) {
+        check(false, "numerals: the board rendered something to measure inside");
+      } else {
+        console.log(
+          `  measured spread of "11111" against "00000" at 15px: ` +
+            `sefarim ${faces.sefarim.normal.toFixed(2)} -> ${faces.sefarim.tabular.toFixed(2)}, ` +
+            `ui ${faces.ui.normal.toFixed(2)} -> ${faces.ui.tabular.toFixed(2)}`,
+        );
+        // THE ONE THE ZMANIM COLUMN DEPENDS ON. Frank Ruhl Libre has a real
+        // tabular set, so `tabular-nums` closes the spread to zero and a
+        // right-aligned column of times has a clean edge that does not
+        // jitter row to row as the digits change.
+        check(
+          Math.abs(faces.sefarim.tabular) < 0.05,
+          "the board's sefarim face aligns figures under tabular-nums — what the Zmanim time column relies on",
+          `${faces.sefarim.normal.toFixed(2)}px -> ${faces.sefarim.tabular.toFixed(2)}px`,
+        );
+        check(
+          Math.abs(faces.sefarim.normal) > 0.5,
+          "and the property is doing the work, not the face being monospaced already",
+          `${faces.sefarim.normal.toFixed(2)}px without it`,
+        );
+        // THE CAVEAT, MEASURED HERE TOO. Assistant ships no tabular set, so
+        // the property changes nothing on it — which is why a column of
+        // times must set the sefarim face rather than relying on the
+        // utility class alone. If this ever starts passing, CLAUDE.md's
+        // caveat can be dropped; until then it is load-bearing.
+        check(
+          Math.abs(faces.ui.tabular - faces.ui.normal) < 0.05,
+          "while the board's UI face ignores it entirely — CLAUDE.md's caveat, still true on the board",
+          `${faces.ui.normal.toFixed(2)}px -> ${faces.ui.tabular.toFixed(2)}px`,
+        );
+      }
     }
 
     await page.close();

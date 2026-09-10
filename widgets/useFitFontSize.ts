@@ -39,7 +39,7 @@ const SEARCH_ITERATIONS = 14;
  * correct is a live element inside it, so this drops a hidden probe span into
  * the box, reads its resolved font-size, and removes it.
  */
-function resolveDesignPx(designUnits: number, canvasWidth: number, reference: HTMLElement): number {
+export function resolveDesignPx(designUnits: number, canvasWidth: number, reference: HTMLElement): number {
   const probe = document.createElement("span");
   probe.style.position = "absolute";
   probe.style.visibility = "hidden";
@@ -61,8 +61,14 @@ function resolveDesignPx(designUnits: number, canvasWidth: number, reference: HT
  * probe at a known design size gives the current px-per-design-unit rate
  * without duplicating `boardLength`'s cqw math or needing to know the zoom
  * level this box happens to be rendered at.
+ *
+ * Exported, along with `resolveDesignPx`, because widgets/zmanim measures
+ * its own fit (its rules are not §2's — see widgets/zmanim/fit.ts) and
+ * would otherwise need a second copy of this cqw round-trip. The hook
+ * below stays the general implementation; these two are the primitives it
+ * is built from.
  */
-function resolveDesignUnits(px: number, canvasWidth: number, reference: HTMLElement): number {
+export function resolveDesignUnits(px: number, canvasWidth: number, reference: HTMLElement): number {
   const PROBE_DESIGN_UNITS = 100;
   const probePx = resolveDesignPx(PROBE_DESIGN_UNITS, canvasWidth, reference);
   return probePx > 0 ? (px / probePx) * PROBE_DESIGN_UNITS : px;

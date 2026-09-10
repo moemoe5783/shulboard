@@ -69,8 +69,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
         </select>
         {/*
           The one configuration `fit` should not be in, and the panel says
-          so rather than overriding it: a single row rescales with its own
-          label's length, and that label changes several times a day
+          so rather than overriding it: a single row's size is bound by its
+          own label's width, and that label changes several times a day
           ("Sunrise", "Latest Shacharit", "Midnight"). All three modes are
           legible for one row; only this one is jumpy.
         */}
@@ -79,6 +79,31 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
             One row rescales as its own label changes through the day. Fixed size holds still.
           </span>
         )}
+        {/* What fit means here is not what it means elsewhere, and a gabbai
+            dragging a box needs to know which handle does what. */}
+        {config.displayMode === "all" && config.sizingMode === "fit" && (
+          <span className={PANEL_LABEL}>
+            Drag the box taller for bigger type. Widening it doesn&rsquo;t change the size — it only stops long
+            labels having to shrink.
+          </span>
+        )}
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Label language</span>
+        <select
+          value={config.labelScript}
+          onChange={(event) => onChange({ labelScript: event.target.value as ZmanimConfig["labelScript"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="english">English</option>
+          <option value="hebrew">Hebrew</option>
+        </select>
+        <span className={PANEL_LABEL}>
+          {config.labelScript === "hebrew"
+            ? "Chabad.org's own Hebrew names, and the table mirrors — labels right, times left. Rows Chabad.org hasn't sent a Hebrew name for stay in English rather than being translated here."
+            : "Chabad.org's own English names, exactly as it sends them."}
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">
@@ -101,6 +126,28 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
               : config.overflow === "clip"
                 ? "Rows past the bottom of the box are cut off, with nothing on the board saying so."
                 : "Only happens when the rows really don't fit — otherwise the table sits still."}
+        </span>
+      </label>
+
+      {/* Only means anything for the one mode that moves continuously.
+          Paging holds each screenful for eight seconds and has no speed to
+          set; clipping does not move at all. */}
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Scroll speed</span>
+        <select
+          value={config.scrollSpeed}
+          onChange={(event) => onChange({ scrollSpeed: event.target.value as ZmanimConfig["scrollSpeed"] })}
+          disabled={config.overflow !== "scroll" || config.sizingMode === "hug" || config.displayMode === "next"}
+          className={`${PANEL_CONTROL} disabled:opacity-40`}
+        >
+          <option value="slow">Slow</option>
+          <option value="medium">Medium</option>
+          <option value="fast">Fast</option>
+        </select>
+        <span className={PANEL_LABEL}>
+          {config.overflow === "scroll"
+            ? "Medium takes about eight seconds to come round a full screen — the same as one page step."
+            : "Only applies when the rows scroll."}
         </span>
       </label>
 

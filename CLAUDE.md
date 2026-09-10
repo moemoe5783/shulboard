@@ -91,7 +91,11 @@ Environment variables: @docs/environment.md
   which has tabular figures. Assistant has none, so `tabular-nums` is a no-op on
   it — apply the numeric utility anyway (it costs nothing and starts working if
   the face changes), but never rely on it to align a column set in Assistant.
-  Numbers inside prose stay in Assistant.
+  Numbers inside prose stay in Assistant. **The same holds on a board, measured
+  there and not inherited:** `scripts/test-font-parity.mjs` reads `11111`
+  against `00000` inside the real board and finds the sefarim face closes a
+  6.97px spread to 0.00px under `tabular-nums` while the UI face is 3.08px
+  either way. A column of board times gets its clean edge from setting the face.
 
 ## Scope: chrome versus board content
 

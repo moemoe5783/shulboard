@@ -395,6 +395,41 @@ round-trip for a static table.
 **Settings UI:** pick source → capability-filtered checkbox list → reorder rows
 → per-row custom label (English/Hebrew/transliterated) → per-row time format.
 
+**Hebrew labels — the provider's, and only the provider's.** The Zmanim
+widget has a whole-table English/Hebrew switch (not yet per-row), and both
+sides are Chabad's own words: it sends "Latest Shacharit" and "סוף זמן
+תפילה". **There is deliberately no house Hebrew table**, because putting a
+zman under a Hebrew name this project asserted would be making a halachic
+claim rather than displaying theirs — a row with no Hebrew from the
+provider falls back to its English instead.
+
+**Hebrew only exists in one of the two response shapes**, and which
+parameter selects it is unresolved. `Days[].TimeGroups[].Items[]` carries
+`HebrewTitle` on every group (plus `OpinionInformation` — "Alter Rebbe
+(Default)" — and `TechnicalInformation` — "16.9 degrees below horizon",
+"10.2 degrees", "6 degrees", which independently confirm the Baal HaTanya
+measurement below from the provider's own mouth). `Days[].Zmanim[]`, which
+is what the 92-day request returns, carries none. The two roots are
+structurally identical with `IsAdvanced: false` in both, so it is a per-day
+difference; the hypotheses are one of the four trailing parameters (`bdef`
+by name) or the range length. `lib/zmanim/chabad-adapter.ts` parses BOTH
+shapes so Hebrew arrives the moment the nested one does, and
+`scripts/probe-chabad-shape.ts` is what settles it. If it turns out to be
+the range length, the answer is a second tiny request per warm purely to
+harvest names.
+
+**The Hebrew is per-DAY, not per-type**, which is why it is cached on each
+value rather than harvested once. `ShabbatEndTime` came back as "הדלקת
+נרות" (candle lighting) on the second night of a two-day Yom Tov and "צאת
+החג" (the festival ends) the next day — a halachic distinction its own
+English title flattens to "Shabbat Ends" on both.
+
+**Hebrew is RTL and the table mirrors.** One `dir="rtl"` on the two-column
+grid puts the labels on the right and the times' column on the left, where
+a Hebrew reader's eye starts. The times themselves stay LTR in either
+script: a clock time is Latin digits in a fixed order, and reversing "7:22
+PM" is not something any luach prints.
+
 **Two rules that prevent support tickets:**
 1. **Provider is a screen-level setting** ("zmanim profile"), with per-widget
    override. If the zmanim widget uses Chabad and candle lighting uses Hebcal,

@@ -29,13 +29,34 @@ import {
  * days — verified by hand, Sep 10 through Dec 10 2026 — carrying
  * `CandleLighting` on every Erev Shabbos and Yom Tov in the span.
  *
- * THE RESPONSE SHAPE IS THE FLAT ONE, NOT THE NESTED ONE. `Days[]`
- * entries carry a flat `Zmanim[]` array keyed by `EssentialZmanType`.
- * They do NOT carry the `TimeGroups[].Items[]` nesting keyed by `ZmanType`
- * that an earlier, narrower capture of this endpoint showed and that a
- * previous version of this file parsed. The old fixture is gone; the
- * shape below comes from test/fixtures/chabad-zmanim-33701-92day.json,
- * a real 92-day capture for ZIP 33701.
+ * BOTH RESPONSE SHAPES ARE PARSED, AND THAT IS NOT DEFENSIVENESS. This
+ * endpoint has been observed returning two different per-day shapes:
+ *
+ *   FLAT — `Days[].Zmanim[]`, entries keyed by `EssentialZmanType`, one
+ *   per zman, no Hebrew anywhere. This is what a 92-day request with the
+ *   full parameter set returned
+ *   (test/fixtures/chabad-zmanim-33701-92day.json).
+ *
+ *   NESTED — `Days[].TimeGroups[].Items[]`, each group carrying `Title`,
+ *   `EssentialTitle`, **`HebrewTitle`**, `OpinionInformation` and
+ *   `TechnicalInformation` alongside its items. This is what a 4-day
+ *   request returned (test/fixtures/chabad-zmanim-33710-nested-4day.json).
+ *
+ * WHICH PARAMETER SWITCHES BETWEEN THEM IS UNKNOWN, and it matters because
+ * only the nested one carries Hebrew names. The two roots are structurally
+ * identical — same sixteen keys, `IsAdvanced: false` in both — so the
+ * difference is per-day, which rules out a whole-response "advanced" mode.
+ * Two hypotheses, neither testable from this sandbox (the egress proxy
+ * refuses CONNECT to chabad.org): one of the four trailing parameters,
+ * `bdef` being the likeliest by name; or the RANGE LENGTH, since a 92-day
+ * nested response would be enormous and an endpoint trimming to a lean
+ * shape for long ranges is exactly what these two captures look like.
+ * `scripts/probe-chabad-shape.ts` is what settles it.
+ *
+ * Parsing both is therefore not future-proofing — it is the only way the
+ * Hebrew names arrive at all if the nested shape can be had, and the only
+ * way the reader keeps working if the endpoint switches on us. The reader
+ * prefers whichever the day actually carries.
  *
  * Structural facts measured off that capture, each of which a plausible
  * reading of the response would have got wrong:
@@ -64,7 +85,7 @@ import {
  *    ("Saint Petersburg, FL 33701") is what carries the answer — see
  *    `verifyLocationName`, which is load-bearing for the same reason it
  *    is in chabad-embed.ts.
- * 6. THE DISPLAY LABEL IS AT THE ROOT, NOT ON THE ENTRY. `Zmanim[]`
+ * 6. THE DISPLAY LABEL IS AT THE ROOT IN THE FLAT SHAPE. `Zmanim[]`
  *    entries carry no human-readable name at all — the response root's
  *    `GroupHeadings[]` holds one `EssentialTitle` per `EssentialZmanType`
  *    ("Latest Shacharit", "Earliest Tallit", "Shabbat Ends"), with `<br />`
@@ -169,6 +190,89 @@ function parseShaahZmanit(value: unknown): number | null {
  * zman at all. It is skipped by the empty-key test rather than by
  * name-matching, so a second such column would be skipped too.
  */
+/**
+ * One zman as read out of either per-day shape.
+ *
+ * `hebrewTitle` is per-day, not per-type, and that is a real finding rather
+ * than caution: `ShabbatEndTime` came back as "הדלקת נרות" (candle
+ * lighting) on 9/12, where the footnote is `LightCandlesAfter` and the time
+ * is when to light on the second night of a two-day Yom Tov, and as "צאת
+ * החג" (the festival ends) on 9/13. Chabad's Hebrew carries a halachic
+ * distinction its own English `EssentialTitle` flattens to "Shabbat Ends"
+ * in both. So it is cached on the value, not harvested once per type.
+ */
+type DayEntry = {
+  type: string;
+  zman: string;
+  footnoteType: unknown;
+  /** Only the nested shape has one. */
+  hebrewTitle: string | null;
+  /** The nested shape's own per-group English title, which the flat shape
+   *  instead puts once at the root in `GroupHeadings`. */
+  essentialTitle: string | null;
+};
+
+/** The item a group's value comes from.
+ *
+ *  `Default: true` marks it — but INCONSISTENTLY: in the captured nested
+ *  response every group holds exactly one item and only nine of the
+ *  fourteen carry the flag (netz, chatzos, candle lighting, shkia, chatzos
+ *  halayla and shaah zmanit do not). So the flag is preferred and the first
+ *  item is the fallback, rather than the flag being required. A group with
+ *  several items and no flag would be the `IsAdvanced` view, which this
+ *  never requests. */
+function readGroupItem(items: unknown[]): Record<string, unknown> | null {
+  const records = items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object");
+  return records.find((item) => item.Default === true) ?? records[0] ?? null;
+}
+
+/**
+ * A day's zmanim, from whichever shape the day carries.
+ *
+ * Nested first: when a day has both (never observed, but the check has to
+ * order them somehow) the nested one is strictly richer, since it is the
+ * only one with Hebrew.
+ */
+function readDayEntries(day: Record<string, unknown>): DayEntry[] {
+  const groups = Array.isArray(day.TimeGroups) ? (day.TimeGroups as unknown[]) : null;
+  if (groups && groups.length > 0) {
+    const entries: DayEntry[] = [];
+    for (const rawGroup of groups) {
+      const group = (rawGroup ?? {}) as Record<string, unknown>;
+      const item = readGroupItem(Array.isArray(group.Items) ? (group.Items as unknown[]) : []);
+      if (!item) continue;
+      const type = group.EssentialZmanType ?? item.EssentialZmanType;
+      if (typeof type !== "string" || type === "") continue;
+      entries.push({
+        type,
+        zman: typeof item.Zman === "string" ? item.Zman : "",
+        // The group's footnote, not the item's: that is where the nested
+        // shape puts it, and it is what the flat shape moved onto the entry.
+        footnoteType: group.FootnoteType ?? item.FootnoteType,
+        hebrewTitle: typeof group.HebrewTitle === "string" ? group.HebrewTitle : null,
+        essentialTitle: typeof group.EssentialTitle === "string" ? group.EssentialTitle : null,
+      });
+    }
+    return entries;
+  }
+
+  const flat = Array.isArray(day.Zmanim) ? (day.Zmanim as unknown[]) : [];
+  const entries: DayEntry[] = [];
+  for (const rawEntry of flat) {
+    const entry = (rawEntry ?? {}) as Record<string, unknown>;
+    const type = entry.EssentialZmanType;
+    if (typeof type !== "string" || type === "") continue;
+    entries.push({
+      type,
+      zman: typeof entry.Zman === "string" ? entry.Zman : "",
+      footnoteType: entry.FootnoteType,
+      hebrewTitle: null,
+      essentialTitle: null,
+    });
+  }
+  return entries;
+}
+
 function readLabels(value: unknown): Record<string, string> {
   const labels: Record<string, string> = {};
   for (const rawHeading of Array.isArray(value) ? (value as unknown[]) : []) {
@@ -177,12 +281,21 @@ function readLabels(value: unknown): Record<string, string> {
     const title = heading.EssentialTitle;
     if (typeof type !== "string" || type === "") continue;
     if (typeof title !== "string" || title.trim() === "") continue;
-    labels[type] = title
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    labels[type] = flattenTitle(title);
   }
   return labels;
+}
+
+/** `<br />` becomes a space and runs of whitespace collapse. Chabad breaks
+ *  "Latest\nShacharit" over two lines for its own narrow columns, which is
+ *  their layout decision and not part of the name; a board sets its own
+ *  wrapping. Shared by the root headings and the nested groups' own
+ *  titles, English and Hebrew alike. */
+function flattenTitle(title: string): string {
+  return title
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/[\s ]+/g, " ")
+    .trim();
 }
 
 /** `FootnoteType` plus the root `Footnotes` text for it. "None" is
@@ -480,15 +593,17 @@ export async function fetchChabadZmanim(input: {
       EndDate: body.EndDate ?? null,
     };
 
-    for (const rawEntry of Array.isArray(day.Zmanim) ? (day.Zmanim as unknown[]) : []) {
-      const entry = (rawEntry ?? {}) as Record<string, unknown>;
-      const type = entry.EssentialZmanType;
-      if (typeof type !== "string" || type === "") continue;
+    for (const entry of readDayEntries(day)) {
+      const type = entry.type;
       essentialZmanTypes.add(type);
 
-      const footnote = readFootnote(entry.FootnoteType, footnotes);
-      const label = labels[type];
-      const display = typeof entry.Zman === "string" ? entry.Zman.replace(/\s+/g, " ").trim() : "";
+      const footnote = readFootnote(entry.footnoteType, footnotes);
+      // The root's `GroupHeadings` when the flat shape is in play; the
+      // group's own title when the nested one is, since that shape carries
+      // it per day and there may be no root heading for a type.
+      const label = labels[type] ?? (entry.essentialTitle ? flattenTitle(entry.essentialTitle) : undefined);
+      const hebrewLabel = entry.hebrewTitle ? flattenTitle(entry.hebrewTitle) : undefined;
+      const display = entry.zman.replace(/\s+/g, " ").trim();
       // Exact match on the canonical table, then the provider-namespaced
       // key for the four §5c has no id for. Nothing is dropped for want
       // of a mapping, and nothing gets a canonical id it hasn't earned —
@@ -503,6 +618,7 @@ export async function fetchChabadZmanim(input: {
           display,
           ...(footnote ? { footnote } : {}),
           ...(label ? { label } : {}),
+          ...(hebrewLabel ? { hebrewLabel } : {}),
         };
         continue;
       }
@@ -531,6 +647,7 @@ export async function fetchChabadZmanim(input: {
         display,
         ...(footnote ? { footnote } : {}),
         ...(label ? { label } : {}),
+        ...(hebrewLabel ? { hebrewLabel } : {}),
       };
       if (type === "CandleLighting") candleLightingDates.push(date);
     }
