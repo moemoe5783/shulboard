@@ -13,7 +13,6 @@ export function OrgSettingsForm({
   latitude,
   longitude,
   locationLabel,
-  zmanimProvider,
   postalCode,
   zmanimLocationId,
   chabadEnabled,
@@ -26,7 +25,6 @@ export function OrgSettingsForm({
   latitude: number | null;
   longitude: number | null;
   locationLabel: string | null;
-  zmanimProvider: string;
   postalCode: string | null;
   zmanimLocationId: string | null;
   chabadEnabled: boolean;
@@ -38,14 +36,15 @@ export function OrgSettingsForm({
     updateOrgSettings,
     {},
   );
-  // Two controlled selects, for two reasons that both need the live value
-  // rather than the saved one: the provider decides whether the Chabad
-  // fields show, and the timezone is what the lookup's candle-lighting
-  // preview is calculated in. Every other field here stays uncontrolled.
-  const [provider, setProvider] = useState(zmanimProvider);
+  // One controlled select: the timezone, because it is what the lookup's
+  // candle-lighting preview is calculated in. Every other field here stays
+  // uncontrolled.
+  //
+  // The "Zmanim source" select that used to sit beside it is gone — see the
+  // note where it stood.
   const [zone, setZone] = useState(timezone);
 
-  const isChabad = provider === "chabad";
+
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -76,20 +75,29 @@ export function OrgSettingsForm({
           ))}
         </SelectField>
 
-        {/* Above the location section on purpose: it decides which location
-            fields that section needs. */}
-        <SelectField
-          id="zmanimProvider"
-          name="zmanimProvider"
-          label="Zmanim source"
-          value={provider}
-          onChange={(event) => setProvider(event.target.value)}
-          hint="What candle lighting and other zmanim widgets calculate from, unless a widget picks its own."
-        >
-          <option value="hebcal">Hebcal</option>
-          {chabadEnabled && <option value="chabad">Chabad.org</option>}
-          <option value="manual">Manual</option>
-        </SelectField>
+        {/*
+          THERE IS NO "Zmanim source" SELECT ANY MORE, and it was removed
+          rather than reduced to one option.
+
+          Chabad.org is the only source for zmanim and candle lighting
+          (lib/zmanim/provider.ts), so the control had exactly one choice
+          left. A one-item dropdown is not a setting — it is a label that
+          looks interactive, which is worse than a sentence.
+
+          The stored `orgs.zmanim_provider` column is untouched by this
+          form now: the DB enum still holds hebcal / chabad / myzmanim /
+          manual, nothing migrates, and `effectiveZmanimProvider()` decides
+          what a stored value means. An org still on the schema default of
+          'hebcal' is served as Chabad rather than rendering nothing.
+
+          What is left is the ZIP below, which is the whole configuration —
+          which is why this note sits where the select did rather than in a
+          commit message.
+        */}
+        <p className="text-meta text-ink-soft">
+          Zmanim and candle lighting come from Chabad.org, looked up by the ZIP below.
+          {!chabadEnabled && " Chabad.org isn't turned on for this deployment yet, so nothing is fetched."}
+        </p>
 
         <LocationLookup
           latitude={latitude}
@@ -127,11 +135,13 @@ export function OrgSettingsForm({
           <input type="hidden" name="zmanimLocationId" value={zmanimLocationId ?? ""} />
         </LocationLookup>
 
-        {/* Chabad.org is the only source that reads the ZIP, so this is the
-            only source that gets a button to fetch from. The field itself
-            lives with the location above, derived by the lookup, because it
-            is plumbing either way. */}
-        {isChabad && <FetchZmanimNow />}
+        {/* Unconditional now — Chabad.org is the only source, so there is
+            no other provider for which a fetch button would be pointless.
+            Still gated server-side on ZMANIM_CHABAD_ENABLED, which is what
+            the button reports back when it is off. The ZIP itself lives
+            with the location above, derived by the lookup, because it is
+            plumbing either way. */}
+        <FetchZmanimNow />
       </fieldset>
 
       {canEdit ? (

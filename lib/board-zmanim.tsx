@@ -20,12 +20,20 @@ import type { ChabadZmanimByDate } from "@/lib/zmanim/resolve";
  * `{config, canvas}` renderer contract (CLAUDE.md).
  */
 export type BoardZmanim = {
-  /** Effective provider — screen-then-org, same tier as latitude/longitude
-   *  (plan.md §5c: "provider is a screen-level setting, with per-widget
-   *  override"). A widget's own override (candle-lighting's own
-   *  `provider: "inherit" | "hebcal" | "chabad" | "manual"`) resolves
-   *  "inherit" against this value — this context is the only place that
-   *  knows it. */
+  /**
+   * Effective provider — screen-then-org, same tier as latitude/longitude
+   * (plan.md §5c), resolved through `effectiveZmanimProvider`.
+   *
+   * UNREAD BY EVERY WIDGET TODAY, and kept rather than deleted. Chabad.org
+   * is the only source (lib/zmanim/provider.ts), so there is nothing for a
+   * widget to branch on and none of them do; what they read is
+   * `hasChabadLocation` below. The field stays because it is what the
+   * bundle already carries end to end (lib/bundle/types.ts's
+   * `zmanimProvider`), and because the day a second provider returns this
+   * is the value every widget needs — deleting it now would mean threading
+   * it back through the bundle, the editor preview and their tests to get
+   * it again.
+   */
   provider: "hebcal" | "chabad" | "myzmanim" | "manual";
   /**
    * Whether Chabad has a resolvable location on file — a US ZIP or a
@@ -49,14 +57,22 @@ export type BoardZmanim = {
 };
 
 /**
- * What every board that predates this feature — a demo page, editor-lab,
- * font-parity, an org that has never touched the zmanim setting — resolves
- * to. Matches the schema's own `zmanim_provider` default (`'hebcal'`)
- * exactly, so a board with no opinion about any of this behaves exactly as
- * it did before this context existed.
+ * What every board with no zmanim context resolves to — a demo page,
+ * editor-lab, font-parity, a `BoardRenderer` called without the prop.
+ *
+ * `"chabad"` rather than the schema's `'hebcal'` default, because
+ * `effectiveZmanimProvider` resolves every stored value to Chabad and this
+ * default has to agree with it (lib/zmanim/provider.ts). The visible
+ * consequence, stated rather than discovered: a page with no zmanim
+ * context shows the "hasn't set a ZIP or Chabad.org location yet" empty
+ * state on a zmanim or candle-lighting widget, where it used to show a
+ * Hebcal-computed time. That is the honest answer now — there is no Hebcal
+ * zmanim path left to compute one — and it is the same state a real shul
+ * with no ZIP on file sees, which makes those pages a truer preview than
+ * they were.
  */
 export const DEFAULT_BOARD_ZMANIM: BoardZmanim = {
-  provider: "hebcal",
+  provider: "chabad",
   hasChabadLocation: false,
   chabadZmanim: null,
 };
@@ -74,10 +90,10 @@ export function BoardZmanimProvider({
 }
 
 /** Never null, unlike useBoardLocation() — a board always has *some*
- *  effective zmanim provider (the schema defaults it to "hebcal"), so
- *  there's no "not configured" case for this hook the way there is for
- *  location; DEFAULT_BOARD_ZMANIM above is exactly that always-valid
- *  default, not a placeholder to guard against. */
+ *  effective zmanim provider, so there's no "not configured" case for this
+ *  hook the way there is for location; DEFAULT_BOARD_ZMANIM above is
+ *  exactly that always-valid default, not a placeholder to guard
+ *  against. */
 export function useBoardZmanim(): BoardZmanim {
   return useContext(BoardZmanimContext);
 }

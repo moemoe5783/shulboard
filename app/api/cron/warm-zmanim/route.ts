@@ -67,24 +67,33 @@ type WarmTarget = ChabadLocation & { timezone: string };
 function collectTargets(orgs: OrgRow[], screens: ScreenRow[]): Map<string, WarmTarget> {
   const targets = new Map<string, WarmTarget>();
 
-  const consider = (provider: string, timezone: string | null, location: ChabadLocation | null) => {
-    if (provider !== "chabad" || !location || !timezone) return;
+  /*
+   * NO PROVIDER TEST ANY MORE. This used to skip any org or screen whose
+   * `zmanim_provider` wasn't `'chabad'`; Chabad.org is now the only source
+   * (lib/zmanim/provider.ts), so every location any org or screen resolves
+   * to is worth warming — including the orgs still sitting on the schema's
+   * `'hebcal'` default, which are exactly the ones that would otherwise
+   * have a board with no data.
+   *
+   * A location and a timezone are still required, and a shul with neither
+   * a ZIP nor a manual id is simply not warmable — its widgets say so
+   * themselves.
+   */
+  const consider = (timezone: string | null, location: ChabadLocation | null) => {
+    if (!location || !timezone) return;
     if (!targets.has(location.cacheKey)) targets.set(location.cacheKey, { ...location, timezone });
   };
 
   for (const org of orgs) {
     consider(
-      org.zmanim_provider,
       org.timezone,
       resolveChabadLocation({ orgPostalCode: org.postal_code, orgZmanimLocationId: org.zmanim_location_id }),
     );
   }
 
   for (const screen of screens) {
-    const provider = screen.zmanim_provider ?? screen.orgs?.zmanim_provider ?? "hebcal";
     const timezone = screen.timezone ?? screen.orgs?.timezone ?? null;
     consider(
-      provider,
       timezone,
       resolveChabadLocation({
         screenPostalCode: screen.postal_code,

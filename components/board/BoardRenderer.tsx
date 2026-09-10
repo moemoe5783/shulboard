@@ -55,9 +55,10 @@ export type BoardRendererProps = {
   location?: BoardLocation | null;
   /** The board's zmanim provider config — lib/board-zmanim.tsx. Omitted
    *  wherever nothing resolves it (editor-lab, font-parity, any page that
-   *  doesn't carry a real org/screen) falls back to that module's own
-   *  hebcal default, which is what every one of those pages already
-   *  behaves as. */
+   *  doesn't carry a real org/screen) falls back to that module's
+   *  DEFAULT_BOARD_ZMANIM: Chabad, with no location on file. Those pages
+   *  therefore show a zmanim or candle-lighting widget's "hasn't set a ZIP"
+   *  empty state, which is the same thing a real shul with no ZIP sees. */
   zmanim?: BoardZmanim | null;
 };
 
