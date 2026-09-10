@@ -9,16 +9,16 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  *
  * ONCE DAILY, not the build worker's 5 minutes (app/api/cron/build-bundles).
  * That route polls fast because a gabbai fixing a davening time before
- * Mincha needs it live; this one refreshes about four weeks of candle
- * lighting, which does not change from one hour to the next. Daily is
- * generous against how slowly those minutes move, and it is a courtesy to
- * a published endpoint this product is a guest on.
+ * Mincha needs it live; this one refreshes 92 days of zmanim, none of
+ * which changes from one hour to the next. Daily is generous against how
+ * slowly those minutes move, and it is a courtesy to an endpoint this
+ * product is a guest on.
  *
- * FOUR WEEKS IS THE ENDPOINT'S CAP, measured, not a choice — see
- * WARM_WEEKS in lib/zmanim/warm.ts. Daily therefore also matters for
- * coverage rather than only for freshness: each run slides the window
- * forward, and skipping the schedule for a month means dates start
- * falling through to Hebcal.
+ * Daily still matters for coverage and not only for freshness, just far
+ * less urgently than it did when the window was four weeks: each run
+ * slides a 92-day window forward, so the schedule can lapse for weeks
+ * before any date starts falling through to Hebcal. See WARM_DAYS in
+ * lib/zmanim/warm.ts.
  *
  * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
  * the key for its own reason, separate from the warming it delegates: it
@@ -33,10 +33,12 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * nothing until the flag is explicitly on. That's the actual gate the
  * proposal's "off by default... until I turn it on myself" refers to.
  *
- * The source it warms from is now Chabad.org's published candle-lighting
- * embed (lib/zmanim/chabad-embed.ts), which is what Chabad.org pointed at
- * when asked — so this flag is no longer holding back an unsanctioned
- * endpoint, just an integration the owner turns on deliberately.
+ * The source it warms from is Chabad.org's Get_Zmanim endpoint
+ * (lib/zmanim/chabad-adapter.ts), which returns all thirteen daily zmanim
+ * and candle lighting for the whole 92 days in one request. The published
+ * candle-lighting embed is kept as an unwired fallback
+ * (lib/zmanim/chabad-embed.ts) and covers only four weeks of candle
+ * lighting.
  *
  * Same CRON_SECRET as build-bundles (docs/environment.md) — one shared
  * secret between an external scheduler and every cron route in this
@@ -129,26 +131,32 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   // Three outcomes per target, not two — the distinction between "fetched
   // fine, nothing to light" and "the fetch broke" is made in
-  // lib/zmanim/warm.ts, which explains why zero candle lightings across the
-  // whole coverage window is a signal rather than a failure. This route
+  // lib/zmanim/warm.ts, which explains why zero candle lightings across
+  // the whole 92-day window is a signal rather than a failure. This route
   // only counts them up.
   //
-  // `dates`, not days: the embed returns only candle-lighting and
-  // Shabbos/Yom-Tov-end days, so there is no window-length day count to
-  // report and never was.
+  // `requestedEndDate` and `echoedEndDate` are both reported because the
+  // 92-day span is verified rather than known to be a ceiling — if
+  // chabad.org ever starts coercing it, the two disagree here instead of
+  // the cache going quietly short. `zmanIds` is reported so a mapping
+  // regression shows up in this JSON and not only in a log line.
   const results: {
     cacheKey: string;
     status: "warmed" | "warmed-no-candle-lighting" | "failed";
     dates?: number;
     datesWithCandleLighting?: number;
     lastDate?: string | null;
+    requestedEndDate?: string;
+    echoedEndDate?: string | null;
+    zmanIds?: string[];
     error?: string;
   }[] = [];
 
   // Serially, same reasoning as build-bundles: this is a small, deduped list
   // (twenty Crown Heights shuls collapse to one target — plan.md §5c's own
-  // point of the cache), and a published endpoint this product is a guest
-  // on is not one to hit concurrently.
+  // point of the cache), and an endpoint this product is a guest on is not
+  // one to hit concurrently — the more so now that each call is a 92-day
+  // ~105KB response rather than a 6KB one.
   for (const target of targets.values()) {
     results.push({ cacheKey: target.cacheKey, ...(await warmChabadLocation(target)) });
   }

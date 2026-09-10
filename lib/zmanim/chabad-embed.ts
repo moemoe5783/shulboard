@@ -1,16 +1,29 @@
 import "server-only";
 import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
+import type { ChabadClockZman } from "./zman.ts";
 
 /*
- * Chabad.org's PUBLISHED candle-lighting embed — the source Chabad.org
- * pointed at directly when asked, in place of the undocumented
- * Get_Zmanim JSON endpoint. plan.md §10.4's open question is closed by
- * that answer: this is a supported, public integration surface with an
- * attribution condition, not something read without permission.
+ * Chabad.org's PUBLISHED candle-lighting embed.
  *
- * The unwired `chabad-adapter.ts` is the old JSON reader. It is kept
- * because it is still the only source for zmanim BEYOND candle lighting,
- * which is a separate unresolved conversation (plan.md §5c).
+ * NOT WIRED TO ANYTHING ANY MORE, AND DELIBERATELY KEPT. Nothing calls
+ * `fetchChabadEmbed` outside its own test and probe scripts.
+ *
+ * WHY IT IS NO LONGER THE READER: the Get_Zmanim endpoint
+ * (chabad-adapter.ts) turned out to answer the whole question in one
+ * request — 92 days, all thirteen daily zmanim AND candle lighting —
+ * once four missing trailing parameters were added to it. This surface
+ * gives four weeks of candle lighting and nothing else, so it is
+ * strictly a subset. `lib/zmanim/warm.ts` reads the adapter.
+ *
+ * WHY IT IS NOT DELETED: it is Chabad's own sanctioned, public,
+ * documented-by-existence embed, and the endpoint that replaced it is
+ * neither of those things. If Get_Zmanim changes shape, moves, or starts
+ * refusing a 92-day span, this module is a working candle-lighting
+ * source that can be wired back into `warm.ts` by changing one import —
+ * which is worth more than the fifty lines it costs to keep. Everything
+ * below is still true of the response it reads, and
+ * scripts/test-chabad-embed.ts still exercises it against the real
+ * capture so it cannot rot silently.
  *
  * WHAT THE RESPONSE ACTUALLY IS — confirmed against a real capture, not a
  * description. test/fixtures/chabad-embed-33701-4w.js is the verbatim body
@@ -33,8 +46,9 @@ import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
  *    `weeks=4`, with the response's own final URL rewritten to `weeks=4`.
  *    Larger values are silently coerced, never rejected — nothing errors
  *    and nothing warns — so the only way to know is to compare the bodies.
- *    See `WARM_WEEKS` in warm.ts, which is why that constant is a literal
- *    4 rather than arithmetic over a day count.
+ *    That cap is what made this surface a subset of Get_Zmanim rather
+ *    than an alternative to it. `warm.ts` no longer has a `WARM_WEEKS`
+ *    constant at all; it asks the adapter for 92 days.
  *
  * 2. THE WEEKDAY IS SOMETIMES "Shabbat", NOT "Saturday" — "Shabbat,
  *    September 12, 2026". V8's `Date.parse` happens to tolerate the
@@ -59,8 +73,13 @@ import { parseZmanTime, zonedTimeToUtc } from "./time.ts";
 /** Canonical zman ids this reader produces — plan.md §5c's own spelling.
  *  `shabbos_ends` is parsed and cached even though no widget reads it yet:
  *  it is in the response, it is a canonical id, and dropping data the
- *  provider already sent would mean re-fetching to get it later. */
-export type ChabadEmbedZman = { iso: string; display: string };
+ *  provider already sent would mean re-fetching to get it later.
+ *
+ *  An alias, not a second shape: both Chabad readers write the same
+ *  `zmanim_cache.times` rows, so the value type lives once in zman.ts.
+ *  This embed only ever produces clock times, never a duration, which is
+ *  why it names the narrower half of that union. */
+export type ChabadEmbedZman = ChabadClockZman;
 
 export type ChabadEmbedResult = {
   /** ISO date -> canonical zman id -> value. Only dates that produced at

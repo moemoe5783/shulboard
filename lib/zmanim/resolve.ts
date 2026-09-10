@@ -6,18 +6,24 @@ import type { BoardLocation } from "@/lib/board-location";
 // scripts/test-zmanim-fallback.ts, which has no bundler to read tsconfig's
 // `@/` alias.
 import { upcomingCandleLighting, upcomingCandleLightings } from "../hebrew/candle-times.ts";
-import type { ChabadEmbedZman } from "./chabad-embed";
+// Extensioned for the same reason, and a VALUE import now, not a type:
+// `isClockZman` narrows `zmanim_cache.times`' union at runtime. Importing
+// it from zman.ts rather than from either Chabad reader is what keeps this
+// module client-safe — zman.ts is a static table with no `server-only`,
+// no fetch and no key.
+import { isClockZman, type ChabadZman } from "./zman.ts";
 
 /*
  * plan.md §5c's fallback chain — "requested provider → cache → Hebcal
  * (client-side, always works) → last known good" — for the one zman that
  * has a provider today, `candle_lighting`.
  *
- * Client-safe, no fetch, no server-only import (only the *type* from
- * chabad-embed.ts, erased at compile time). Nothing here parses a
- * provider response: the Chabad side of this reads an already-parsed dict,
- * so the adapter's own parsing logic is not involved in, and does not
- * change for, any of the fallback behavior below.
+ * Client-safe, no fetch, no server-only import — the value shapes and the
+ * one narrowing helper come from zman.ts, which is a static table.
+ * Nothing here parses a provider response: the Chabad side of this reads
+ * an already-parsed dict, so the adapter's own parsing logic is not
+ * involved in, and does not change for, any of the fallback behavior
+ * below.
  *
  * candle-lighting/Renderer.tsx is the only caller, and it calls this for
  * every provider rather than branching itself — the whole point is that the
@@ -25,7 +31,19 @@ import type { ChabadEmbedZman } from "./chabad-embed";
  * fallback, is made in one pure function that a test can drive directly.
  */
 
-export type ChabadZmanimByDate = Record<string, Record<string, ChabadEmbedZman>>;
+/**
+ * `zmanim_cache.times` as the display and the editor hand it over — ISO
+ * date -> zman id -> value.
+ *
+ * The value is `ChabadZman`, a union: most ids carry a clock time, and
+ * `chabad:ShaahZmanit` carries a duration instead (zman.ts). Everything
+ * below reads `candle_lighting`, which is always a clock time, but it
+ * still narrows with `isClockZman` rather than asserting — a hand-written
+ * cache row or a future provider that files a duration under an
+ * unexpected id would otherwise become `new Date(undefined)`, i.e. an
+ * Invalid Date rendered on a shul's board.
+ */
+export type ChabadZmanimByDate = Record<string, Record<string, ChabadZman>>;
 
 export type ResolvedCandleLighting = {
   time: Date;
@@ -92,9 +110,9 @@ export type CandleLightingResolution =
    * presented as one: the display route boots from its last-known-good
    * bundle (plan.md §3c) and keeps working without a network, so a screen
    * showing this is almost certainly online and simply has no data for
-   * that date — often because the date is past Chabad's four-week window
-   * (lib/zmanim/warm.ts). Telling a gabbai to check the network would send
-   * them after the wrong problem entirely.
+   * that date — often because the date is past the end of Chabad's warmed
+   * window (92 days, lib/zmanim/warm.ts). Telling a gabbai to check the
+   * network would send them after the wrong problem entirely.
    */
   | { status: "unavailable" };
 
@@ -149,7 +167,7 @@ export function resolveCandleLightings(input: {
     // By LOCAL CALENDAR DATE, never by instant — see the note on
     // resolveCandleLighting below, which this shares.
     const cached = chabadZmanim?.[isoDateInZone(event.eventTime, location.timeZone)]?.candle_lighting;
-    if (cached) {
+    if (cached && isClockZman(cached)) {
       entries.push({ time: new Date(cached.iso), event: null, fellBackToHebcal: false });
     } else if (fallbackToCalculated) {
       entries.push({ time: event.eventTime, event, fellBackToHebcal: true });
@@ -168,9 +186,10 @@ export function resolveCandleLightings(input: {
  * it's what establishes *which date matters*. A Chabad cache dict can hold
  * plenty of dates and still be missing the one about to happen (a cache
  * miss, a cron that hasn't run, or a real no-match like the second night of
- * a two-day Yom Tov, which the embed phrases as "Light Holiday Candles
- * after" and the reader deliberately excludes — see
- * test/fixtures/chabad-embed-33701-4w.js's 9/12 entry). "Is the
+ * a two-day Yom Tov, which Chabad files as a `ShabbatEndTime` carrying a
+ * `LightCandlesAfter` footnote rather than as a `CandleLighting`, so it
+ * never lands under `candle_lighting` at all — see
+ * test/fixtures/chabad-zmanim-33701-92day.json's 9/12 entry). "Is the
  * dict empty" cannot tell those apart from a healthy cache; "does the dict
  * have the date Hebcal says is next" can, and answers all three the same
  * way.
@@ -220,7 +239,7 @@ export function resolveCandleLighting(input: {
   const neededDate = isoDateInZone(hebcalEvent.eventTime, location.timeZone);
   const cached = chabadZmanim?.[neededDate]?.candle_lighting;
 
-  if (cached) {
+  if (cached && isClockZman(cached)) {
     return { time: new Date(cached.iso), event: null, fellBackToHebcal: false };
   }
 

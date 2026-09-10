@@ -516,30 +516,31 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
     return { status: "failed", message: `Fetching ${location.locationId} failed: ${outcome.error}` };
   }
 
-  const { datesWithCandleLighting, lastDate } = outcome;
+  const { dates, datesWithCandleLighting, lastDate } = outcome;
 
   if (datesWithCandleLighting === 0) {
     return {
       status: "done",
       message:
         `Fetched ${location.locationId}, but not one date had a candle-lighting time. ` +
-        `Worth reporting — every week in the window has a Friday, so this points at chabad.org ` +
+        `Worth reporting — the window covers thirteen Fridays, so this points at chabad.org ` +
         `having changed what it sends.`,
     };
   }
 
   // How far ahead the screens are covered, which is the only thing this
-  // answers that a gabbai can act on. A count of dates alone doesn't say
-  // that, and a count of DAYS would be a fiction: the embed returns only
-  // candle-lighting and Shabbos/Yom-Tov-end days, never the weekdays
-  // between them.
+  // answers that a gabbai can act on. The day count is real now: this
+  // endpoint returns every day in the range, not only the candle-lighting
+  // ones, so both numbers mean something and they mean different things.
   return {
     status: "done",
-    message: `Fetched candle lighting for ${location.locationId} through ${formatCoverageDate(lastDate)}. ${datesWithCandleLighting} dates.`,
+    message:
+      `Fetched zmanim for ${location.locationId} through ${formatCoverageDate(lastDate)}. ` +
+      `${dates} days, ${datesWithCandleLighting} with candle lighting.`,
   };
 }
 
-/** "2026-10-04" -> "October 4". Read out of a date the embed itself
+/** "2026-12-10" -> "December 10". Read out of a date chabad.org itself
  *  returned, so it is already the right calendar day in the shul's own
  *  zone — parsed as UTC noon rather than midnight so no timezone this
  *  formatter runs in can roll it back a day. */
