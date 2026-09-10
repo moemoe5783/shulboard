@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
@@ -8,7 +8,8 @@ import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
-import { useFitFontSize } from "../useFitFontSize";
+import { resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
+import { fitFontSizePx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 import { overflowState } from "./overflow";
 
@@ -23,32 +24,27 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   const second = useSecond();
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  /** The row grid alone, without the footnote block — the fit reads one
+   *  row's height off it, so a footnote paragraph must never end up in the
+   *  denominator. */
+  const gridRef = useRef<HTMLDivElement>(null);
 
   // Chabad.org is the only source (lib/zmanim/provider.ts), so there is no
-  // provider to resolve — `config.provider` and `zmanim.provider` are both
-  // unread. What still matters is whether Chabad has a location to look
-  // the shul up by.
+  // provider to resolve. What still matters is whether Chabad has a
+  // location to look the shul up by.
   const chabadUnconfigured = !zmanim.hasChabadLocation;
 
   /*
    * `fit` is honest for the table and not for a single row — manifest.ts's
-   * sizing note has the whole argument. In `next` the row's own label
-   * changes through the day, so a fitted single row rescales several times
-   * a day; Settings.tsx recommends `fixed` there rather than switching the
-   * mode, and this is the independent half of that: a `next`-mode widget
-   * left on `fit` renders at its declared size instead of rescaling.
+   * sizing note has the whole argument, and ./fit.ts has the rules. In
+   * `next` the row's own label changes through the day, so a
+   * width-constrained single row rescales several times a day;
+   * Settings.tsx recommends `fixed` there rather than switching the mode,
+   * and this is the independent half of that.
    */
   const isFit = config.sizingMode === "fit" && config.displayMode === "all";
   const isHug = config.sizingMode === "hug";
 
-  /*
-   * Re-resolved every tick, keyed on `second` rather than on a fresh
-   * `Date` (which would defeat the memo every render even when the second
-   * hasn't moved). `next` mode genuinely needs the tick — the row has to
-   * advance the moment one passes — and `all` mode needs it once a day,
-   * when the date rolls over; one memo serves both rather than two code
-   * paths that can disagree about which day it is.
-   */
   const resolved = useMemo(
     () =>
       second !== null && location
@@ -71,48 +67,34 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         ? resolved.today.rows
         : [];
 
-  /*
-   * SPACERS ARE WHAT MAKE `fit` RECOMMENDABLE, and they are the whole
-   * mechanism behind manifest.ts's reversal of the earlier "fit is refused
-   * for the table" conclusion.
-   *
-   * The problem `fit` had: the fitted type size is a function of what is
-   * in the box, and `candle_lighting` and `shabbos_ends` are in the box on
-   * some dates and not others — so the table rescaled on Friday and
-   * rescaled back on Sunday, which is the least stable thing a
-   * most-watched element can do.
-   *
-   * The fix: pad the measured list to the DECLARED selection count. The
-   * declared count is a design-time constant and an upper bound on any
-   * day's real count, because a date-conditional row can only be absent,
-   * never extra. Friday's returning row lands in a spacer's place and the
-   * measurement does not change. A spacer is one row's height of nothing —
-   * not a labelled row with a blank time, which is what §5c forbids
-   * ("never render a blank row on a screen someone is standing in front
-   * of").
-   *
-   * Only in `fit`. `fixed` has no measurement to stabilise, and in `hug`
-   * the box's height IS its content, so a spacer would be visible dead
-   * space rather than reserved space inside a frame.
-   */
-  const spacerCount =
-    isFit && config.displayMode === "all" ? Math.max(0, config.zmanim.length - rows.length) : 0;
+  const isHebrew = config.labelScript === "hebrew";
+  const labelOf = (row: ResolvedZman) => (isHebrew ? row.hebrewLabel ?? row.label : row.label);
 
-  useFitFontSize(boxRef, contentRef, {
-    minFontSize: manifest.sizing.minFontSize ?? 14,
-    maxFontSize: manifest.sizing.maxFontSize ?? 200,
+  /*
+   * THE SPACER ROWS ARE GONE. They padded the measured list to the declared
+   * selection count so the old fit's size could not move when a
+   * date-conditional row appeared. The size no longer depends on the row
+   * count at all (./fit.ts), so they had nothing left to hold steady — and
+   * a spacer would now actively hurt, inflating the content height the
+   * overflow check reads and scrolling a table that genuinely fits.
+   */
+  useZmanimFit({
+    boxRef,
+    contentRef,
+    gridRef,
     canvasWidth: canvas.width,
     enabled: isFit,
+    rowCount: rows.length,
     /*
-     * THE DECLARED COUNT, NOT TODAY'S ROWS. This is the other half of the
-     * spacers: with the DOM row count pinned to the declared selection,
-     * the fit only has to re-run when the box changes (the hook's own
-     * ResizeObserver) or when the gabbai edits the selection. Today's
-     * labels and times are deliberately absent from these deps — a
-     * re-measure on a label's length is a rescale for a width reason, and
-     * a long label clipping (see `Row`) is the answer to that instead.
+     * The LABELS, not the times. The size is a function of the box and of
+     * one row's geometry, so what can change it is a label long enough to
+     * bind the width term — a returning "Candle Lighting" row, or the whole
+     * table switching to Hebrew. The times cannot: they are tabular figures
+     * of fixed width (measured, see scripts/test-font-parity.mjs), which is
+     * exactly why they share one column. Re-measuring every tick would be
+     * work for nothing on a screen that runs for months.
      */
-    deps: [config.zmanim.length],
+    signature: rows.map(labelOf).join("|"),
   });
 
   if (!location) {
@@ -133,8 +115,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   if (config.zmanim.length === 0) {
-    // The renderer's own chrome, so design.md §5's empty-state rule
-    // applies: name the space, say what to do, no mood.
     return <EmptyLocation canvas={canvas} message="No zmanim chosen yet — pick which times to show." />;
   }
 
@@ -145,16 +125,13 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
    * shape candle lighting uses. The display route boots from its
    * last-known-good bundle (plan.md §3c) and keeps rendering with no
    * network, so a screen showing this is almost certainly online and
-   * simply has no values for that date. "Check the network" would send a
-   * gabbai after a problem that isn't there.
+   * simply has no values for that date.
    *
-   * THIS IS A COMMON STATE NOW, not a corner. It used to take a shul
-   * deliberately turning off "Calculate missing times"; with the computed
-   * path gone (lib/zmanim/provider.ts) it is what every date past the
-   * 92-day warmed window shows, and every date a warm missed. So it is
-   * rendered as a deliberate line at the widget's own type size rather
-   * than as a small aside — a room should read it as the board saying
-   * something, not as the board having failed.
+   * THIS IS A COMMON STATE, not a corner: everything past the 92-day
+   * warmed window, and every date a warm missed. So it is a deliberate
+   * line at the widget's own type size rather than a small aside — a room
+   * should read it as the board saying something, not as the board having
+   * failed.
    */
   if (rows.length === 0) {
     return (
@@ -186,49 +163,56 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         boxRef={boxRef}
         contentRef={contentRef}
         mode={isHug ? "clip" : config.overflow}
+        speed={config.scrollSpeed}
         second={second}
-        rowCount={rows.length + spacerCount}
+        rowCount={rows.length}
         canvasWidth={canvas.width}
       >
         <div
           ref={contentRef}
           className="flex w-full flex-col"
+          // In `fit` the size is written straight to this element's style
+          // by useZmanimFit — see its note on why that is not React state.
           style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
         >
           {/*
-            A two-column grid, not a row of flex pairs — and that is the
-            whole reason a column of times lines up. `auto` on the second
-            track makes every time cell exactly as wide as the widest time,
-            so the figures stack; per-row flex would right-align each row's
-            time to its own row's width and nothing would align with
-            anything. docs/sizing.md §4 asks for tabular figures on numeric
-            board content, and a grid is what makes them worth having.
+            A TWO-COLUMN GRID, and that is the whole reason the times form a
+            clean right edge. `auto` on the second track makes every time
+            cell exactly as wide as the widest time, so the figures stack in
+            one column; a flex pair per row would right-align each row's
+            time to its own row and nothing would line up with anything.
+            `1fr` on the first track gives the label the slack, so a long
+            label grows into the gutter and neither edge moves — docs/
+            sizing.md §3's growth rule, satisfied by the geometry.
 
-            Both edges are pinned (labels to the left of the box, times to
-            the right), which is §3's growth rule satisfied trivially: a
-            longer label grows into the gap between the columns and no edge
-            moves. There is no alignment control on this widget for the
-            same reason — a table's alignment is its column structure.
+            RTL MIRRORS IT, and one attribute is the whole implementation:
+            `direction: rtl` puts the first grid item in the RIGHT track, so
+            the labels move to the right edge and the times form their
+            column on the left, which is where a Hebrew reader's eye
+            starts. The track sizes keep their jobs unchanged.
           */}
-          <div className="grid w-full" style={{ gridTemplateColumns: "1fr auto", columnGap: "1em" }}>
+          <div
+            ref={gridRef}
+            dir={isHebrew ? "rtl" : "ltr"}
+            className="grid w-full"
+            style={{ gridTemplateColumns: "1fr auto", columnGap: "1em" }}
+          >
             {rows.map((row) => (
-              <Row key={row.id} row={row} />
-            ))}
-            {/* See `spacerCount`. Empty grid cells, one row's height each,
-                holding the measurement steady in `fit` mode. `aria-hidden`
-                because there is nothing to read. */}
-            {Array.from({ length: spacerCount }, (_, index) => (
-              <SpacerRow key={`spacer-${index}`} />
+              <Row key={row.id} row={row} label={labelOf(row)} isHebrew={isHebrew && row.hebrewLabel !== null} />
             ))}
           </div>
 
           {footnotes.length > 0 && (
             <div
+              dir={isHebrew ? "rtl" : "ltr"}
               className="flex flex-col opacity-60"
               style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
             >
+              {/* The footnote TEXT is Chabad's English either way — the
+                  response carries no Hebrew for it — so only the block's
+                  own alignment mirrors, not the words. */}
               {footnotes.map((text) => (
-                <span key={text} className="leading-tight">
+                <span key={text} dir="ltr" className="leading-tight">
                   {text}
                 </span>
               ))}
@@ -241,9 +225,108 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
 }
 
 /**
+ * `fit` mode's own measurement — ./fit.ts has the rules and the reasoning.
+ *
+ * NOT `useFitFontSize`, and that is the point rather than duplication. That
+ * hook implements docs/sizing.md §2's fit: a binary search for the largest
+ * size at which content fits BOTH axes. This widget's fit lets height
+ * overflow and never lets width clip, which is a different question with a
+ * closed-form answer — for rows that do not wrap, width and row height
+ * both scale linearly with font size, so ONE measurement at a known size
+ * gives exact ratios and no search is needed.
+ *
+ * The result is written straight to the element's style rather than
+ * returned through state, for the reason `useFitFontSize` gives: it lets
+ * the ResizeObserver re-measure on every frame of a resize drag without a
+ * re-render each time, and it is safe because nothing else React owns
+ * touches that property.
+ */
+function useZmanimFit(options: {
+  boxRef: RefObject<HTMLElement | null>;
+  contentRef: RefObject<HTMLElement | null>;
+  gridRef: RefObject<HTMLElement | null>;
+  canvasWidth: number;
+  enabled: boolean;
+  rowCount: number;
+  signature: string;
+}) {
+  const { boxRef, contentRef, gridRef, canvasWidth, enabled, rowCount, signature } = options;
+  const pendingFrame = useRef<number | null>(null);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    const grid = gridRef.current;
+    if (!enabled || !box || !content || !grid || rowCount === 0) return;
+
+    const measure = () => {
+      if (box.clientWidth === 0 || box.clientHeight === 0) return;
+
+      // A known size to measure at. Any size works — the ratios below are
+      // size-independent — and a design-unit probe is what makes it a real
+      // pixel value in this box's own `cqw` context at whatever zoom the
+      // editor happens to be at.
+      const reference = resolveDesignPx(100, canvasWidth, box);
+      if (reference <= 0) return;
+      content.style.fontSize = `${reference}px`;
+
+      /*
+       * MEASURED AT `max-content`, briefly. The grid's label cell clips
+       * (`min-w-0 overflow-hidden`, which is what stops a long label
+       * pushing the times off the box), so at its normal width the `1fr`
+       * track shrinks the label rather than overflowing — and `scrollWidth`
+       * would report the box's width back, not the text's. Letting the grid
+       * size to its content for the length of one measurement is the only
+       * way to read the natural width the width rule needs.
+       */
+      const previousWidth = grid.style.width;
+      grid.style.width = "max-content";
+      const naturalWidth = grid.getBoundingClientRect().width;
+      const naturalHeight = grid.getBoundingClientRect().height;
+      grid.style.width = previousWidth;
+
+      const fitted = fitFontSizePx(
+        {
+          boxHeightPx: box.clientHeight,
+          boxWidthPx: box.clientWidth,
+          widthPerFontPx: naturalWidth / reference,
+          rowHeightPerFontPx: naturalHeight / Math.max(1, rowCount) / reference,
+        },
+        {
+          minPx: resolveDesignPx(manifest.sizing.minFontSize ?? 14, canvasWidth, box),
+          maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 200, canvasWidth, box),
+        },
+      );
+
+      content.style.fontSize = `${fitted}px`;
+
+      // docs/sizing.md: the properties panel shows an objective, read-only
+      // type size in fit mode. Plain DOM state rather than a prop back
+      // through WidgetRendererProps — the panel is editor-only and the
+      // renderer contract is shared with the display route, which has no
+      // panel to feed. Read by components/editor/useElementFontSize.ts.
+      box.dataset.fittedSize = String(Math.round(resolveDesignUnits(fitted, canvasWidth, box)));
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(() => {
+      if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
+      pendingFrame.current = requestAnimationFrame(measure);
+    });
+    observer.observe(box);
+
+    return () => {
+      observer.disconnect();
+      if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
+    };
+  }, [boxRef, contentRef, gridRef, canvasWidth, enabled, rowCount, signature]);
+}
+
+/**
  * What happens to rows that don't fit — `scroll`, `page` or `clip`.
  *
- * BOTH MOVING MODES DRIVE OFF THE MASTER SECOND TICK (lib/tick.ts), and
+ * BOTH MOVING MODES DRIVE OFF THE MASTER SECOND TICK (lib/tick.ts) and
  * neither creates a timer. plan.md §3e: "one master rAF/second-tick that
  * all time widgets subscribe to. No setInterval accumulation." A display
  * route runs for months, so a widget with its own interval leaks one timer
@@ -252,33 +335,33 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
  * BOTH ARE INERT WHEN NOTHING OVERFLOWS, which is why `page` can be the
  * default without putting motion on boards that don't need it.
  *
- * `page` is a PLAIN SWAP, per design.md's motion rule ("motion answers
- * actions only... no staggered reveals"): the translate has no transition,
- * so one screenful is replaced by the next between two frames. A cross-fade
- * at twenty feet reads as a moment of illegibility, not as polish.
+ * `page` is a PLAIN SWAP, per design.md's motion rule: the translate has no
+ * transition, so one screenful is replaced by the next between two frames.
+ * A cross-fade at twenty feet reads as a moment of illegibility.
  *
  * `scroll` is the one place a transition is right, because the transition
  * IS the content: the tick sets a new target every second and CSS
  * interpolates linearly across that second, which is how a once-a-second
- * clock produces genuinely continuous motion without a rAF loop.
+ * clock produces continuous motion without a rAF loop.
  *
- * THE ARITHMETIC IS IN ./overflow.ts, not here. This component measures
- * and renders; where the list should sit is a pure function of four
- * numbers and a tick, and keeping it in a component would mean it could
- * only ever be tested through a DOM.
+ * THE ARITHMETIC IS IN ./overflow.ts, not here. This component measures and
+ * renders; where the list should sit is a pure function of four numbers and
+ * an elapsed time.
  */
 function OverflowViewport({
   boxRef,
   contentRef,
   mode,
+  speed,
   second,
   rowCount,
   canvasWidth,
   children,
 }: {
-  boxRef: React.RefObject<HTMLDivElement | null>;
-  contentRef: React.RefObject<HTMLDivElement | null>;
+  boxRef: RefObject<HTMLDivElement | null>;
+  contentRef: RefObject<HTMLDivElement | null>;
   mode: ZmanimConfig["overflow"];
+  speed: ZmanimConfig["scrollSpeed"];
   second: number | null;
   rowCount: number;
   canvasWidth: number;
@@ -293,13 +376,17 @@ function OverflowViewport({
   /*
    * One ResizeObserver over both boxes. Measurement is unavoidable here in
    * a way it is not for sizing: how many rows fit is a fact about rendered
-   * pixels, and the alternative — deriving it from the declared type size
-   * and a line-height constant — would be a second, drifting copy of what
-   * the browser already knows.
+   * pixels, and deriving it from the declared type size and a line-height
+   * constant would be a second, drifting copy of what the browser knows.
    *
-   * SSR renders this once with both at zero, which reads as "nothing
+   * The width is measured here too, not read off a ref during render: the
+   * scroll rate is declared in board design units and has to be converted
+   * against the box's real rendered width, and a ref read in a render body
+   * is both a lint error and a genuine correctness trap.
+   *
+   * SSR renders this once with everything at zero, which reads as "nothing
    * overflows" and so as a still, complete table. That is the right first
-   * frame; the client corrects it after hydration, same class of gap as
+   * frame; the client corrects it after hydration, the same class of gap as
    * Clock's `second === null` placeholder.
    */
   useEffect(() => {
@@ -307,11 +394,6 @@ function OverflowViewport({
     const content = contentRef.current;
     if (!box || !content || mode === "clip") return;
 
-    // The width is measured here too, not read off the ref during render:
-    // the scroll rate is declared in board design units and has to be
-    // converted against the box's real rendered width, and a ref read in a
-    // render body is both a lint error and a genuine correctness trap (it
-    // holds last frame's value).
     const measure = () =>
       setMeasured((previous) =>
         previous.boxHeight === box.clientHeight &&
@@ -328,14 +410,52 @@ function OverflowViewport({
     return () => observer.disconnect();
   }, [boxRef, contentRef, mode, rowCount]);
 
+  /*
+   * WHERE THE SCROLL STARTS FROM, and the fix for a real reported bug: "on
+   * load it scrolls through the list very fast, then slows almost to a
+   * stop."
+   *
+   * The offset used to be `(second * speed) % contentHeight` off the
+   * absolute epoch tick. That is in range, so nothing looked wrong, but its
+   * value at any moment is arbitrary — and the frame before measurement has
+   * no offset at all. So the first measured frame jumped from 0 to whatever
+   * the epoch produced (224px, measured, at the old 16 units/second on a
+   * 504-unit list) and CSS interpolated the whole distance over one second:
+   * a fourteen-times sweep, then a settle to the real rate, which reads as
+   * stopping.
+   *
+   * An origin makes the first frame's elapsed time zero by construction.
+   * It is re-taken whenever anything the cycle is computed FROM changes —
+   * the mode, the speed, the row count, the measured box or content — so a
+   * resize restarts from the top rather than jumping to a new arbitrary
+   * point mid-cycle.
+   *
+   * ADJUSTED DURING RENDER, not in an effect. React's own
+   * state-derived-from-props pattern, and the same one
+   * components/editor/NumberField.tsx uses: setting state in an effect is
+   * both a wasted committed frame and what the React compiler lint refuses
+   * outright. The condition is a key comparison, so it settles in one
+   * extra render pass and never loops.
+   */
+  const cycleKey = `${mode}:${speed}:${rowCount}:${Math.round(boxHeight)}:${Math.round(contentHeight)}`;
+  const [origin, setOrigin] = useState<{ key: string; second: number } | null>(null);
+
+  if (second !== null && (origin === null || origin.key !== cycleKey)) {
+    setOrigin({ key: cycleKey, second });
+  }
+
+  const elapsedSeconds =
+    second === null || origin === null || origin.key !== cycleKey ? null : second - origin.second;
+
   const { offset, animate, wrapped } = overflowState({
     mode,
-    second,
+    elapsedSeconds,
     boxHeight,
     contentHeight,
     rowCount,
     boxWidth,
     canvasWidth,
+    speed,
   });
 
   return (
@@ -346,7 +466,8 @@ function OverflowViewport({
         // Exactly the tick interval, linear: the target moves once a second
         // and the browser fills in the second, which is what makes a
         // once-a-second clock look continuous. `page` never transitions —
-        // design.md's plain-swap rule.
+        // design.md's plain-swap rule. Suppressed on the frame the scroll
+        // wraps, or CSS would animate the whole list backwards.
         transition: animate && !wrapped ? "transform 1s linear" : undefined,
       }}
     >
@@ -369,52 +490,62 @@ function OverflowViewport({
 /**
  * One row: the provider's own label, and the provider's own time string.
  *
- * NEITHER IS TRANSLATED. Chabad sends "Latest Shacharit" and this prints
- * "Latest Shacharit"; it sends "7:22 PM" and this prints "7:22 PM" (§5c:
- * "never re-round or recompute provider output. Display verbatim"). The
- * canonical id the gabbai selected never appears on screen — it exists so
- * the board document survives a provider change, not to be read.
+ * NEITHER IS TRANSLATED BY US. Chabad sends "Latest Shacharit" and this
+ * prints "Latest Shacharit"; it sends "סוף זמן תפילה" and this prints that;
+ * it sends "7:22 PM" and this prints "7:22 PM" (§5c: "never re-round or
+ * recompute provider output. Display verbatim"). The canonical id the
+ * gabbai selected never appears on screen — it exists so the board document
+ * survives a provider change, not to be read.
  *
  * A row is two grid cells rather than a wrapper div, so the times in every
  * row share one column. That is why this returns a fragment.
  *
  * NEITHER CELL WRAPS, and that is load-bearing rather than cosmetic: the
- * paging mode divides the measured content height by the row count to find
- * one row's height, which is only correct while every row is the same
- * height. A wrapping label would make one row taller and page boundaries
- * would start cutting rows in half. `min-w-0` plus clipping is §3's own
- * overflow answer applied to the width the label has, and §7's reasoning
- * for the time.
+ * paging mode divides measured content height by row count to find one
+ * row's height, which is only correct while every row is the same height,
+ * and the fit measures one row's height the same way. A wrapping label
+ * would make one row taller and page boundaries would start cutting rows in
+ * half. Horizontal clipping is the last resort behind that — ./fit.ts's
+ * width rule shrinks the type first, and only a box too narrow at
+ * `minFontSize` reaches the clip.
  */
-function Row({ row }: { row: ResolvedZman }) {
+function Row({ row, label, isHebrew }: { row: ResolvedZman; label: string; isHebrew: boolean }) {
   return (
     <>
-      <span className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80">{row.label}</span>
-      {/* Frank Ruhl Libre and `numeric`, same as Clock and candle lighting:
-          it is the one face in the product with a real tabular figure set
-          (design.md §3's measurement), which is what keeps this column
-          from jittering row to row. */}
       <span
+        /*
+         * `lang` and `dir` on the CELL, not only on the grid. A Hebrew
+         * label inside an RTL grid still needs its own direction declared
+         * for the browser to order it correctly — and a row that fell back
+         * to English inside an RTL table needs the opposite, which is a
+         * distinction only the cell can express.
+         */
+        {...(isHebrew ? { lang: "he", dir: "rtl" as const } : { dir: "ltr" as const })}
+        className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80"
+      >
+        {label}
+      </span>
+      {/*
+        ALWAYS LTR, in either script, and Frank Ruhl Libre with `numeric`.
+
+        The direction: a clock time is Latin digits in a fixed order, and
+        rendering it right-to-left would turn "7:22 PM" into something no
+        luach prints. Item 3's mirroring is about which SIDE the column
+        sits on, not the order inside a cell.
+
+        The face: measured, not assumed. scripts/test-font-parity.mjs reads
+        `11111` against `00000` in the real board and finds the sefarim face
+        closes a 6.97px spread to 0.00px under `tabular-nums` while the UI
+        face is unchanged at 3.08px either way — which is CLAUDE.md's
+        caveat, still true on the board. So the clean right edge comes from
+        setting this face, not from the utility class alone.
+      */}
+      <span
+        dir="ltr"
         className="numeric font-semibold leading-snug whitespace-nowrap"
         style={{ fontFamily: BOARD_FONTS.sefarim }}
       >
         {row.display}
-      </span>
-    </>
-  );
-}
-
-/** One row's height of nothing — see `spacerCount`. A non-breaking space
- *  rather than an empty string so the cell has a line box and therefore a
- *  height; `invisible` rather than `hidden` so it occupies layout. */
-function SpacerRow() {
-  return (
-    <>
-      <span aria-hidden className="invisible leading-snug whitespace-nowrap">
-        &nbsp;
-      </span>
-      <span aria-hidden className="invisible leading-snug whitespace-nowrap">
-        &nbsp;
       </span>
     </>
   );

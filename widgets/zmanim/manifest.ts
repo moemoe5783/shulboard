@@ -106,6 +106,40 @@ export const zmanimConfigSchema = z.object({
    */
   overflow: z.enum(["page", "scroll", "clip"]).default("page"),
   /**
+   * How fast `overflow: "scroll"` creeps — 30, 60 or 120 board design
+   * units per second (`SCROLL_UNITS_PER_SECOND` in ./overflow.ts, which
+   * has the arithmetic behind the numbers).
+   *
+   * A setting rather than a constant because the old constant 16 was too
+   * slow to be useful and there was no way to say so from the panel. An
+   * enum rather than a number because units-per-second is not a quantity a
+   * gabbai can judge without standing in the lobby, while "slower" and
+   * "faster" are.
+   */
+  scrollSpeed: z.enum(["slow", "medium", "fast"]).default("medium"),
+  /**
+   * Which language the row labels are in.
+   *
+   * `"english"` and `"hebrew"` are both THE PROVIDER'S OWN WORDS where
+   * there are any — Chabad sends "Latest Shacharit" and "סוף זמן תפילה",
+   * and the board shows whichever was asked for. There is no house Hebrew
+   * table: a row with no Hebrew from the provider falls back to its
+   * English, because putting a zman under a Hebrew name this project
+   * asserted would be a halachic claim rather than a translation.
+   *
+   * A ROW MAY WELL HAVE NO HEBREW. Only the response's nested
+   * `TimeGroups` shape carries `HebrewTitle`; the flat shape the 92-day
+   * request returns has none at all, and which parameter switches between
+   * them is unresolved — see lib/zmanim/chabad-adapter.ts. So this is a
+   * setting that may currently do nothing for a given shul's cache, and
+   * Settings.tsx says so rather than leaving it looking broken.
+   *
+   * HEBREW IS RTL, and the table mirrors: the label and time columns swap
+   * sides rather than staying put. That is one `dir="rtl"` on the grid —
+   * see the Renderer.
+   */
+  labelScript: z.enum(["english", "hebrew"]).default("english"),
+  /**
    * The provider's halachic footnotes, under the table.
    *
    * OFF BY DEFAULT because of what they actually are: full sentences
@@ -153,37 +187,35 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
    * most-watched element" applied to a table, and it is still true of a
    * `fit` that re-measures on every row-count change.
    *
-   * WHAT CHANGED: fit no longer re-measures on a row-count change,
-   * because the measured DOM no longer HAS a varying row count. The
-   * Renderer pads the list to `zmanim.length` — the declared selection —
-   * with zero-content spacer rows in `fit` mode (see its own note). The
-   * declared count is a design-time constant and is an upper bound on any
-   * day's real count, since a date-conditional row can only be absent,
-   * never extra. So Friday's extra row lands in a spacer's place and the
-   * type size does not move. Fit's dependencies are the box and the
-   * declared selection; today's actual rows are not among them.
+   * WHAT CHANGED, TWICE. The first answer padded the measured list to the
+   * declared selection count with spacer rows, so the count the fit saw
+   * could not vary. The second and current answer is better: the size does
+   * not depend on the row count at all. It is
+   * `min(boxHeight / (8 rows × per-row height), boxWidth / row width)` —
+   * ./fit.ts — so a returning candle-lighting row changes nothing about
+   * the height term, and the spacers had nothing left to hold steady.
    *
-   * That also means fit does NOT need an overflow mode to absorb growth —
-   * there is no growth past what it was measured for. Overflow (`overflow`
-   * above) exists for the other cause: a box too small for the declared
-   * selection even at `minFontSize`, or a `fixed`/`hug` declared size that
-   * does not fit. In `fit`, overflow can only happen once the search
-   * bottoms out at `minFontSize`, which is when the honest answer really
-   * is to page or scroll rather than to keep shrinking past legibility.
+   * That also means fit DOES now need the overflow mode, where the spacer
+   * version did not: the height term deliberately ignores how many rows
+   * there are, so a twelve-row selection in a box sized for eight
+   * overflows by design and scrolls or pages. Vertical overflow is
+   * acceptable; horizontal truncation is not, which is the second term.
    *
-   * NO SPACERS IN `fixed` OR `hug`, deliberately. `fixed` has no
-   * measurement to stabilise, and in `hug` the box's height IS the content,
-   * so a spacer would be dead space at the bottom of the box rather than
-   * inside a frame the gabbai drew.
+   * THE SPACERS ARE GONE, and so is the binary search — `fit` means
+   * something different here now, and ./fit.ts is the whole argument. In
+   * short: the size is `min(height-driven, width-allowed)`, width is never
+   * compromised, height may overflow into the scroll or page mode above.
+   * Neither term reads the row count, so there is nothing left for a
+   * spacer to hold steady, and a spacer would now actively hurt by
+   * inflating the content height the overflow check reads.
    *
    * WHERE `fit` IS STILL NOT RECOMMENDED: `"next"` display mode. One row,
-   * so nothing about the count varies — but the row's own label changes
-   * through the day ("Sunrise", then "Latest Shacharit", then "Midnight"),
-   * and a fitted single row rescales with its label's length. That is
-   * Clock's argument again, in the one configuration where the spacer trick
-   * has nothing to hold steady. `next` keeps `fixed` as the sensible pick;
-   * Settings.tsx says so rather than switching the mode, because all three
-   * are legible there and only one is jumpy.
+   * and the row's own label changes through the day ("Sunrise", then
+   * "Latest Shacharit", then "Midnight"), so a width-constrained single
+   * row rescales with its label's length several times a day. `next` keeps
+   * `fixed` as the sensible pick; Settings.tsx says so rather than
+   * switching the mode, because all three are legible there and only one
+   * is jumpy.
    *
    * `all` + `fixed` and `all` + `hug` both stay fully honest and offered —
    * §2 names zmanim tables as its own `fixed` example, and `hug` is the one
