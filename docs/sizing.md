@@ -60,6 +60,42 @@ and when a screen shows it. A bounded frame the gabbai deliberately sized is the
 right model here, not one that quietly resizes out from under a layout they
 composed around it.
 
+### `fit` for the Zmanim table means something else — decided
+
+**The Zmanim widget's `fit` does NOT implement this section's `fit`, and
+that is deliberate rather than a deviation to fix.** §2's fit is "the box is
+authoritative, content scales to fill it" — a search for the largest size
+fitting BOTH axes. That is right for a title and wrong for a table, because
+it makes the type size a function of how many rows there happen to be
+today.
+
+Its rules instead, in `widgets/zmanim/fit.ts`:
+
+1. **Vertical resize drives the size.** A taller box means bigger text,
+   proportionally.
+2. **Horizontal resize does not, on its own.** Widening a box that already
+   had room changes nothing.
+3. **Text is never clipped horizontally.** Too narrow for the row at the
+   height-driven size means smaller type, exactly small enough to fit.
+4. **Vertical overflow is acceptable.** Grow into available height even
+   when the list then no longer fits and has to scroll or page.
+
+So `size = min(boxHeight / (8 rows × per-row height), boxWidth / row
+width)`, clamped. Rule 2 falls out of the `min`; rule 4 falls out of the
+first term not reading the row count. **No binary search** — for rows that
+do not wrap, both width and row height scale linearly with font size, so
+one measurement at any known size gives exact ratios.
+
+The eight is the one judgement call: a table filling a third of a
+1080-unit board is 360 units, which at eight rows is roughly 45-unit type,
+legible at the twenty feet design.md §1 is written for. Fewer than eight
+rows selected leaves space at the bottom, which is honest — closing it
+would mean the size depending on the row count again.
+
+**This is why the spacer rows below are gone.** Three passes are recorded
+here rather than the last overwriting the others, because each was right
+about something the next one needed.
+
 **The Zmanim widget shipped, and it recommends `fit` — which took two
 passes to get right, so both are recorded.**
 
@@ -93,14 +129,37 @@ own label changes through the day ("Sunrise", "Latest Shacharit",
 panel says so rather than switching the mode: all three are legible for one
 row and only one is jumpy.
 
+**THE THIRD PASS, and what shipped: the spacers are gone too.** Under the
+four rules above the size does not depend on the row count at ALL — the
+height term takes a per-row height and no count, so a returning
+candle-lighting row cannot move it. The spacers had nothing left to hold
+steady, and they would now actively hurt: a spacer inflates the content
+height the overflow check reads, so a table that genuinely fits would
+scroll.
+
+One residual day-to-day change remains and is rule 3 doing its job rather
+than the instability spacers guarded against: the width term measures the
+widest row PRESENT, so on a Friday, when "Candle Lighting" is on the board,
+a width-constrained table gets slightly smaller type. That happens only
+when width binds — i.e. when the alternative is clipping, which rule 3
+forbids outright.
+
 **A separate axis carries what fit used to have to absorb: an overflow
 mode** — page through a screenful at a time, scroll continuously, or clip
 per §3 below. Sizing decides how big the type is; overflow decides what
-happens to rows that still don't fit at that size, which in `fit` means
-only once the search has bottomed out at `minFontSize`. Both moving modes
-drive off the master second tick (plan.md §3e) and neither creates a timer,
-and both are inert when the rows do fit — which is why paging can be the
-default without putting motion on boards that don't need it.
+happens to rows that still don't fit at that size, which under rule 4 is a
+routine outcome rather than an edge. Both moving modes drive off the master
+second tick (plan.md §3e) and neither creates a timer, and both are inert
+when the rows do fit — which is why paging can be the default without
+putting motion on boards that don't need it.
+
+**The scroll offset is derived from ELAPSED time since the widget started
+scrolling, never from the absolute tick.** That was a real bug, not a
+nicety: `(second * speed) % height` off the epoch is in range but arbitrary
+at any given moment, so the first frame after measurement jumped from
+nothing to 224px (measured) and CSS interpolated the whole distance over
+one second — a fourteen-times sweep through the list, then a settle to the
+real rate, which reads as stopping.
 
 ### `hug` — content drives the box, and the box resizes to match
 
@@ -328,6 +387,17 @@ digit-count problem disappear rather than managing it.
 Constraint already established during the tokens work: **Assistant has no tabular
 figure set** — `font-variant-numeric: tabular-nums` measurably does nothing on it.
 Frank Ruhl Libre does have them.
+
+**Re-measured on the board, not inherited from the chrome measurement.**
+design.md §3 settled this for dashboard chrome; the board is a different
+context — its own font tokens, its own `cqw` sizing — and the Zmanim
+widget's right-aligned column of times depends on it being true there too.
+`scripts/test-font-parity.mjs` now reads `11111` against `00000` inside the
+real board at 15px: the sefarim face closes a **6.97px spread to 0.00px**
+under `tabular-nums`, while the UI face is **3.08px either way,
+unchanged**. So a column of times gets its clean edge from setting the
+sefarim face, and the utility class alone would do nothing. CLAUDE.md's
+caveat is load-bearing on the board as well as in chrome.
 
 So: a font offered for numeric board content must have tabular figures, or the
 renderer must fall back to one that does for the numeric portion. This becomes a
