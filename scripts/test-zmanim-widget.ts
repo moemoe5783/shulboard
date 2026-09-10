@@ -19,7 +19,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { BoardLocation } from "../lib/board-location.tsx";
 import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
-import { computeZman, HEBCAL_COMPUTABLE } from "../lib/zmanim/hebcal-zmanim.ts";
 import { resolveZmanimForDate, resolveZmanimTable } from "../lib/zmanim/resolve-zmanim.ts";
 import type { ChabadZmanimByDate } from "../lib/zmanim/resolve.ts";
 import {
@@ -27,7 +26,6 @@ import {
   CHABAD_SUPPLIES,
   ZMAN_PANEL_LABEL,
   ZMAN_SUBSTITUTE,
-  isClockZman,
 } from "../lib/zmanim/zman.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -65,11 +63,8 @@ globalThis.fetch = originalFetch;
 
 const DATES = Object.keys(CACHE).sort();
 const base = {
-  provider: "chabad" as const,
   location: LOCATION,
   chabadZmanim: CACHE as ChabadZmanimByDate,
-  fallbackToCalculated: true,
-  hour12: true,
 };
 
 console.log("\n-- the capability matrix is coherent -----------------------");
@@ -90,12 +85,8 @@ check(
   "no provider-namespaced id is offered — chabad:ShaahZmanit stays out of board documents",
 );
 check(
-  [...HEBCAL_COMPUTABLE].every((id) => CANONICAL_ZMAN_ORDER.includes(id)),
-  "everything the fallback can compute is a canonical id too",
-);
-check(
-  !HEBCAL_COMPUTABLE.has("candle_lighting") && !HEBCAL_COMPUTABLE.has("shabbos_ends"),
-  "candle lighting and Shabbos ends are NOT computed here — that logic lives in the Candle Lighting widget",
+  [...CHABAD_SUPPLIES].every((id) => ZMAN_PANEL_LABEL[id] !== undefined),
+  "and each has a panel label, so no selectable checkbox can render its raw id",
 );
 
 console.log("\n-- the provider's own words reach the board ----------------");
@@ -109,40 +100,44 @@ console.log("\n-- the provider's own words reach the board ----------------");
     rows[1]?.label,
   );
   check(rows[0]?.display === "7:14 AM", "and the time is Chabad's own string, verbatim", rows[0]?.display);
-  check(
-    rows.every((row) => !row.fellBackToHebcal && row.suppliedBy === null),
-    "cached rows are flagged as neither fallen back nor substituted",
-  );
+  check(rows.every((row) => row.suppliedBy === null), "and neither row is marked as substituted");
 }
 
 {
-  // A Hebcal board has no cache and therefore no provider label. House
-  // vocabulary is the fallback, and it is the only place it reaches a
-  // board.
-  const rows = resolveZmanimForDate({
-    ...base,
-    provider: "hebcal",
-    chabadZmanim: null,
-    date: "2026-09-10",
-    ids: ["netz"],
-  });
-  check(rows[0]?.label === "Netz", "with no cache at all the label is ours", rows[0]?.label);
-  check(rows[0]?.fellBackToHebcal === false, "and hebcal is not flagged as a fallback — it IS the computed path");
-}
-
-{
-  // A Chabad board WITH a warmed cache keeps the provider's wording even
-  // on a computed row, because a label doesn't vary by date and the
-  // resolver harvests it from any date that has the id. Turning
-  // "Calculate missing times" on must not change the words on screen.
+  // With nothing cached for a date there is no row at all — no computed
+  // stand-in exists any more. The rest of the cache is irrelevant to that.
   const thinned: ChabadZmanimByDate = { ...CACHE, "2026-09-10": {} };
   const rows = resolveZmanimForDate({ ...base, chabadZmanim: thinned, date: "2026-09-10", ids: ["netz"] });
-  check(rows[0]?.fellBackToHebcal === true, "a Chabad row with nothing cached for the date is computed and flagged");
-  check(
-    rows[0]?.label === "Sunrise",
-    "and it STILL says \"Sunrise\" — the label is harvested from the other 91 cached days",
-    rows[0]?.label,
-  );
+  check(rows.length === 0, "a date Chabad has no value for yields no row, not a calculated one",
+    rows.map((r) => `${r.label} ${r.display}`).join(","));
+}
+
+{
+  /*
+   * Labels are harvested from EVERY cached date rather than the one being
+   * rendered, and with the computed path gone this is the only remaining
+   * reason that matters: a substituted row needs the SUBSTITUTE's label,
+   * and on a Shabbos the requested id has no row of its own to read one
+   * from.
+   */
+  const onlyShabbos: ChabadZmanimByDate = { "2026-09-12": CACHE["2026-09-12"] };
+  const rows = resolveZmanimForDate({
+    ...base,
+    chabadZmanim: onlyShabbos,
+    date: "2026-09-12",
+    ids: ["tzeis_baal_hatanya"],
+  });
+  check(rows[0]?.label === "Shabbat Ends",
+    "a substituted row is labelled from the id that supplied it, not the id that was asked for",
+    rows[0]?.label);
+}
+
+{
+  // House vocabulary is only reachable when the cache holds nothing for
+  // the id at all — which is a board showing no rows anyway. Asserted so
+  // "Netz" never quietly appears on a screen beside Chabad's own wording.
+  const rows = resolveZmanimForDate({ ...base, chabadZmanim: null, date: "2026-09-10", ids: ["netz"] });
+  check(rows.length === 0, "no cache at all: no rows, so no house label can reach a board");
 }
 
 console.log("\n-- ITEM 4: Tzeis and ShabbatEndTime are one nightfall ------");
@@ -185,8 +180,9 @@ check(
     "9/12 says \"Shabbat Ends\", never \"Nightfall\" over an 8.5° time", rows[0]?.label);
   check(rows[0]?.display === "8:14 PM", "and it is the Shabbos-end value, not a computed 6° one", rows[0]?.display);
   check(rows[0]?.id === "tzeis_baal_hatanya", "the row keeps the id the gabbai selected", rows[0]?.id);
-  check(rows[0]?.fellBackToHebcal === false,
-    "a substitution is not a fallback — nothing was calculated, so no indicator");
+  check(rows[0]?.suppliedBy === "shabbos_ends",
+    "and the row records which id supplied it, so a substitution is distinguishable from a direct hit",
+    String(rows[0]?.suppliedBy));
 }
 
 {
@@ -211,48 +207,26 @@ check(
    * Both nightfall ids selected on a Shabbos — the case where a naive
    * substitution would print one value twice under two labels.
    *
-   * With the fallback OFF this isolates the substitution alone: it is
-   * SKIPPED, because the substitute is itself selected, so the day yields
-   * the one real shabbos_ends row rather than that row plus a copy of it
-   * labelled "Shabbat Ends" a second time.
+   * The substitution is SKIPPED because the substitute is itself selected,
+   * so the day yields the one real shabbos_ends row rather than that row
+   * plus a copy of it labelled "Shabbat Ends" a second time. There is no
+   * fallback left for the requested id to reach instead, so this is now the
+   * only outcome rather than one of two.
    */
-  const off = resolveZmanimForDate({
+  const shabbos = resolveZmanimForDate({
     ...base,
-    fallbackToCalculated: false,
     date: "2026-09-12",
     ids: ["tzeis_baal_hatanya", "shabbos_ends"],
   });
-  check(off.length === 1, "both nightfall ids on a Shabbos, fallback off: ONE row, not the same time twice",
-    off.map((r) => `${r.label} ${r.display}`).join(" | "));
-  check(off[0]?.id === "shabbos_ends" && off[0]?.suppliedBy === null,
+  check(shabbos.length === 1, "both nightfall ids on a Shabbos: ONE row, not the same time twice",
+    shabbos.map((r) => `${r.label} ${r.display}`).join(" | "));
+  check(shabbos[0]?.id === "shabbos_ends" && shabbos[0]?.suppliedBy === null,
     "and it is the real shabbos_ends row — the substituted duplicate is what got dropped",
-    `${off[0]?.id} suppliedBy=${off[0]?.suppliedBy}`);
-
-  /*
-   * With the fallback ON the same selection gives TWO rows, and that is
-   * correct rather than the duplicate above. The substitution is still
-   * skipped; nightfall then falls through to the computation, which
-   * produces a genuinely different time — 6° nightfall at 8:02 PM against
-   * an 8.5° Shabbos end at 8:14 PM. Two real, differently-labelled times,
-   * with the computed one flagged. A gabbai who selected both asked for
-   * exactly this.
-   */
-  const on = resolveZmanimForDate({ ...base, date: "2026-09-12", ids: ["tzeis_baal_hatanya", "shabbos_ends"] });
-  check(on.length === 2, "both selected, fallback on: two rows", on.map((r) => `${r.label} ${r.display}`).join(" | "));
-  check(
-    on[0]?.id === "tzeis_baal_hatanya" && on[0]?.fellBackToHebcal === true && on[0]?.suppliedBy === null,
-    "the nightfall row is computed and flagged, not substituted",
-    `${on[0]?.id} fellBack=${on[0]?.fellBackToHebcal} suppliedBy=${on[0]?.suppliedBy}`,
-  );
-  check(
-    on[1]?.id === "shabbos_ends" && on[1]?.fellBackToHebcal === false && on[1]!.time > on[0]!.time,
-    "and Chabad's own Shabbos end sits after it, unflagged",
-    `${on[1]?.display} after ${on[0]?.display}`,
-  );
+    `${shabbos[0]?.id} suppliedBy=${shabbos[0]?.suppliedBy}`);
 
   const weekday = resolveZmanimForDate({ ...base, date: "2026-09-10", ids: ["tzeis_baal_hatanya", "shabbos_ends"] });
   check(weekday.length === 1 && weekday[0].id === "tzeis_baal_hatanya",
-    "on a weekday the same selection gives the plain nightfall row and nothing else — shabbos_ends is not computed",
+    "on a weekday the same selection gives the plain nightfall row and nothing else",
     weekday.map((r) => r.id).join(","));
 }
 
@@ -316,55 +290,37 @@ const FULL = [
     today.status === "ok" ? today.rows[0]?.time.toISOString() : today.status);
 }
 
-console.log("\n-- ITEM 9: the same missing-value mechanism ----------------");
+console.log("\n-- a missing value is missing, full stop -------------------");
 
 {
-  // Fallback OFF on a Chabad board: a date with nothing cached shows no
-  // row, and a selection with nothing left is "unavailable" — the same
-  // distinct status candle lighting uses, so the widget can say the same
-  // calm thing rather than an offline message.
-  const off = resolveZmanimTable({
+  // No switch to test any more. A date Chabad has nothing for yields no
+  // rows, and a selection with nothing left is `unavailable` — the same
+  // distinct status candle lighting uses, so the widget says the same calm
+  // thing rather than an offline message.
+  const empty = resolveZmanimTable({
     ...base,
-    fallbackToCalculated: false,
     chabadZmanim: {},
     now: new Date("2026-09-10T16:00:00Z"),
     ids: FULL,
   });
-  check(off.today.status === "unavailable", "fallback OFF with nothing cached: unavailable", off.today.status);
-  check(off.next === null, "and no next row either");
+  check(empty.today.status === "unavailable", "nothing cached: unavailable, never calculated", empty.today.status);
+  check(empty.next === null, "and no next row either");
 
-  const on = resolveZmanimTable({
+  const nullCache = resolveZmanimTable({
     ...base,
-    chabadZmanim: {},
+    chabadZmanim: null,
     now: new Date("2026-09-10T16:00:00Z"),
     ids: FULL,
   });
-  check(on.today.status === "ok" && on.today.rows.length === 12,
-    "fallback ON with nothing cached: all twelve computed",
-    on.today.status === "ok" ? String(on.today.rows.length) : on.today.status);
-  check(on.today.status === "ok" && on.today.rows.every((r) => r.fellBackToHebcal),
-    "and every one is flagged, so the board shows the calculated-times notice");
+  check(nullCache.today.status === "unavailable", "no cache at all: the same answer", nullCache.today.status);
 }
 
 {
-  // Hebcal and Manual are the computed path, so the switch has nothing to
-  // say about them. Turning it off must not blank a Hebcal widget — the
-  // isolation half of item 9.
-  for (const provider of ["hebcal", "manual"] as const) {
-    const off = resolveZmanimTable({
-      ...base,
-      provider,
-      chabadZmanim: null,
-      fallbackToCalculated: false,
-      now: new Date("2026-09-10T16:00:00Z"),
-      ids: FULL,
-    });
-    check(off.today.status === "ok" && off.today.rows.length === 12,
-      `${provider} with the switch OFF still resolves all twelve — the switch is Chabad-only`,
-      off.today.status === "ok" ? String(off.today.rows.length) : off.today.status);
-    check(off.today.status === "ok" && off.today.rows.every((r) => !r.fellBackToHebcal),
-      `${provider}: and none is flagged`);
-  }
+  // Past the 92-day window — the state this is now the common cause of.
+  const past = resolveZmanimTable({ ...base, now: new Date("2026-12-20T16:00:00Z"), ids: FULL });
+  check(past.today.status === "unavailable",
+    "a date past the warmed window is unavailable — the ordinary outcome now, not a corner",
+    past.today.status);
 }
 
 {
@@ -379,9 +335,27 @@ console.log("\n-- ITEM 9: the same missing-value mechanism ----------------");
     "and appears on the Friday, between netz and shkia",
     friday.map((r) => r.id).join(","));
   check(
-    friday.find((r) => r.id === "candle_lighting")!.time <
-      friday.find((r) => r.id === "shkia")!.time,
+    friday.find((r) => r.id === "candle_lighting")!.time < friday.find((r) => r.id === "shkia")!.time,
     "18 minutes before sunset, so it sorts before it",
+  );
+}
+
+{
+  // THE ROW COUNT VARYING IS WHY `fit` PADS TO THE DECLARED SELECTION.
+  // Measured here rather than asserted in a comment: the same selection
+  // yields three rows on a Friday and two on the Tuesday before, and the
+  // declared count is the upper bound of both — which is what the
+  // Renderer's spacer rows hold the fit measurement steady against.
+  const declared = ["netz", "candle_lighting", "shkia"];
+  const friday = resolveZmanimForDate({ ...base, date: "2026-09-11", ids: declared });
+  const tuesday = resolveZmanimForDate({ ...base, date: "2026-09-15", ids: declared });
+  check(friday.length !== tuesday.length,
+    "a fixed selection resolves to a different number of rows on different days",
+    `${friday.length} on Friday vs ${tuesday.length} on Tuesday`);
+  check(
+    friday.length <= declared.length && tuesday.length <= declared.length,
+    "and neither day exceeds the declared count — a date-conditional row can only be absent, never extra",
+    `declared ${declared.length}`,
   );
 }
 
@@ -394,48 +368,6 @@ console.log("\n-- ITEM 9: the same missing-value mechanism ----------------");
     rows.map((r) => r.id).join(","));
   const unknown = resolveZmanimForDate({ ...base, date: "2026-09-10", ids: ["not_a_zman"] });
   check(unknown.length === 0, "so does an id that is not canonical at all");
-}
-
-console.log("\n-- the computed path tracks the cached one it stands in for -");
-
-/*
- * If the fallback used a different shitah the "Showing calculated times"
- * note would be hiding a visibly different number. Measured across every
- * day of the fixture, per id, cached against computed.
- */
-{
-  const worst: Record<string, number> = {};
-  for (const date of DATES) {
-    for (const id of FULL) {
-      const cachedValue = CACHE[date]?.[id];
-      if (!cachedValue || !isClockZman(cachedValue)) continue;
-      const computed = computeZman(id, date, LOCATION);
-      if (!computed) continue;
-      const drift = Math.abs(new Date(cachedValue.iso).getTime() - computed.getTime()) / 60_000;
-      worst[id] = Math.max(worst[id] ?? 0, drift);
-    }
-  }
-  for (const [id, drift] of Object.entries(worst)) {
-    check(drift <= 1, `${id}: computed is within a minute of Chabad's on all 92 days`, `${drift} min`);
-  }
-  /*
-   * This comparison is what found the DST bug in lib/zmanim/time.ts. Alos
-   * and misheyakir came back 60 and 59 minutes off — on one date, 11/1,
-   * the fall-back day — because the cached instant was built with an
-   * offset read at the guess rather than at the answer. Every other id and
-   * every other date agreed to the minute, which is exactly why nothing
-   * caught it until a computed value was held against a cached one.
-   */
-  const fallBackDay = FULL.map((id) => {
-    const cachedValue = CACHE["2026-11-01"]?.[id];
-    const computed = computeZman(id, "2026-11-01", LOCATION);
-    if (!cachedValue || !isClockZman(cachedValue) || !computed) return 0;
-    return Math.abs(new Date(cachedValue.iso).getTime() - computed.getTime()) / 60_000;
-  });
-  check(Math.max(...fallBackDay) <= 1,
-    "including on 11/1 itself, the DST fall-back day that exposed the one-pass offset bug",
-    `worst ${Math.max(...fallBackDay)} min`);
-  check(Object.keys(worst).length === 12, "all twelve were actually compared", String(Object.keys(worst).length));
 }
 
 console.log("");

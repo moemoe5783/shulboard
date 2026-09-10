@@ -5,7 +5,7 @@ import type { CandleLightingEvent } from "@hebcal/core";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
-import { formatCandleLightingLabel, formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
+import { formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import { WEEK_DAYS, resolveCandleLightings } from "@/lib/zmanim/resolve";
@@ -37,13 +37,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
 
   const now = second === null ? null : new Date(second * 1000);
 
-  // "inherit" (the default) defers to the board's own resolved provider —
-  // dataNeeds (manifest.ts) can't do this resolution itself, since it only
-  // ever sees this widget's own config, never the screen/org context
-  // "inherit" defers to; this is the one place both are in hand.
-  const effectiveProvider = config.provider === "inherit" ? zmanim.provider : config.provider;
-  const isChabad = effectiveProvider === "chabad";
-  const chabadUnconfigured = isChabad && !zmanim.hasChabadLocation;
+  // Chabad.org is the only source (lib/zmanim/provider.ts), so there is no
+  // provider to resolve — `config.provider` and `zmanim.provider` are both
+  // unread here now. What still matters is whether Chabad has a location
+  // to look the shul up by.
+  const chabadUnconfigured = !zmanim.hasChabadLocation;
 
   /*
    * "all" is stacked and must not be fit-scaled — see manifest.ts's note on
@@ -61,32 +59,22 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   // Keyed on `second`, not `now` — a fresh Date every render would defeat
   // the memo even when the second hasn't actually changed.
   //
-  // One call for every provider and every display mode: which source wins,
-  // whether a date fell back, and whether the shul allows a fallback at all
-  // is decided in lib/zmanim/resolve.ts rather than branched here. This
-  // always asks for the week — "next only" takes the first entry, since the
-  // horizon has to be wide enough to find one either way.
+  // One call for every display mode: which dates want a candle lighting
+  // and which of those Chabad actually published is decided in
+  // lib/zmanim/resolve.ts rather than branched here. This always asks for
+  // the week — "next only" takes the first entry, since the horizon has to
+  // be wide enough to find one either way.
   const resolution = useMemo(
     () =>
       second !== null && location
         ? resolveCandleLightings({
             now: new Date(second * 1000),
-            provider: effectiveProvider,
             location,
             chabadZmanim: zmanim.chabadZmanim,
-            manualMinutesBeforeSunset: config.manualMinutesBeforeSunset,
             days: WEEK_DAYS,
-            fallbackToCalculated: config.fallbackToCalculated,
           })
         : null,
-    [
-      second,
-      location,
-      effectiveProvider,
-      zmanim.chabadZmanim,
-      config.manualMinutesBeforeSunset,
-      config.fallbackToCalculated,
-    ],
+    [second, location, zmanim.chabadZmanim],
   );
 
   const entries = resolution?.status === "ok" ? resolution.entries : [];
@@ -184,8 +172,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
 
   if (!now || shown.length === 0) return null;
 
-  const anyFellBack = shown.some((entry) => entry.fellBackToHebcal);
-
   return (
     <div ref={boxRef} className={`relative flex h-full w-full flex-col justify-center ${align}`}>
       <div
@@ -210,20 +196,23 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
       </div>
 
       {/*
-        THERE IS NO CHABAD ATTRIBUTION HERE, AND THAT IS NOT AN OVERSIGHT.
+        TWO NOTICES USED TO RENDER HERE AND BOTH ARE GONE. Neither removal
+        is an oversight, and the reasons are unrelated.
 
-        A "Times by Chabad.org" notice used to render alongside this one
-        whenever the value came from Chabad. It is gone because the premise
-        was wrong: permission for this data was granted by Chabad.org
-        directly and they did not ask for attribution. The "Shabbat Times
-        Powered by Chabad.org" link in their embed's own markup was an
-        inference from that markup, not a stated term of the permission.
+        "Times by Chabad.org" went because the premise was wrong:
+        permission for this data was granted by Chabad.org directly and
+        they did not ask for attribution. The "Shabbat Times Powered by
+        Chabad.org" link in their embed's own markup was an inference from
+        that markup, not a stated term. Do not re-add it believing it to be
+        a licence requirement.
 
-        So do not re-add it believing it to be a licence requirement. If
-        Chabad.org ever does ask for a credit, that is a new instruction
-        and this comment is not it.
+        "Showing calculated times" went because there is nothing left to
+        calculate. Chabad.org is the only source and the Hebcal fallback is
+        gone (lib/zmanim/provider.ts), so a date with no published value
+        shows the unavailable state above rather than a computed time with
+        a caveat attached. An indicator that can never fire is worse than
+        no indicator.
       */}
-      {anyFellBack && <CalculatedTimesNotice canvas={canvas} />}
     </div>
   );
 }
@@ -241,19 +230,31 @@ function Entry({
   timeZone,
   now,
 }: {
-  entry: { time: Date; event: CandleLightingEvent | null; fellBackToHebcal: boolean };
+  entry: { time: Date; event: CandleLightingEvent };
   config: CandleLightingConfig;
   timeZone: string;
   now: Date;
 }) {
-  // A Hebcal-produced value carries its own event name (a Yom Tov's, not
-  // just "Candle lighting"); a value read out of Chabad's cache doesn't, so
-  // it gets the generic label. This makes a fallback-produced value label
-  // exactly like an ordinary Hebcal one — the indicator, not the label, is
-  // what says it was computed.
-  const label = entry.event
-    ? formatEventLabel(entry.event, { script: config.script, nekudos: config.nekudos })
-    : formatCandleLightingLabel({ script: config.script, nekudos: config.nekudos });
+  /*
+   * The label comes from @hebcal/core's event for this DATE — which is what
+   * identified the date in the first place. The TIME is Chabad's; hebcal is
+   * the calendar, Chabad is the clock.
+   *
+   * WHAT THE EVENT ACTUALLY CONTRIBUTES IS THE LOCALISATION, not the
+   * occasion. A `CandleLightingEvent`'s `renderBrief` is "Candle lighting"
+   * on every one of them — measured: Erev Rosh Hashanah, Erev Yom Kippur
+   * and an ordinary Friday all return the same string, because the Yom Tov
+   * name lives on the event's `linkedEvent` and not on the event itself.
+   * An earlier version of this comment claimed a Yom Tov got its own name
+   * here; it does not, and nothing on a board ever showed one.
+   *
+   * So this is `formatEventLabel` rather than `formatCandleLightingLabel`
+   * only because the event is already in hand — the two produce the same
+   * string for this event type. Naming the occasion would mean reading
+   * `linkedEvent`, which is a change to what boards show and not one this
+   * work made.
+   */
+  const label = formatEventLabel(entry.event, { script: config.script, nekudos: config.nekudos });
 
   const time = formatTimeOfDay(entry.time, { hour12: config.hour12, timeZone });
   const countdown = formatCountdown(entry.time.getTime() - now.getTime());
@@ -293,46 +294,5 @@ function Entry({
         </span>
       )}
     </div>
-  );
-}
-
-/**
- * plan.md §5c: "surface a subtle indicator rather than failing silently,
- * since a wrong zman is worse than a flagged one."
- *
- * Shown when the screen's provider is Chabad and its cache had nothing for
- * the date about to happen, so this time is Hebcal's own computation
- * standing in. Rarer than it was — the window is 92 days now (WARM_DAYS
- * in lib/zmanim/warm.ts) rather than four weeks — but still by design for
- * any date past it, and still the state a location whose cron has never
- * run sits in. It is the only signal on the board that a time was
- * calculated rather than fetched, which is why it stays.
- *
- * This is the renderer's own chrome — the product speaking, not the shul —
- * so it follows CLAUDE.md's chrome rules: one radius from the two-value
- * scale, weight 400, sentence case, no raw colour. It borrows
- * `currentColor` for the same reason EmptyLocation and the unknown-widget
- * notice do: a board sets its own text colour on any ground it likes, and
- * a fixed `--ink` here would be invisible on half of them.
- *
- * Not user-removable, and no config flag to hide it. The board document is
- * the shul's to author (design.md §1b), but this is not part of it — a
- * shul cannot opt out of being told its times are computed.
- *
- * Absolutely positioned, deliberately — `useFitFontSize` measures
- * `contentRef` against `boxRef`, so anything in the normal flow would
- * shrink the time itself the moment a cache went cold.
- */
-function CalculatedTimesNotice({ canvas }: { canvas: { width: number } }) {
-  return (
-    <span
-      className="rounded-control border-current/25 pointer-events-none absolute right-0 bottom-0 border font-regular whitespace-nowrap opacity-60"
-      style={{
-        fontSize: boardLength(16, canvas.width),
-        padding: `${boardLength(2, canvas.width)} ${boardLength(6, canvas.width)}`,
-      }}
-    >
-      Showing calculated times
-    </span>
   );
 }

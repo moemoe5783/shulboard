@@ -14,9 +14,22 @@ import { upcomingCandleLighting, upcomingCandleLightings } from "../hebrew/candl
 import { isClockZman, type ChabadZman } from "./zman.ts";
 
 /*
- * plan.md §5c's fallback chain — "requested provider → cache → Hebcal
- * (client-side, always works) → last known good" — for the one zman that
- * has a provider today, `candle_lighting`.
+ * Candle lighting, resolved: which dates need one, and what Chabad
+ * published for each — plan.md §5c.
+ *
+ * THERE IS NO FALLBACK LEG ANY MORE. §5c's chain used to read "requested
+ * provider → cache → Hebcal (client-side, always works)", and the Hebcal
+ * leg is gone: Chabad.org is the only source (lib/zmanim/provider.ts), and
+ * a date it has no value for shows the unavailable state rather than a
+ * computed stand-in. Nothing here computes a time.
+ *
+ * @hebcal/core IS STILL IMPORTED, and that is not a leftover. It answers a
+ * different question: WHICH dates are candle-lighting dates, and what a
+ * Yom Tov's own name is. Chabad's cache can say what time to light on a
+ * given date, but it cannot say that the next one is nine days out, or
+ * or that the second night of a two-day Yom Tov is one at all. The line
+ * is: hebcal is the calendar, Chabad is the clock. A hebcal event reaching
+ * a board is always a LABEL, never a time.
  *
  * Client-safe, no fetch, no server-only import — the value shapes and the
  * one narrowing helper come from zman.ts, which is a static table.
@@ -46,27 +59,21 @@ import { isClockZman, type ChabadZman } from "./zman.ts";
 export type ChabadZmanimByDate = Record<string, Record<string, ChabadZman>>;
 
 export type ResolvedCandleLighting = {
+  /** Chabad's own instant for this date. Never computed. */
   time: Date;
   /**
-   * The @hebcal/core event, when Hebcal produced the value — the widget
-   * labels off it (`formatEventLabel`, which distinguishes "Candle lighting"
-   * from a Yom Tov's own name). `null` when the value came from Chabad's
-   * cache, which carries no such label; the widget falls back to a generic
-   * one there.
-   */
-  event: CandleLightingEvent | null;
-  /**
-   * True only when the resolved provider was Chabad and its cache had
-   * nothing for the needed date, so this value is Hebcal's own computation
-   * standing in. plan.md §5c: "surface a subtle 'showing calculated times'
-   * indicator rather than failing silently, since a wrong zman is worse
-   * than a flagged one."
+   * The @hebcal/core event for the DATE this falls on. Always present now,
+   * because a hebcal event is what identified the date in the first place,
+   * and it contributes nothing to `time`.
    *
-   * Always false for hebcal and manual — those *are* the calculated path,
-   * and nothing has fallen back; flagging them would make the indicator
-   * meaningless.
+   * The widget labels off it — but what that yields is a localised "Candle
+   * lighting", not the occasion: `renderBrief` returns the same string for
+   * Erev Yom Kippur as for an ordinary Friday, since the Yom Tov name is on
+   * `linkedEvent`. Carried anyway, because it is what says the date came
+   * from the calendar and it is where a future change would read the
+   * occasion from.
    */
-  fellBackToHebcal: boolean;
+  event: CandleLightingEvent;
 };
 
 /**
@@ -96,23 +103,26 @@ function isoDateInZone(instant: Date, timeZone: string): string {
 export const WEEK_DAYS = 7;
 
 export type CandleLightingResolution =
-  /** At least one time to show. Every entry carries its own
-   *  `fellBackToHebcal`, because in a week that straddles the end of
-   *  Chabad's cached window some entries are fetched and some are not. */
+  /** At least one time Chabad published. */
   | { status: "ok"; entries: ResolvedCandleLighting[] }
   /**
-   * The resolved provider has nothing for the date(s) in question and the
-   * widget has been told not to compute a substitute
-   * (`fallbackToCalculated: false`).
+   * Chabad has nothing for the date(s) in question, so there is nothing to
+   * show. No computed substitute exists any more.
    *
    * A DISTINCT STATUS, not an empty list, because the widget has to say
    * something specific about it. This is not "offline" and must never be
    * presented as one: the display route boots from its last-known-good
    * bundle (plan.md §3c) and keeps working without a network, so a screen
    * showing this is almost certainly online and simply has no data for
-   * that date — often because the date is past the end of Chabad's warmed
-   * window (92 days, lib/zmanim/warm.ts). Telling a gabbai to check the
-   * network would send them after the wrong problem entirely.
+   * that date — past the end of the warmed window (92 days,
+   * lib/zmanim/warm.ts), or a date the warm missed. Telling a gabbai to
+   * check the network would send them after the wrong problem entirely.
+   *
+   * THIS IS NOW A COMMON STATE, not a corner. It used to require a shul to
+   * have deliberately turned off "Calculate missing times"; with the
+   * computed path gone it is what every uncached date shows. The wording
+   * has to read as intentional to a room, which is why it is one calm
+   * factual line and not a diagnostic.
    */
   | { status: "unavailable" };
 
@@ -124,55 +134,36 @@ export type CandleLightingResolution =
  * of this list they render, not in how the list is resolved. The Renderer
  * slices; nothing here knows which mode is on.
  *
- * `fallbackToCalculated` is the per-widget choice from item 2: with it on
- * (the default, and the behaviour before it existed) a date Chabad has no
- * value for is computed by Hebcal and flagged. With it off, that date is
- * dropped instead, and a resolution with nothing left comes back
- * `unavailable` — some shuls would rather show nothing than a time that
- * isn't from the source they picked.
+ * A date Chabad has not published is dropped, and a resolution with
+ * nothing left comes back `unavailable`. There is no switch: the computed
+ * substitute this used to offer is gone, so "Chabad's value or nothing" is
+ * the only behaviour rather than one of two.
  */
 export function resolveCandleLightings(input: {
   now: Date;
-  provider: "hebcal" | "chabad" | "myzmanim" | "manual";
   location: BoardLocation;
   chabadZmanim: ChabadZmanimByDate | null;
-  manualMinutesBeforeSunset?: number;
   /** How many days ahead to collect. 1 for "next only" — the horizon still
    *  has to be wide enough to find the next one, so the caller passes the
    *  week either way and takes the first entry. */
   days: number;
-  fallbackToCalculated: boolean;
 }): CandleLightingResolution {
-  const { now, provider, location, chabadZmanim, manualMinutesBeforeSunset, days, fallbackToCalculated } = input;
+  const { now, location, chabadZmanim, days } = input;
 
-  const hebcalEvents = upcomingCandleLightings(
-    now,
-    location,
-    days,
-    provider === "manual" ? manualMinutesBeforeSunset : undefined,
-  );
-
-  if (provider !== "chabad") {
-    // Hebcal and manual ARE the computed path, so `fallbackToCalculated`
-    // has nothing to say about them — there is no provider value to be
-    // missing. Turning it off must not blank a Hebcal widget.
-    return {
-      status: "ok",
-      entries: hebcalEvents.map((event) => ({ time: event.eventTime, event, fellBackToHebcal: false })),
-    };
-  }
+  // The CALENDAR question: which dates in this window want a candle
+  // lighting at all. @hebcal/core answers it from lat/long and the Hebrew
+  // calendar; Chabad's cache cannot, since a date with no row is
+  // indistinguishable from an ordinary Tuesday.
+  const dates = upcomingCandleLightings(now, location, days);
 
   const entries: ResolvedCandleLighting[] = [];
-  for (const event of hebcalEvents) {
+  for (const event of dates) {
     // By LOCAL CALENDAR DATE, never by instant — see the note on
     // resolveCandleLighting below, which this shares.
     const cached = chabadZmanim?.[isoDateInZone(event.eventTime, location.timeZone)]?.candle_lighting;
-    if (cached && isClockZman(cached)) {
-      entries.push({ time: new Date(cached.iso), event: null, fellBackToHebcal: false });
-    } else if (fallbackToCalculated) {
-      entries.push({ time: event.eventTime, event, fellBackToHebcal: true });
-    }
-    // else: dropped on purpose. The shul asked for its source or nothing.
+    // Chabad's value or nothing. A date it has not published is dropped;
+    // a resolution with nothing left comes back `unavailable`.
+    if (cached && isClockZman(cached)) entries.push({ time: new Date(cached.iso), event });
   }
 
   if (entries.length === 0) return { status: "unavailable" };
@@ -207,28 +198,12 @@ export function resolveCandleLightings(input: {
  */
 export function resolveCandleLighting(input: {
   now: Date;
-  provider: "hebcal" | "chabad" | "myzmanim" | "manual";
   location: BoardLocation;
   chabadZmanim: ChabadZmanimByDate | null;
-  /** candle-lighting/manifest.ts's Manual "minutes before sunset"; read
-   *  only when `provider` is `"manual"`, ignored otherwise. */
-  manualMinutesBeforeSunset?: number;
 }): ResolvedCandleLighting | null {
-  const { now, provider, location, chabadZmanim, manualMinutesBeforeSunset } = input;
+  const { now, location, chabadZmanim } = input;
 
-  const hebcalEvent = upcomingCandleLighting(
-    now,
-    location,
-    provider === "manual" ? manualMinutesBeforeSunset : undefined,
-  );
-
-  if (provider !== "chabad") {
-    // No fallback concept here at all — hebcal and manual are the computed
-    // path, and `myzmanim` has no adapter yet, so it resolves the same way
-    // it did before this function existed (plan.md §5c scope: "MyZmanim
-    // gets nothing").
-    return hebcalEvent && { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: false };
-  }
+  const hebcalEvent = upcomingCandleLighting(now, location);
 
   // Nine days always contains a Friday (candle-times.ts's SEARCH_WINDOW_DAYS),
   // so on any real location this is non-null and the `null` below is
@@ -239,9 +214,9 @@ export function resolveCandleLighting(input: {
   const neededDate = isoDateInZone(hebcalEvent.eventTime, location.timeZone);
   const cached = chabadZmanim?.[neededDate]?.candle_lighting;
 
-  if (cached && isClockZman(cached)) {
-    return { time: new Date(cached.iso), event: null, fellBackToHebcal: false };
-  }
-
-  return { time: hebcalEvent.eventTime, event: hebcalEvent, fellBackToHebcal: true };
+  // Chabad's value or nothing at all. `null` here and `null` for a missing
+  // hebcal event are the same answer to the widget — no time to show —
+  // which is why this returns one shape rather than distinguishing them.
+  if (cached && isClockZman(cached)) return { time: new Date(cached.iso), event: hebcalEvent };
+  return null;
 }
