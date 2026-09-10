@@ -1,6 +1,5 @@
 "use client";
 
-import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import type { CandleLightingConfig } from "./manifest";
@@ -109,47 +108,26 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         </select>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Zmanim source</span>
-        <select
-          value={config.provider}
-          onChange={(event) => onChange({ provider: event.target.value as CandleLightingConfig["provider"] })}
-          className={PANEL_CONTROL}
-        >
-          <option value="inherit">Use the screen&rsquo;s setting</option>
-          <option value="hebcal">Hebcal</option>
-          <option value="chabad">Chabad.org</option>
-          <option value="manual">Manual</option>
-        </select>
-      </label>
+      {/*
+        THE "Zmanim source" SELECT AND THE "Calculate missing times"
+        CHECKBOX BOTH STOOD HERE, and both are gone rather than reduced.
 
-      <label className="flex flex-col gap-1">
-        <span className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={config.fallbackToCalculated}
-            disabled={config.provider === "hebcal" || config.provider === "manual"}
-            onChange={(event) => onChange({ fallbackToCalculated: event.target.checked })}
-            className={`${PANEL_CHECKBOX} disabled:opacity-40`}
-          />
-          <span className="text-cell text-paper">Calculate missing times</span>
-        </span>
-        <span className={PANEL_LABEL}>
-          {config.provider === "hebcal" || config.provider === "manual"
-            ? "Only applies to Chabad.org, which is the one source that can be missing a date."
-            : "Chabad.org times are fetched about three months ahead. With this off, a date outside that shows no time rather than a calculated one."}
-        </span>
-      </label>
+        Chabad.org is the only source (lib/zmanim/provider.ts), so the
+        per-widget override had one option left — a one-item dropdown is a
+        label that looks interactive. And with no Hebcal leg there is
+        nothing to calculate, so a switch offering to calculate had one
+        outcome too: a date Chabad has not published shows "No candle
+        lighting time for this date".
 
-      <NumberField
-        label="Minutes before sunset"
-        value={config.manualMinutesBeforeSunset}
-        onChange={(manualMinutesBeforeSunset) => onChange({ manualMinutesBeforeSunset })}
-        min={0}
-        max={180}
-        disabled={config.provider !== "manual"}
-        title={config.provider !== "manual" ? "Only used when the source is Manual." : undefined}
-      />
+        `config.provider` and `config.manualMinutesBeforeSunset` are still
+        in the schema, unread — see manifest.ts on why a stored document
+        keeps parsing and why re-offering the choice is a control here plus
+        a read there, not a migration.
+
+        The "Minutes before sunset" field that sat under them is gone for
+        the same reason: Chabad publishes candle lighting 18 minutes before
+        sunset itself, so there is nothing left for it to adjust.
+      */}
     </div>
   );
 }

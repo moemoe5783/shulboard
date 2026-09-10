@@ -3,6 +3,7 @@ import "server-only";
 import type { Database, Json } from "@/lib/database.types";
 import { serviceClient } from "@/lib/supabase/service";
 import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { effectiveZmanimProvider } from "@/lib/zmanim/provider";
 import { assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
 import { hashPayload, payloadBytes } from "./hash";
 import { readAssetVariant } from "./media";
@@ -357,32 +358,34 @@ async function assemblePayloadFor(
   const timezone = screen.timezone ?? org?.timezone ?? null;
   const latitude = screen.latitude ?? org?.latitude ?? null;
   const longitude = screen.longitude ?? org?.longitude ?? null;
-  const zmanimProvider = screen.zmanim_provider ?? org?.zmanim_provider ?? "hebcal";
+  // Always "chabad" today — `effectiveZmanimProvider` is the one place
+  // that decides what a stored `zmanim_provider` means, and Chabad.org is
+  // the only source (lib/zmanim/provider.ts). The screen-then-org read
+  // stays because that tier order is the thing to keep correct for the day
+  // the choice comes back.
+  const zmanimProvider = effectiveZmanimProvider(screen.zmanim_provider ?? org?.zmanim_provider);
 
-  // Chabad is the only provider needing a resolvable location at all — see
-  // this file's own resolveContent below, and lib/zmanim/location.ts for
-  // what "resolvable" means (ZIP-first, manual id fallback).
-  const chabadLocation =
-    zmanimProvider === "chabad"
-      ? resolveChabadLocation({
-          screenPostalCode: screen.postal_code,
-          orgPostalCode: org?.postal_code,
-          screenZmanimLocationId: screen.zmanim_location_id,
-          orgZmanimLocationId: org?.zmanim_location_id,
-        })
-      : null;
+  // Unconditional now — the resolved provider is always Chabad, which is
+  // the one that needs a location at all. lib/zmanim/location.ts is what
+  // "resolvable" means (ZIP-first, manual id fallback); `null` here is a
+  // shul with neither, and the widgets' own empty state names it.
+  const chabadLocation = resolveChabadLocation({
+    screenPostalCode: screen.postal_code,
+    orgPostalCode: org?.postal_code,
+    screenZmanimLocationId: screen.zmanim_location_id,
+    orgZmanimLocationId: org?.zmanim_location_id,
+  });
 
-  // Only actually read zmanim_cache when it could possibly matter: the
-  // resolved provider is Chabad, a location for it is on file, AND some
-  // widget on these boards asked for it (boardsNeedZmanim, above). Any one
-  // of those being false means an empty result either way, so skipping the
-  // read entirely rather than running a query that would just come back
-  // empty — a hebcal-provider org, or a chabad one nothing on the board
-  // reads, never touches this table.
+  // Only actually read zmanim_cache when it could possibly matter: a
+  // location is on file AND some widget on these boards asked for it
+  // (boardsNeedZmanim, above). Either being false means an empty result
+  // either way, so the read is skipped rather than run to come back empty
+  // — a shul with no ZIP, or one whose boards have no zmanim widget, never
+  // touches this table.
   const content = await resolveContent(
     db,
     orgId,
-    zmanimProvider === "chabad" && chabadLocation && boardsNeedZmanim ? chabadLocation.cacheKey : null,
+    chabadLocation && boardsNeedZmanim ? chabadLocation.cacheKey : null,
   );
 
   return assembleBundle({

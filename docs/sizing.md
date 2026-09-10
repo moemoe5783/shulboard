@@ -60,20 +60,47 @@ and when a screen shows it. A bounded frame the gabbai deliberately sized is the
 right model here, not one that quietly resizes out from under a layout they
 composed around it.
 
-**The Zmanim widget shipped and it defaults to `hug`, not to `fixed` —
-this paragraph is still right about why, and about one row too few.** Two of
-the canonical zmanim a table can contain, `candle_lighting` and
-`shabbos_ends`, exist on some dates and not others, so a selection
-containing either has a row count that differs between the Tuesday the box
-was sized on and the Friday a room is reading it. That is the one part of
-the count that is not a design-time choice, and it is enough to make `hug`
-the safer default. `fixed` is still offered and still the better choice for
-a board composed around a frame; the properties panel warns when a `fixed`
-zmanim table contains a date-conditional row instead of silently clipping
-it on Friday. `fit` is refused for the table outright — the type size would
-depend on the row count, so the whole thing would rescale on those days,
-which is Clock's own "worst possible behavior" argument applied to a table.
-Its "next one only" mode is a single row and takes all three modes.
+**The Zmanim widget shipped, and it recommends `fit` — which took two
+passes to get right, so both are recorded.**
+
+This paragraph's reasoning is still correct as far as it goes, and it is
+one row short. Two of the canonical zmanim a table can contain,
+`candle_lighting` and `shabbos_ends`, exist on some dates and not others,
+so a selection containing either has a row count that differs between the
+Tuesday the box was sized on and the Friday a room is reading it. That part
+of the count is not a design-time choice.
+
+**The first conclusion was to refuse `fit` and default to `hug`,** because
+a fitted table's type size depends on its row count, so it would rescale
+every Friday and rescale back every Sunday — Clock's "worst possible
+behavior for the most-watched element" applied to a table.
+
+**The second conclusion, which is what shipped, was that fit does not have
+to re-measure at all.** The widget pads its measured list to the DECLARED
+selection count with zero-content spacer rows, and the declared count is a
+design-time constant and an upper bound on any day's real count — a
+date-conditional row can only be absent, never extra. Friday's returning
+row lands in a spacer's place and the type size does not move. Fit's
+dependencies are the box and the declared selection; today's rows are not
+among them. So `fit` is recommended (`sizing.recommended` in the manifest
+puts that under the panel's toggle), `fixed` and `hug` stay fully honest
+and offered, and nothing is refused for the table.
+
+**The one place fit is still not recommended is the widget's "next one
+only" mode.** One row, so nothing about the count varies — but that row's
+own label changes through the day ("Sunrise", "Latest Shacharit",
+"Midnight"), and a fitted single row rescales with its label's length. The
+panel says so rather than switching the mode: all three are legible for one
+row and only one is jumpy.
+
+**A separate axis carries what fit used to have to absorb: an overflow
+mode** — page through a screenful at a time, scroll continuously, or clip
+per §3 below. Sizing decides how big the type is; overflow decides what
+happens to rows that still don't fit at that size, which in `fit` means
+only once the search has bottomed out at `minFontSize`. Both moving modes
+drive off the master second tick (plan.md §3e) and neither creates a timer,
+and both are inert when the rows do fit — which is why paging can be the
+default without putting motion on boards that don't need it.
 
 ### `hug` — content drives the box, and the box resizes to match
 

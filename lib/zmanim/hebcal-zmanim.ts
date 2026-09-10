@@ -2,8 +2,29 @@ import { GeoLocation, Zmanim } from "@hebcal/core";
 import type { BoardLocation } from "@/lib/board-location";
 
 /*
- * §5c's fallback chain, for the zmanim the Zmanim widget shows:
- * "requested provider -> cache -> Hebcal (client-side, always works)."
+ * Zmanim computed client-side from lat/long — the Hebcal leg of §5c's
+ * fallback chain.
+ *
+ * NOT WIRED TO ANYTHING, AND DELIBERATELY KEPT. Nothing imports
+ * `computeZman` or `HEBCAL_COMPUTABLE` outside this module's own test.
+ *
+ * WHY IT IS UNWIRED: Chabad.org is the only zmanim source
+ * (lib/zmanim/provider.ts), and the calculated-times path is gone in both
+ * widgets — a date Chabad has not published now shows the unavailable
+ * state rather than a computed stand-in with a "showing calculated times"
+ * note. There is no caller left for a computed zman.
+ *
+ * WHY IT IS NOT DELETED: it is measurably correct against real provider
+ * data — every value here sits within one minute of Chabad's on all 92
+ * days of test/fixtures/chabad-zmanim-33701-92day.json, per shitah,
+ * including across the DST fall-back — and re-offering Hebcal as a
+ * provider is a decision about what a board may show, not a piece of work.
+ * Wiring it back is an import in resolve-zmanim.ts plus a branch;
+ * rewriting it would be the measurement all over again.
+ *
+ * This is NOT a removal of @hebcal/core, which is untouched and still
+ * powers the Hebrew Date, Parsha and Daf Yomi widgets, and still tells
+ * candle lighting which dates are candle-lighting dates.
  *
  * Client-safe, pure, no fetch, no key — @hebcal/core computes all of this
  * from lat/long and a date, which is plan.md §3b's whole "compute locally"

@@ -267,13 +267,20 @@ is present and bad; the latter means it never reached the deployment at all.
 
 **What it is.** The kill switch for Chabad.org as a zmanim source — plan.md
 §5c and §10.4. Set to the exact string `true` to turn it on; anything else,
-including unset, means off. Two things read it: the org settings page
-(`app/(app)/settings/`), which only offers "Chabad.org" as a Zmanim source
-option when this is `true`, and `app/api/cron/warm-zmanim/route.ts`, which
-no-ops — returns `{"enabled": false, "warmed": 0}` without touching the
-database or chabad.org — when it isn't. Both checks matter: the settings
-page keeps a gabbai from picking an option that does nothing, and the cron
-check is what actually stops any request reaching chabad.org.
+including unset, means off.
+
+`app/api/cron/warm-zmanim/route.ts` is the check that matters: it no-ops —
+returns `{"enabled": false, "warmed": 0}` without touching the database or
+chabad.org — when this isn't `true`. That is what actually stops any
+request reaching chabad.org, and it is why the flag is defence in depth
+rather than a UI preference.
+
+**It no longer gates a settings option, because there isn't one.**
+Chabad.org is the only zmanim source (`lib/zmanim/provider.ts`), so the org
+settings page's "Zmanim source" select is gone rather than reduced to a
+single item. What the flag decides now is whether the ZIP that page
+collects is ever fetched against; the page says so in one line when it is
+off, and the "Fetch now" button reports it back verbatim when pressed.
 
 **Where it comes from.** Nowhere but you, same as `CRON_SECRET` — there is
 no default that turns this on. This is the "off by default so it can't
@@ -286,18 +293,24 @@ ahead it will answer. Turning this on is a decision to depend on that,
 not a configuration step to complete along with everything else in this
 file.
 
-**What breaks — or rather, doesn't happen — without it.** Nothing breaks.
-Hebcal and Manual are unaffected either way; they never read this flag.
-With it unset: a shul cannot select Chabad.org as a zmanim source (the
-option isn't offered), and even if `orgs.zmanim_provider` were somehow set
-to `'chabad'` directly (a hand-written SQL update, a bug, a future admin
-tool), the warming cron still does nothing, and `lib/board-zmanim.tsx`'s
-`hasChabadLocation` still resolves normally — so the affected Candle
-Lighting widgets fall into the "set your ZIP or Chabad.org location" or
-plain "no time yet" states rather than ever showing a fetched value,
-because nothing ever warms `zmanim_cache` for them. This is deliberate
-defense in depth: the runtime gate is this flag, not the UI's own
-willingness to offer the option.
+**What breaks — or rather, doesn't happen — without it.** Nothing throws,
+but the consequence is larger than it used to be, and it is worth being
+plain about: **with Chabad.org the only zmanim source, an unset flag means
+no zmanim and no candle lighting anywhere.** Nothing warms `zmanim_cache`,
+so every Zmanim and Candle Lighting widget sits in its unavailable state
+("No zmanim for this date", "No candle lighting time for this date") or, on
+a shul with no ZIP on file, in the "set your ZIP or Chabad.org location"
+state. Neither reads as an error, which is correct — the board is telling
+the truth — but neither is a working board either.
+
+It used to degrade rather than stop, because Hebcal computed those times
+client-side and the widgets fell back to it with a "showing calculated
+times" note. That fallback is gone (plan.md §5c), so this flag is now the
+difference between two working widgets and two honest empty ones.
+
+Every other Hebrew-calendar widget is unaffected either way — Hebrew Date,
+Parsha and Daf Yomi are `@hebcal/core` computing from lat/long, and none of
+them reads this flag or the cache.
 
 **Setting it up needs a second external scheduler**, entirely separate
 from `CRON_SECRET`'s build-bundles one: a task hitting

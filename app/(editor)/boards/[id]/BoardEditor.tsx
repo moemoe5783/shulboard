@@ -50,9 +50,10 @@ export type BoardEditorProps = {
   location: BoardLocation | null;
   /** The org's resolved zmanim provider config, same "org stands in for
    *  any one screen" reasoning as `location` above — see page.tsx.
-   *  Omitted (not just `null`) falls back to lib/board-zmanim.tsx's own
-   *  hebcal default, which every pre-existing caller of this component
-   *  effectively already was. */
+   *  Omitted (not just `null`) falls back to lib/board-zmanim.tsx's
+   *  DEFAULT_BOARD_ZMANIM, which resolves to Chabad with no location — so
+   *  a zmanim or candle-lighting widget shows its "hasn't set a ZIP" empty
+   *  state rather than a time. */
   zmanim?: BoardZmanim | null;
   /** The board's publish state as of page load — see PublishControls.tsx.
    *  Kept live afterward by each autosave's result and by publishing or

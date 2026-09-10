@@ -47,6 +47,17 @@ Environment variables: @docs/environment.md
   Nowhere else uses the service-role key.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx
+- `lib/zmanim/provider.ts` — **Chabad.org is the only zmanim source.**
+  `effectiveZmanimProvider()` resolves every stored `zmanim_provider` to
+  `'chabad'`, so an org still on the schema's `'hebcal'` default is served
+  as Chabad rather than rendering nothing; the DB enum keeps all four
+  values and nothing migrates. There is no calculated fallback either — a
+  date Chabad hasn't published shows the unavailable state, not a computed
+  time. **This is not a removal of `@hebcal/core`,** which still powers
+  Hebrew Date, Parsha and Daf Yomi and still tells candle lighting which
+  dates are candle-lighting dates: hebcal is the calendar, Chabad is the
+  clock. `lib/zmanim/hebcal-zmanim.ts` is the zmanim computation, kept
+  unwired.
 - `lib/tokens.css` — every color, size, and radius in the product
 
 ## Hard rules

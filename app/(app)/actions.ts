@@ -69,37 +69,35 @@ function parseLocationLabel(formData: FormData, hasCoordinates: boolean): string
   return String(formData.get("locationLabel") ?? "").trim().slice(0, 300) || null;
 }
 
-const ZMANIM_PROVIDERS = ["hebcal", "chabad", "manual"] as const;
-
 /**
- * The settings form's own zmanim fields — the org-level default provider
- * (plan.md §5c), its ZIP (`postal_code`, shared with the never-built
- * MyZmanim onboarding this column already existed for), and the manual
- * Chabad location id fallback (lib/zmanim/location.ts) for a shul with no
- * US ZIP on file.
+ * The settings form's own zmanim fields — its ZIP (`postal_code`, shared
+ * with the never-built MyZmanim onboarding this column already existed
+ * for) and the manual Chabad location id fallback (lib/zmanim/location.ts)
+ * for a shul with no US ZIP on file.
  *
- * `chabadEnabled` is checked here, server-side, not just in the form's own
- * conditional rendering — ZMANIM_CHABAD_ENABLED (docs/environment.md) is
- * the actual gate; a form that only hid the option client-side would still
- * accept a hand-crafted POST setting it anyway.
+ * THERE IS NO LONGER A PROVIDER FIELD TO PARSE. Chabad.org is the only
+ * zmanim source (lib/zmanim/provider.ts), so the form no longer offers a
+ * choice and no longer posts one — a one-item dropdown is not a setting.
+ * The stored `zmanim_provider` column is deliberately left ALONE rather
+ * than rewritten to `'chabad'` on every save: the DB enum still carries all
+ * four values, nothing migrates, and `effectiveZmanimProvider()` is the one
+ * place that decides what a stored value resolves to. Re-offering Hebcal
+ * later is a change to that function and to this form, not a data repair.
+ *
+ * `chabadEnabled` is still checked here, server-side, because
+ * ZMANIM_CHABAD_ENABLED (docs/environment.md) is the actual runtime gate on
+ * reaching chabad.org at all. It no longer gates a form value — it gates
+ * whether saving a ZIP for this purpose means anything — so a save with the
+ * flag off is accepted rather than refused: the ZIP is a fact about the
+ * shul either way, and refusing it would make the flag look like a bug.
  */
 function parseZmanimFields(
   formData: FormData,
-  chabadEnabled: boolean,
-): { zmanim_provider: (typeof ZMANIM_PROVIDERS)[number]; postal_code: string | null; zmanim_location_id: string | null } | { error: string } {
-  const provider = String(formData.get("zmanimProvider") ?? "hebcal").trim();
-  if (!ZMANIM_PROVIDERS.includes(provider as (typeof ZMANIM_PROVIDERS)[number])) {
-    return { error: "Pick a real zmanim source." };
-  }
-  if (provider === "chabad" && !chabadEnabled) {
-    return { error: "Chabad.org isn't turned on for this product yet." };
-  }
-
+): { postal_code: string | null; zmanim_location_id: string | null } {
   const postalCode = String(formData.get("postalCode") ?? "").trim();
   const zmanimLocationId = String(formData.get("zmanimLocationId") ?? "").trim();
 
   return {
-    zmanim_provider: provider as (typeof ZMANIM_PROVIDERS)[number],
     postal_code: postalCode || null,
     zmanim_location_id: zmanimLocationId || null,
   };
@@ -347,7 +345,8 @@ async function checkLocationAgreement(
   return (
     `Saved, but check the location: ZIP ${postalCode} is ${zip.place.label}, ` +
     `while the coordinates are ${coordinates.place.label} — ${describeMiles(miles)} apart. ` +
-    `Hebcal uses the coordinates and Chabad.org uses the ZIP, so the two would show different times.`
+    `Chabad.org looks up zmanim by the ZIP while the Hebrew date and daf are computed from the ` +
+    `coordinates, so one of the two is describing the wrong place.`
   );
 }
 
@@ -381,8 +380,7 @@ export async function updateOrgSettings(
   if ("error" in location) return { error: location.error };
   const { latitude, longitude } = location;
 
-  const zmanim = parseZmanimFields(formData, process.env.ZMANIM_CHABAD_ENABLED === "true");
-  if ("error" in zmanim) return { error: zmanim.error };
+  const zmanim = parseZmanimFields(formData);
 
   const supabase = await createClient();
   const { error } = await supabase

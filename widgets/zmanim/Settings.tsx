@@ -1,56 +1,35 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import { HEBCAL_COMPUTABLE } from "@/lib/zmanim/hebcal-zmanim";
 import { CANONICAL_ZMAN_ORDER, CHABAD_SUPPLIES, ZMAN_PANEL_LABEL } from "@/lib/zmanim/zman";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import type { ZmanimConfig } from "./manifest";
 
 /**
- * Which canonical ids this instance's source can actually supply, and why
- * not when it can't — plan.md §5c's capability matrix, made visible.
+ * Why a canonical id is not selectable — plan.md §5c's capability matrix,
+ * made visible.
  *
  * §5c: "the settings UI greys out unavailable ones — never render a blank
- * row on a screen someone is standing in front of," and design.md's own
- * editor wireframe says the same at more length: "unavailable zmanim for
- * the chosen source are shown disabled with a tooltip explaining why, not
- * hidden. Hiding them makes users think the app is broken."
+ * row on a screen someone is standing in front of," and design.md §4 says
+ * the same at more length: "unavailable zmanim for the chosen source are
+ * shown disabled with a tooltip explaining why, not hidden. Hiding them
+ * makes users think the app is broken."
  *
- * The reason strings matter as much as the disabling. The GRA and MGA
- * shitos are missing because Chabad.org publishes Baal HaTanya, not
- * because nobody got round to them, and a gabbai who davens by the GRA's
- * sof zman shma needs to know that is a provider question rather than a
- * bug.
+ * One source to check now rather than three. It used to branch on the
+ * widget's own provider override and take the union for "inherit";
+ * Chabad.org is the only source (lib/zmanim/provider.ts), so the answer is
+ * `CHABAD_SUPPLIES` unconditionally.
  *
- * `"inherit"` takes the UNION of what any source can supply, because this
- * component genuinely cannot know what it resolves to: a Settings
- * component receives `{config, onChange}` (widgets/types.ts) and the
- * board's own provider lives in a context that wraps the renderer, not the
- * properties panel. Being permissive is the right direction — an id that
- * turns out to be unavailable renders no row, which is the same thing
- * `candle_lighting` does on a Tuesday, whereas wrongly greying one out
- * would hide a row that would have worked.
+ * The reason string matters as much as the disabling. The GRA and MGA
+ * shitos are missing because Chabad publishes Baal HaTanya, not because
+ * nobody got round to them, and a gabbai who davens by the GRA's sof zman
+ * shma needs to know that is a provider question rather than a bug.
  */
-function availability(provider: ZmanimConfig["provider"]): (id: string) => string | null {
-  if (provider === "chabad") {
-    return (id) => (CHABAD_SUPPLIES.has(id) ? null : "Chabad.org doesn't publish this shitah.");
-  }
-  if (provider === "inherit") {
-    return (id) =>
-      CHABAD_SUPPLIES.has(id) || HEBCAL_COMPUTABLE.has(id)
-        ? null
-        : "No zmanim source in this product supplies this yet.";
-  }
-  return (id) =>
-    HEBCAL_COMPUTABLE.has(id)
-      ? null
-      : CHABAD_SUPPLIES.has(id)
-        ? "Only Chabad.org supplies this — it's a date, not a daily time, so it isn't calculated here."
-        : "No zmanim source in this product supplies this yet.";
+function reasonUnavailable(id: string): string | null {
+  return CHABAD_SUPPLIES.has(id) ? null : "Chabad.org doesn't publish this shitah.";
 }
 
 export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>) {
-  const reasonUnavailable = availability(config.provider);
   const selected = new Set(config.zmanim);
 
   /**
@@ -72,44 +51,57 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
         <span className={PANEL_LABEL}>Show</span>
         <select
           value={config.displayMode}
-          onChange={(event) => {
-            const displayMode = event.target.value as ZmanimConfig["displayMode"];
-            /*
-             * Picking "all" moves a `fit` widget to `hug`, and that is the
-             * answer to how these two settings interact — manifest.ts's
-             * sizing note, and docs/sizing.md §2.
-             *
-             * `fit` is the one combination that is never honest for a
-             * table: the type size would depend on the row count, so the
-             * whole thing would rescale on the days a candle-lighting or
-             * Shabbos-ends row appears and rescale back when it goes.
-             * `fixed` is left alone — §2 names zmanim tables as its own
-             * example and it is the right choice for most boards, so this
-             * only rescues the broken combination rather than overriding a
-             * considered one.
-             *
-             * Switching back to "next" does NOT undo it. All three modes
-             * are honest for a single row, and silently reverting a sizing
-             * choice a gabbai can see in the panel is worse than leaving
-             * it where it landed.
-             */
-            onChange(
-              displayMode === "all" && config.sizingMode === "fit"
-                ? { displayMode, sizingMode: "hug" }
-                : { displayMode },
-            );
-          }}
+          /*
+           * NO SIZING MODE IS FORCED HERE ANY MORE. This used to move a
+           * `fit` widget to `hug` when "all" was picked, because a fitted
+           * table rescaled on the days a date-conditional row appeared.
+           * That rescale is gone — the Renderer pads the measured list to
+           * the declared selection with spacer rows, so the fit no longer
+           * moves when the real count does (manifest.ts's sizing note).
+           * `fit` is now the recommended mode for "all" rather than the
+           * refused one, and nothing needs rescuing.
+           */
+          onChange={(event) => onChange({ displayMode: event.target.value as ZmanimConfig["displayMode"] })}
           className={PANEL_CONTROL}
         >
           <option value="all">All chosen times</option>
           <option value="next">Next one only</option>
         </select>
-        {config.displayMode === "all" && config.sizingMode === "fixed" && (
+        {/*
+          The one configuration `fit` should not be in, and the panel says
+          so rather than overriding it: a single row rescales with its own
+          label's length, and that label changes several times a day
+          ("Sunrise", "Latest Shacharit", "Midnight"). All three modes are
+          legible for one row; only this one is jumpy.
+        */}
+        {config.displayMode === "next" && config.sizingMode === "fit" && (
           <span className={PANEL_LABEL}>
-            Candle lighting and Shabbos ends only appear on some days, so a fixed box sized on a weekday can clip
-            on Friday. Hug height never can.
+            One row rescales as its own label changes through the day. Fixed size holds still.
           </span>
         )}
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>When rows don&rsquo;t fit</span>
+        <select
+          value={config.overflow}
+          onChange={(event) => onChange({ overflow: event.target.value as ZmanimConfig["overflow"] })}
+          disabled={config.sizingMode === "hug" || config.displayMode === "next"}
+          className={`${PANEL_CONTROL} disabled:opacity-40`}
+        >
+          <option value="page">Page through them</option>
+          <option value="scroll">Scroll continuously</option>
+          <option value="clip">Cut them off</option>
+        </select>
+        <span className={PANEL_LABEL}>
+          {config.sizingMode === "hug"
+            ? "Hug height grows the box to its rows, so nothing can overflow."
+            : config.displayMode === "next"
+              ? "Only one row is shown, so nothing can overflow."
+              : config.overflow === "clip"
+                ? "Rows past the bottom of the box are cut off, with nothing on the board saying so."
+                : "Only happens when the rows really don't fit — otherwise the table sits still."}
+        </span>
       </label>
 
       <fieldset className="flex flex-col gap-2">
@@ -153,37 +145,23 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
         <span className="text-cell text-paper">12-hour</span>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Zmanim source</span>
-        <select
-          value={config.provider}
-          onChange={(event) => onChange({ provider: event.target.value as ZmanimConfig["provider"] })}
-          className={PANEL_CONTROL}
-        >
-          <option value="inherit">Use the screen&rsquo;s setting</option>
-          <option value="hebcal">Hebcal</option>
-          <option value="chabad">Chabad.org</option>
-          <option value="manual">Manual</option>
-        </select>
-      </label>
+      {/*
+        THE "Zmanim source" SELECT AND THE "Calculate missing times"
+        CHECKBOX BOTH STOOD HERE, and both are gone rather than reduced —
+        the same removal candle-lighting/Settings.tsx records, for the same
+        two reasons.
 
-      <label className="flex flex-col gap-1">
-        <span className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={config.fallbackToCalculated}
-            disabled={config.provider === "hebcal" || config.provider === "manual"}
-            onChange={(event) => onChange({ fallbackToCalculated: event.target.checked })}
-            className={`${PANEL_CHECKBOX} disabled:opacity-40`}
-          />
-          <span className="text-cell text-paper">Calculate missing times</span>
-        </span>
-        <span className={PANEL_LABEL}>
-          {config.provider === "hebcal" || config.provider === "manual"
-            ? "Only applies to Chabad.org, which is the one source that can be missing a time."
-            : "With this off, a time Chabad.org hasn't published shows no row rather than a calculated one."}
-        </span>
-      </label>
+        Chabad.org is the only source (lib/zmanim/provider.ts), so the
+        per-widget override had one option left, and a one-item dropdown is
+        a label that looks interactive. With no Hebcal leg there is nothing
+        to calculate either, so a switch offering to calculate had one
+        outcome: a date Chabad has not published shows "No zmanim for this
+        date".
+
+        `config.provider` stays in the schema, unread — see manifest.ts on
+        why a stored document keeps parsing and why re-offering the choice
+        is a control here plus a read there, not a migration.
+      */}
 
       <label className="flex flex-col gap-1">
         <span className="flex items-center gap-2">

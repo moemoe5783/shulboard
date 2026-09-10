@@ -6,6 +6,7 @@ import { hashBoardDoc } from "@/lib/bundle/hash";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { effectiveZmanimProvider } from "@/lib/zmanim/provider";
 import { BoardEditor } from "./BoardEditor";
 
 /** How many days ahead the editor's own live Chabad preview reads —
@@ -118,8 +119,9 @@ async function resolveOrgZmanimPreview(
   supabase: Awaited<ReturnType<typeof createClient>>,
   org: { zmanim_provider: string; postal_code: string | null; zmanim_location_id: string | null } | null,
 ): Promise<BoardZmanim | null> {
-  const provider = (org?.zmanim_provider ?? "hebcal") as BoardZmanim["provider"];
-  if (provider !== "chabad") return { provider, hasChabadLocation: false, chabadZmanim: null };
+  // Always Chabad — lib/zmanim/provider.ts. The stored value is passed in
+  // so the day the choice comes back this line is already right.
+  const provider = effectiveZmanimProvider(org?.zmanim_provider);
 
   const chabadLocation = resolveChabadLocation({
     orgPostalCode: org?.postal_code,

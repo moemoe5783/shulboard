@@ -300,6 +300,33 @@ manual override.** The shul picks a source, then picks which zmanim from that
 source appear. Rationale: shuls want the board to match the printed luach on
 their wall, and these three genuinely differ by a minute or two.
 
+> **CURRENT STATE: CHABAD.ORG ONLY, AND NOTHING IS SELECTABLE.** The
+> multi-provider decision above is still the design; only one leg of it is
+> built and offered. Hebcal and Manual are gone as **zmanim providers** —
+> not from the org settings form, not as a per-widget override, and not as
+> a fallback. `lib/zmanim/provider.ts` is the single gate:
+> `effectiveZmanimProvider()` resolves every stored `zmanim_provider` to
+> `'chabad'`, so an org still on the schema's `'hebcal'` default is served
+> as Chabad rather than rendering nothing. The DB enum keeps all four
+> values and no row is migrated.
+>
+> **This is not a removal of `@hebcal/core`,** which is untouched and
+> load-bearing: it computes Hebrew dates, the parsha and the daf (§3b's
+> "computed in the browser, no network needed, ever"), and it still tells
+> candle lighting *which* dates are candle-lighting dates. The line is
+> **hebcal is the calendar, Chabad is the clock** — a hebcal event reaching
+> a board is a label, never a time.
+> `lib/zmanim/hebcal-zmanim.ts` is the zmanim computation, kept in the repo
+> and unwired.
+>
+> **And there is no calculated fallback.** A date Chabad has not published
+> shows the unavailable state ("No candle lighting time for this date", "No
+> zmanim for this date"), not a computed time with a caveat. The "Showing
+> calculated times" indicator is gone with the thing it indicated. That
+> makes the unavailable state **common rather than rare** — everything past
+> the 92-day window, and every date a warm missed — so its wording is
+> written to be read by a room as intentional.
+
 **Provider status as of this writing:**
 
 | Source | Access | Cost | Notes |
@@ -447,31 +474,36 @@ happens at 183 or 365 days is unknown, so the warmer reports the
 response's own `EndDate` alongside the range it asked for rather than
 assuming they agree. `scripts/probe-chabad.ts` is what would settle it.
 
-**Fallback chain:** requested provider → cache → Hebcal (client-side, always
-works) → last known good. Surface a subtle "showing calculated times" indicator
-rather than failing silently, since a wrong zman is worse than a flagged one.
+**Fallback chain — DESIGN, NOT CURRENT STATE:** requested provider → cache
+→ Hebcal (client-side, always works) → last known good, with a subtle
+"showing calculated times" indicator rather than a silent failure.
 
-**The computed leg of that chain is `lib/zmanim/hebcal-zmanim.ts`, and it
-is Baal HaTanya throughout.** Four of the ids it computes name that shitah
-outright, so a gabbai selects it by selecting the row; the shitah-neutral
-ones (`netz`, `shkia`, `chatzos`, `mincha_gedola`, `mincha_ketana`,
-`plag_hamincha`, `misheyakir`, `chatzos_laila`) then use `@hebcal/core`'s
-Baal HaTanya variant where one exists, because a table mixing Baal HaTanya's
-alos with the GRA's plag is a table no luach prints — and the difference is
-not cosmetic, plag being 3–4 minutes apart between them and misheyakir 6–8
-(10.2° against `@hebcal/core`'s own 11° default). Measured consequence:
-every computed value sits **within one minute** of the Chabad value it
-stands in for, on all 92 days of the fixture, which is what makes the
-indicator honest small print rather than a warning about a visibly
-different number.
+**Only the first two legs are built.** There is no Hebcal leg and no
+indicator: a date Chabad has not published shows the unavailable state (see
+the note at the top of this section). The chain above is what to restore
+when a second provider returns, and it is worth keeping written down
+because the reasoning for the indicator — "a wrong zman is worse than a
+flagged one" — is still right the moment there is anything to flag.
 
-`candle_lighting` and `shabbos_ends` are deliberately **not** computed
-there. Both are date-conditional events rather than times every day has,
-and working out which dates they fall on is what
-`lib/hebrew/candle-times.ts` and the Candle Lighting widget already do — a
-second copy is the fork this project refuses everywhere else. So on a board
-whose cache has nothing for a date, those two rows are absent rather than
-calculated.
+**`lib/zmanim/hebcal-zmanim.ts` is that Hebcal leg, kept unwired.** It is
+Baal HaTanya throughout: four of the ids it computes name that shitah
+outright, so a gabbai would select it by selecting the row, and the
+shitah-neutral ones (`netz`, `shkia`, `chatzos`, `mincha_gedola`,
+`mincha_ketana`, `plag_hamincha`, `misheyakir`, `chatzos_laila`) use
+`@hebcal/core`'s Baal HaTanya variant where one exists — a table mixing
+Baal HaTanya's alos with the GRA's plag is a table no luach prints, and the
+difference is not cosmetic (plag 3–4 minutes apart, misheyakir 6–8 at 10.2°
+against `@hebcal/core`'s own 11° default). It is kept rather than deleted
+because it is measurably correct against real provider data: every value
+sits **within one minute** of Chabad's on all 92 days of the fixture, per
+shitah, including across the DST fall-back. Re-offering Hebcal is a
+decision about what a board may show, not a piece of work.
+
+`candle_lighting` and `shabbos_ends` are deliberately **not** in it. Both
+are date-conditional events rather than times every day has, and working
+out which dates they fall on is what `lib/hebrew/candle-times.ts` and the
+Candle Lighting widget already do — a second copy is the fork this project
+refuses everywhere else.
 
 **One nightfall, relabelled — the substitution a Zmanim widget must make.**
 Because `Tzeis` and `ShabbatEndTime` are mutually exclusive in the source, a

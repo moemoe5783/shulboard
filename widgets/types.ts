@@ -74,6 +74,22 @@ export type ElementSizing = {
   userToggleable: boolean;
   minFontSize?: number;
   maxFontSize?: number;
+  /**
+   * Which mode the panel marks as recommended, when one genuinely is —
+   * docs/sizing.md §2's toggle, with an opinion attached.
+   *
+   * A manifest field rather than per-widget copy in a Settings.tsx,
+   * because the control it annotates is the panel's own generic
+   * `SizingToggle`. Optional: most widgets have no recommendation worth
+   * printing, and a marker on every option would say nothing.
+   *
+   * Only meaningful alongside `userToggleable: true`. It is advice, not
+   * enforcement — the other modes stay selectable, and a widget that
+   * genuinely cannot use a mode refuses it in its own Settings (see
+   * widgets/zmanim, which moves `fit` to `hug` for a configuration where
+   * fit cannot hold its size).
+   */
+  recommended?: SizingMode;
 };
 
 export type WidgetManifest<TConfig = Record<string, unknown>> = {
