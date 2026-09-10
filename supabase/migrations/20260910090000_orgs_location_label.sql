@@ -1,0 +1,25 @@
+-- The place name the coordinates came from, so the settings page can say
+-- where a shul is instead of showing two decimal numbers.
+--
+-- WHY A COLUMN AND NOT A LOOKUP. The address lookup already resolves a
+-- human-readable place ("533, 4th Street North, Saint Petersburg, Pinellas
+-- County, Florida, 33701, USA") and the form shows it back for
+-- confirmation, but nothing persisted it -- so it survived exactly as long
+-- as the page session, and every later visit fell back to rendering the
+-- raw latitude and longitude. The two alternatives are both worse: storing
+-- nothing and reverse-geocoding on every settings view spends a network
+-- call and a geocoding quota unit to render a caption, and it fails
+-- whenever GEOCODING_API_KEY is unset; and showing bare coordinates is
+-- what this replaces.
+--
+-- It is a CACHED LABEL, not a source of truth. Latitude and longitude are
+-- what every zmanim calculation reads; nothing computes anything from this
+-- string. It may legitimately be null -- an org whose coordinates were
+-- typed by hand, or one that predates this column -- and the form falls
+-- back to showing the coordinates in that case rather than pretending.
+--
+-- It may also legitimately go stale: editing the coordinates by hand
+-- clears it (a label naming a place the numbers no longer match is worse
+-- than no label), but nothing re-derives it in the background.
+alter table public.orgs
+  add column location_label text;

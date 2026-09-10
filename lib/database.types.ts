@@ -641,6 +641,7 @@ export type Database = {
           hebrew_prefs: NonNullable<Json>
           id: string
           latitude: number | null
+          location_label: string | null
           longitude: number | null
           myzmanim_location_id: string | null
           name: string
@@ -664,6 +665,7 @@ export type Database = {
           hebrew_prefs?: NonNullable<Json>
           id?: string
           latitude?: number | null
+          location_label?: string | null
           longitude?: number | null
           myzmanim_location_id?: string | null
           name: string
@@ -687,6 +689,7 @@ export type Database = {
           hebrew_prefs?: NonNullable<Json>
           id?: string
           latitude?: number | null
+          location_label?: string | null
           longitude?: number | null
           myzmanim_location_id?: string | null
           name?: string
