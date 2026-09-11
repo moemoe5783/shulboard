@@ -81,6 +81,37 @@ export type GeocodedPlace = {
    * that as "no new value", never as "clear the stored one".
    */
   postcode: string | null;
+  /**
+   * ISO 3166-1 alpha-2, lowercased — LocationIQ's structured
+   * `address.country_code`.
+   *
+   * THIS IS WHAT DECIDES WHICH ZMANIM PATH A SHUL IS ON, which is why it
+   * is read structurally rather than sniffed off the end of
+   * `display_name`. A postcode alone cannot decide it: plenty of countries
+   * have them and Chabad's `locationtype=2` means a US ZIP specifically,
+   * so "has a postcode" would send a London shul's NW11 8LL to an endpoint
+   * that reads it as a ZIP and quietly answers with somewhere else
+   * (app/(app)/actions.ts's `resolveOneLocation`).
+   *
+   * `null` when the response carries no `address` object at all — the two
+   * functions here that don't send `addressdetails=1`.
+   */
+  countryCode: string | null;
+  /**
+   * The populated place this result sits in — `address.city`, or the
+   * next-best of the fields LocationIQ uses for smaller places.
+   *
+   * Read for one purpose: it is the query handed to Chabad's own
+   * `Get_Locations` search for a shul with no US ZIP. `display_name` is
+   * unusable for that — "Via Nassa 5, 6900 Lugano, Ticino, Switzerland"
+   * finds nothing — and the city token is the part Chabad's list is
+   * actually keyed on.
+   *
+   * `null` for a result with no populated place under any of those keys
+   * (a coordinate in open country), which the caller reports rather than
+   * guessing at.
+   */
+  city: string | null;
 };
 
 export type GeocodeOutcome =
@@ -122,9 +153,40 @@ function readPlace(candidate: unknown): GeocodedPlace | null {
   // only sent on the forward search, and a coordinate is still a
   // coordinate without it.
   const address = record.address as Record<string, unknown> | undefined;
-  const rawPostcode = address && typeof address.postcode === "string" ? address.postcode.trim() : "";
+  const field = (key: string) => {
+    const value = address?.[key];
+    return typeof value === "string" ? value.trim() : "";
+  };
 
-  return { label, latitude, longitude, postcode: rawPostcode || null };
+  /*
+   * THE PLACE FIELD LOCATIONIQ USES DEPENDS ON HOW BIG THE PLACE IS, which
+   * is why this is a fallback chain rather than a single key. Its
+   * Nominatim-compatible `address` object carries `city` for a city,
+   * `town` for a town, `village`/`hamlet` for smaller, and
+   * `municipality`/`county` for administrative areas — a shul in Kiryas
+   * Joel comes back under `village` and one in Lugano under `city`.
+   * Reading only `city` would leave every small town with no city to hand
+   * to Chabad's search, which is the case this chain exists for.
+   */
+  const city =
+    field("city") ||
+    field("town") ||
+    field("village") ||
+    field("hamlet") ||
+    field("municipality") ||
+    field("county");
+
+  return {
+    label,
+    latitude,
+    longitude,
+    postcode: field("postcode") || null,
+    // Lowercased so a caller can compare against "us" without knowing
+    // whether this provider happens to send "US" or "us" — the documented
+    // Nominatim field is lowercase, and normalizing costs nothing.
+    countryCode: field("country_code").toLowerCase() || null,
+    city: city || null,
+  };
 }
 
 /**
