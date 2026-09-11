@@ -519,6 +519,132 @@ console.log("\n-- and the whole way through, end to end -------------------");
   restoreWrong();
 }
 
+console.log("\n-- every call site computes the SAME cache key --------------");
+
+/*
+ * THE REGRESSION GUARD FOR A REPORTED BUG — "the widget shows no zmanim
+ * for this date, the cache is full."
+ *
+ * `zmanim_cache` is keyed `(provider, location_id, date)` and FIVE places
+ * compute that `location_id`: the warming cron's org sweep and its screen
+ * sweep, the invalidation sweep in lib/zmanim/warm.ts, the bundle builder,
+ * and the editor's live preview. All five go through
+ * `resolveChabadLocation().cacheKey`, which is what makes them agree — but
+ * they each assemble their OWN argument object out of their own query, and
+ * that is where a drift would happen: a call site that stops passing
+ * `orgPostalCode` silently stops taking the ZIP-first branch and writes or
+ * reads `city:<id>` instead of `zip:<id>`, with nothing anywhere to say so.
+ *
+ * So this mirrors each call site's argument set against one set of rows and
+ * asserts the keys are identical. It is deliberately written as the shapes
+ * rather than by importing them: the modules are server-only and what needs
+ * pinning is the ARGUMENTS each one passes, which is the thing a refactor
+ * changes.
+ */
+{
+  const org = {
+    postal_code: "33701",
+    zmanim_location_id: null as string | null,
+    zmanim_location_type: null as string | null,
+    zmanim_location_name: null as string | null,
+  };
+  const screen = { postal_code: null as string | null, zmanim_location_id: null as string | null };
+
+  const callSites: Record<string, ReturnType<typeof resolveChabadLocation>> = {
+    // app/api/cron/warm-zmanim/route.ts, the org sweep
+    "warm cron (orgs)": resolveChabadLocation({
+      orgPostalCode: org.postal_code,
+      orgZmanimLocationId: org.zmanim_location_id,
+      orgZmanimLocationType: org.zmanim_location_type,
+      orgZmanimLocationName: org.zmanim_location_name,
+    }),
+    // app/api/cron/warm-zmanim/route.ts, the screen sweep
+    "warm cron (screens)": resolveChabadLocation({
+      screenPostalCode: screen.postal_code,
+      orgPostalCode: org.postal_code,
+      screenZmanimLocationId: screen.zmanim_location_id,
+      orgZmanimLocationId: org.zmanim_location_id,
+      orgZmanimLocationType: org.zmanim_location_type,
+      orgZmanimLocationName: org.zmanim_location_name,
+    }),
+    // lib/zmanim/warm.ts's `screenCacheKey`, which decides whose bundle to
+    // queue for a rebuild after a warm. Wrong here and the cache is warmed
+    // and no screen ever picks it up.
+    "warm invalidation": resolveChabadLocation({
+      screenPostalCode: screen.postal_code,
+      orgPostalCode: org.postal_code,
+      screenZmanimLocationId: screen.zmanim_location_id,
+      orgZmanimLocationId: org.zmanim_location_id,
+      orgZmanimLocationType: org.zmanim_location_type,
+      orgZmanimLocationName: org.zmanim_location_name,
+    }),
+    // lib/bundle/build.ts
+    "bundle builder": resolveChabadLocation({
+      screenPostalCode: screen.postal_code,
+      orgPostalCode: org.postal_code,
+      screenZmanimLocationId: screen.zmanim_location_id,
+      orgZmanimLocationId: org.zmanim_location_id,
+      orgZmanimLocationType: org.zmanim_location_type,
+      orgZmanimLocationName: org.zmanim_location_name,
+    }),
+    // app/(editor)/boards/[id]/page.tsx — org tier only, because a board
+    // is not tied to one screen.
+    "editor preview": resolveChabadLocation({
+      orgPostalCode: org.postal_code,
+      orgZmanimLocationId: org.zmanim_location_id,
+      orgZmanimLocationType: org.zmanim_location_type,
+      orgZmanimLocationName: org.zmanim_location_name,
+    }),
+  };
+
+  const keys = Object.values(callSites).map((one) => one?.cacheKey ?? null);
+  check(
+    new Set(keys).size === 1 && keys[0] === "zip:33701",
+    "a ZIP org resolves to zip:<code> at every one of the five call sites",
+    [...new Set(keys)].join(" / "),
+  );
+
+  // And the same for a searched city, where the type actually does work —
+  // the branch the type column was added for.
+  const city = {
+    postal_code: null as string | null,
+    zmanim_location_id: "872",
+    zmanim_location_type: "1",
+    zmanim_location_name: "Lugano, Switzerland",
+  };
+  const cityKeys = [
+    resolveChabadLocation({
+      orgPostalCode: city.postal_code,
+      orgZmanimLocationId: city.zmanim_location_id,
+      orgZmanimLocationType: city.zmanim_location_type,
+      orgZmanimLocationName: city.zmanim_location_name,
+    }),
+    resolveChabadLocation({
+      screenPostalCode: null,
+      orgPostalCode: city.postal_code,
+      screenZmanimLocationId: null,
+      orgZmanimLocationId: city.zmanim_location_id,
+      orgZmanimLocationType: city.zmanim_location_type,
+      orgZmanimLocationName: city.zmanim_location_name,
+    }),
+  ].map((one) => one?.cacheKey ?? null);
+  check(
+    new Set(cityKeys).size === 1 && cityKeys[0] === "city:872",
+    "and a searched city resolves to city:<id> at both tiers",
+    [...new Set(cityKeys)].join(" / "),
+  );
+
+  // The shapes that are NOT the cache key, asserted so nobody reintroduces
+  // one: chabad.org echoes its own location back as "2-33701" and the raw
+  // column holds a bare "33701", and neither is what this table is keyed
+  // on. Both were the first guess when this was reported.
+  check(
+    keys[0] !== "2-33701" && keys[0] !== "33701",
+    "and it is neither chabad's own echo format nor the bare id",
+    String(keys[0]),
+  );
+}
+
 console.log("");
 const failed = results.filter((r) => !r.ok).length;
 console.log(`${results.length - failed}/${results.length} passed`);

@@ -534,6 +534,29 @@ what keeps MyZmanim's per-location billing manageable and limits blast radius if
 Chabad's endpoint breaks. Warm 90 days ahead on a cron; bundle reads
 from cache only, never calls a provider inline.
 
+**`location_id` is built in exactly one place** — `resolveChabadLocation`
+(`lib/zmanim/location.ts`), whose `cacheKey` is `zip:<code>` or
+`city:<id>`. Five call sites compute it (the warming cron's org and screen
+sweeps, the warm's own rebuild invalidation, the bundle builder, the
+editor preview) and every one of them goes through that function rather
+than assembling a string. Note it is neither chabad.org's own echo format
+(`"2-33701"`) nor the bare id — both are the first guess when a lookup
+misses, and `scripts/test-zmanim-international.ts` pins all five against
+each other for that reason.
+
+**Warming has to invalidate the bundles, and nothing in the database can
+do it.** §3a's design reads this cache at BUILD time and freezes the
+result into `screen_bundles`, which is what lets a screen run for months
+offline — so writing 92 days of perfect rows changes nothing in any lobby
+until each screen's bundle is rebuilt. Every other content table gets that
+rebuild from a `request_org_rebuild()` trigger; `zmanim_cache` cannot have
+one, because that function keys on `org_id` and this table deliberately
+has none. So `lib/zmanim/warm.ts` queues the rebuilds itself, for the
+screens whose resolved location matches the key it just wrote, and reports
+how many — because the version of this that queued nothing produced a
+board stuck on "No zmanim for this date" while the cache, the warm's
+success message and the settings page all looked correct.
+
 **Chabad is no longer an exception to the 90 days.** `Get_Zmanim` returns
 the whole span in one request, so `lib/zmanim/warm.ts` warms **92 days**
 (inclusive of today, two days of slack over the figure above so a daily
