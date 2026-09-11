@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import type { BoardLocation } from "../lib/board-location.tsx";
 import { fetchChabadZmanim } from "../lib/zmanim/chabad-adapter.ts";
 import { resolveZmanimForDate, resolveZmanimTable } from "../lib/zmanim/resolve-zmanim.ts";
+import { splitTimeColumns } from "../widgets/zmanim/display-time.ts";
 import type { ChabadZmanimByDate } from "../lib/zmanim/resolve.ts";
 import {
   CANONICAL_ZMAN_ORDER,
@@ -420,6 +421,83 @@ console.log("\n-- the Hebrew label, and where it must not come from -------");
     "and a substituted row carries the Hebrew of the id that supplied it",
     `${substituted[0]?.hebrewLabel} via ${substituted[0]?.suppliedBy}`);
   check(substituted[0]?.label === "Shabbat Ends", "alongside that id's English");
+}
+
+console.log("\n-- ITEM 3: the time splits into columns, verbatim ----------");
+
+/*
+ * ALIGNMENT BY THE TIME'S INTERNAL STRUCTURE, reported from a live board:
+ * "7:22 PM" and "11:21 AM" differ in digit count, so right-aligning the
+ * whole string leaves the two-digit hour hanging out past every
+ * single-digit one. The Renderer gives the hour, the ":MM" and the meridiem
+ * a grid track each, shared across rows, and right-aligns inside the hour's
+ * — which is what puts the colon at one x and makes the outer edge straight.
+ *
+ * THE SPLIT MUST NOT BECOME A REFORMAT. plan.md §5c: "never re-round or
+ * recompute provider output. Display verbatim." So the load-bearing
+ * assertion here is that the pieces rejoin to the exact string Chabad sent,
+ * across every clock value in the 92-day fixture — separator spacing
+ * included.
+ */
+{
+  const everyValue: string[] = [];
+  for (const date of DATES) {
+    for (const value of Object.values(CACHE[date] ?? {})) {
+      if ("display" in value && typeof value.display === "string") everyValue.push(value.display);
+    }
+  }
+  check(everyValue.length > 1000, "the fixture supplies a real sample of values", `${everyValue.length} values`);
+
+  const rejoined = everyValue.filter((display) => {
+    const parts = splitTimeColumns(display);
+    return parts === null || parts.hours + parts.minutes + parts.meridiem === display;
+  });
+  check(
+    rejoined.length === everyValue.length,
+    "every value in the fixture rejoins to itself exactly — the split never rewrites a time",
+    `${rejoined.length}/${everyValue.length}`,
+  );
+
+  const unrecognised = everyValue.filter((display) => splitTimeColumns(display) === null);
+  // ShaahZmanit is a duration ("62:51 min."), and it is the one shape in
+  // the response that is not a clock time. It still matches — hours,
+  // minutes, and " min." as the tail — which is fine: it is not offered in
+  // this widget, and a shape that matches is a shape that aligns.
+  check(
+    unrecognised.length === 0,
+    "and nothing in a real response fails to split, so nothing falls back to the unaligned path",
+    unrecognised.slice(0, 3).join(", ") || "none",
+  );
+}
+
+{
+  // The two strings from the report, which is the case the tracks exist
+  // for: same shape, different hour width, and the hour is what has to
+  // right-align.
+  const short = splitTimeColumns("7:22 PM");
+  const long = splitTimeColumns("11:21 AM");
+  check(short?.hours === "7" && long?.hours === "11", "the hour is its own piece, unpadded",
+    `${short?.hours} / ${long?.hours}`);
+  check(short?.minutes === ":22" && long?.minutes === ":21",
+    "the colon travels with the minutes, so its position is the track's and not the hour's",
+    `${short?.minutes} / ${long?.minutes}`);
+  check(short?.meridiem === " PM" && long?.meridiem === " AM",
+    "and the meridiem keeps the provider's own leading space rather than padding we invented",
+    `"${short?.meridiem}" / "${long?.meridiem}"`);
+}
+
+{
+  // A 24-hour string, and one with seconds — neither is what Chabad sends
+  // today, and both have to land somewhere sane if it ever does.
+  const twentyFour = splitTimeColumns("19:22");
+  check(twentyFour?.hours === "19" && twentyFour?.minutes === ":22" && twentyFour?.meridiem === "",
+    "a 24-hour string leaves the meridiem column empty, so the track collapses",
+    JSON.stringify(twentyFour));
+  const seconds = splitTimeColumns("7:22:30 PM");
+  check(seconds?.minutes === ":22:30", "seconds stay with the minutes rather than splitting the column",
+    JSON.stringify(seconds));
+  check(splitTimeColumns("") === null && splitTimeColumns("no time") === null,
+    "and a string with no clock in it returns null, so the Renderer prints it whole and unaligned");
 }
 
 console.log("");
