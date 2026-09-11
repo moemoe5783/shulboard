@@ -75,16 +75,44 @@ Its rules instead, in `widgets/zmanim/fit.ts`:
    proportionally.
 2. **Horizontal resize does not, on its own.** Widening a box that already
    had room changes nothing.
-3. **Text is never clipped horizontally.** Too narrow for the row at the
-   height-driven size means smaller type, exactly small enough to fit.
+3. **The times are never clipped horizontally.** Too narrow for the time
+   column at the height-driven size means smaller type, exactly small
+   enough to fit. Labels truncate instead — see below.
 4. **Vertical overflow is acceptable.** Grow into available height even
    when the list then no longer fits and has to scroll or page.
 
-So `size = min(boxHeight / (8 rows × per-row height), boxWidth / row
-width)`, clamped. Rule 2 falls out of the `min`; rule 4 falls out of the
-first term not reading the row count. **No binary search** — for rows that
-do not wrap, both width and row height scale linearly with font size, so
-one measurement at any known size gives exact ratios.
+So `size = min(boxHeight / (8 rows × per-row height), boxWidth /
+time-column width)`, clamped. Rule 2 falls out of the `min`; rule 4 falls
+out of the first term not reading the row count. **No binary search** — for
+rows that do not wrap, both width and row height scale linearly with font
+size, so one measurement at any known size gives exact ratios.
+
+**Rule 2 has a second half, and getting it wrong is what "narrowing the box
+makes the font smaller" was.** The width term was originally measured as the
+grid's whole `max-content` width — every label at full length — which is the
+table's IDEAL width, not its minimum. So the type started shrinking the
+moment the box was narrower than ideal, over a band about 2.5× wide on a
+realistic row (a sixteen-character label plus `11:21 AM` wants ~13× the type
+size; the time column alone wants ~5×), and nothing in that band would have
+clipped anything.
+
+What the width term protects is the **time column plus its gap**, and
+nothing else. The label track is `1fr` with `min-w-0 overflow-hidden`: it
+exists to absorb exactly this, and a truncated label is what its clip has
+always been for. So in a box too narrow for the whole table, a long label
+gets cut rather than the whole table getting smaller — which on a board
+read from twenty feet is the better of the two, and is the only reading
+under which narrowing a roomy box changes nothing.
+
+That also removed a day-to-day wobble as a side effect: the old term was
+measured from the widest label PRESENT, so a Friday's "Candle Lighting"
+shrank a width-bound table. The time column is the same width on every
+date, so nothing about a returning row can move the size now.
+
+`scripts/test-zmanim-layout.mjs` measures all of this in a real browser —
+the same widths walked down through that band, against
+`data-fitted-size` — because the arithmetic being right is only half of the
+claim.
 
 The eight is the one judgement call: a table filling a third of a
 1080-unit board is 360 units, which at eight rows is roughly 45-unit type,

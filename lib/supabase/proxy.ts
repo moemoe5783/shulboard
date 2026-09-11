@@ -31,6 +31,7 @@ const PUBLIC_PREFIXES = [
   "/primitives",
   "/editor-lab",
   "/font-parity",
+  "/zmanim-lab",
 ];
 
 function isPublic(pathname: string): boolean {

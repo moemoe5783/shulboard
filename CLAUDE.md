@@ -96,6 +96,17 @@ Environment variables: @docs/environment.md
   against `00000` inside the real board and finds the sefarim face closes a
   6.97px spread to 0.00px under `tabular-nums` while the UI face is 3.08px
   either way. A column of board times gets its clean edge from setting the face.
+  **The face is necessary and not sufficient.** Figures of equal width still
+  do not line up when the strings are different lengths: `7:22 PM` against
+  `11:21 AM` puts the two-digit hour a digit out past the one-digit ones,
+  whatever the metrics. So a column of times is laid out on the time's
+  internal structure — the hour, the `:MM` and the meridiem each get a grid
+  track shared by every row, with the hours right-aligned inside theirs
+  (`widgets/zmanim/Renderer.tsx`, `widgets/zmanim/display-time.ts`). Splitting
+  the string is display, never reformatting: the pieces rejoin to the
+  provider's exact characters, asserted against every value in the 92-day
+  fixture. `scripts/test-zmanim-layout.mjs` measures the resulting edges in a
+  real browser.
 
 ## Scope: chrome versus board content
 
