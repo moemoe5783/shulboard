@@ -6,6 +6,7 @@ import { hashBoardDoc } from "@/lib/bundle/hash";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { resolveChabadLocation } from "@/lib/zmanim/location";
+import { isoDateInZone } from "@/lib/zmanim/resolve-zmanim";
 import { effectiveZmanimProvider } from "@/lib/zmanim/provider";
 import { BoardEditor } from "./BoardEditor";
 
@@ -87,7 +88,7 @@ export default async function BoardEditorPage({ params }: PageProps<"/boards/[id
       ? { latitude: orgLocation.latitude, longitude: orgLocation.longitude, timeZone: orgLocation.timezone }
       : null;
 
-  const zmanim = await resolveOrgZmanimPreview(supabase, orgLocation);
+  const zmanim = await resolveOrgZmanimPreview(supabase, orgLocation, board.id);
 
   return (
     <BoardEditor
@@ -121,11 +122,13 @@ async function resolveOrgZmanimPreview(
   supabase: Awaited<ReturnType<typeof createClient>>,
   org: {
     zmanim_provider: string;
+    timezone: string;
     postal_code: string | null;
     zmanim_location_id: string | null;
     zmanim_location_type: string | null;
     zmanim_location_name: string | null;
   } | null,
+  boardId: string,
 ): Promise<BoardZmanim | null> {
   // Always Chabad — lib/zmanim/provider.ts. The stored value is passed in
   // so the day the choice comes back this line is already right.
@@ -139,8 +142,30 @@ async function resolveOrgZmanimPreview(
   });
   if (!chabadLocation) return { provider, hasChabadLocation: false, chabadZmanim: null };
 
-  const today = new Date().toISOString().slice(0, 10);
-  const end = new Date(Date.now() + CHABAD_PREVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  /*
+   * THE SHUL'S OWN DATE, not UTC — and this was a second, independent bug
+   * in the same family as the missing rebuild invalidation.
+   *
+   * It used to be `new Date().toISOString().slice(0, 10)`, which is the UTC
+   * calendar date. The widget asks the cache for `isoDateInZone(now,
+   * timeZone)` (lib/zmanim/resolve-zmanim.ts) — the shul's date. West of
+   * Greenwich those two disagree for the hours between local evening and
+   * UTC midnight, so from about 8pm in New York this filter started at
+   * TOMORROW and excluded the row the widget was about to ask for. The
+   * editor showed "No zmanim for this date" every evening while the
+   * display route, reading a bundle built with the same day's rows, was
+   * fine.
+   *
+   * `lte` on the far end is harmless either way, but it is computed the
+   * same way so the window is one consistent thing rather than two
+   * conventions a day apart.
+   */
+  const timeZone = org?.timezone ?? "UTC";
+  const today = isoDateInZone(new Date(), timeZone);
+  const end = isoDateInZone(
+    new Date(Date.now() + CHABAD_PREVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+    timeZone,
+  );
 
   const { data: rows } = await supabase
     .from("zmanim_cache")
@@ -153,6 +178,36 @@ async function resolveOrgZmanimPreview(
   const chabadZmanim: NonNullable<BoardZmanim["chabadZmanim"]> = {};
   for (const row of rows ?? []) {
     chabadZmanim[row.date] = (row.times as NonNullable<BoardZmanim["chabadZmanim"]>[string]) ?? {};
+  }
+
+  /*
+   * THE RESOLVE-TIME LOG, and the reason it is worth a line in a page
+   * component: a cache full of rows the widget cannot reach looks
+   * identical to an empty cache now that there is no computed fallback
+   * (plan.md §5c), and that ambiguity has now cost three debugging rounds
+   * — the `item.Date` parse, the four missing candle-lighting parameters,
+   * and a warm that queued no rebuild.
+   *
+   * It names the KEY and the WINDOW, which are the two things neither the
+   * board nor the database can tell you on their own: the cache is keyed
+   * `(provider, location_id, date)` and a mismatch in either the key or
+   * the date convention reads as "no zmanim" with nothing else to see.
+   * Logged whenever the read came back empty, since that is the only case
+   * anybody needs it for.
+   */
+  const dates = Object.keys(chabadZmanim).sort();
+  if (dates.length === 0) {
+    console.warn(
+      "[zmanim-resolve] " +
+        JSON.stringify({
+          where: "editor-preview",
+          boardId,
+          cacheKey: chabadLocation.cacheKey,
+          timeZone,
+          wanted: { from: today, to: end },
+          found: 0,
+        }),
+    );
   }
 
   return { provider, hasChabadLocation: true, chabadZmanim };

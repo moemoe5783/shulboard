@@ -469,6 +469,47 @@ async function resolveContent(
   const byDate: Record<string, unknown> = {};
   for (const row of zmanim.data ?? []) byDate[String((row as { date: string }).date)] = row;
 
+  /*
+   * THE RESOLVE-TIME LOG, and this is the read where the failure actually
+   * lived. `zmanim_cache` is read HERE, once, and frozen into the bundle —
+   * so a screen showing "No zmanim for this date" is either this read
+   * coming back empty or this build having happened before the warm. The
+   * two are indistinguishable from the board, from the database, and from
+   * the warm's own success message, which is exactly how a cache holding
+   * 93 good rows went unnoticed.
+   *
+   * The key and the window are what no other vantage point has: the table
+   * is keyed `(provider, location_id, date)`, both halves are computed
+   * (lib/zmanim/location.ts, and the ISO window below), and a mismatch in
+   * either reads as an empty result with nothing else to see. Logged only
+   * when a key was resolved AND nothing came back — a screen with no
+   * location, or one whose boards want no zmanim, is not a mismatch and
+   * has nothing to say.
+   */
+  if (zmanimCacheKey) {
+    const found = Object.keys(byDate).sort();
+    console.info(
+      "[zmanim-resolve] " +
+        JSON.stringify({
+          where: "bundle-build",
+          orgId,
+          cacheKey: zmanimCacheKey,
+          wanted: { from: isoDaysFromNow(-1), to: isoDaysFromNow(ZMANIM_LOOKAHEAD_DAYS) },
+          found: found.length,
+          ...(found.length > 0
+            ? { firstDate: found[0], lastDate: found[found.length - 1] }
+            : {
+                // The one sentence that would have saved the round: the key
+                // and the window are right here, so the next step is a
+                // `select date from zmanim_cache where location_id = <key>`
+                // and the answer is either "no rows" (nothing warmed) or a
+                // date range that does not overlap this window.
+                note: "no cached zmanim for this key in this window — check the warm, then this key against zmanim_cache",
+              }),
+        }),
+    );
+  }
+
   return {
     announcements: announcements.data ?? [],
     schedules: schedules.data ?? [],
