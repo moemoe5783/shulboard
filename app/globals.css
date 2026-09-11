@@ -50,3 +50,40 @@
     color-scheme: dark;
   }
 }
+
+/*
+ * The Zmanim widget's continuous scroll — widgets/zmanim/overflow.ts.
+ *
+ * NOT IN A LAYER, because a keyframes rule is not a style rule and belongs
+ * to no cascade layer. It lives here rather than in a widget folder because
+ * that is where CSS goes, and here rather than in lib/tokens.css because
+ * that file is the token contract CLAUDE.md points every colour and radius
+ * at — a widget's animation is not a token.
+ *
+ * `-50%` IS THE WHOLE MECHANISM, and it depends on one thing the Renderer
+ * guarantees: while this animation runs, the element it is on holds exactly
+ * two identical copies of the row list. Half of a two-copy stack is one
+ * copy, so the last frame is pixel-identical to the first and the loop
+ * closes with no seam, no snap and nothing to suppress. Nothing measured
+ * enters into it — a stale measurement can only change
+ * `animation-duration`, never reintroduce a jump. This replaced a
+ * once-a-second transitioned translate that could not close that loop; the
+ * measurement of why is in overflow.ts's scroll branch.
+ *
+ * NOT DISABLED UNDER `prefers-reduced-motion`, which is a deliberate
+ * exception to design.md's motion rule rather than an oversight. That rule
+ * is about motion that decorates — panels, hovers, entrances. This motion
+ * IS the content: it is the only way the rows past the bottom of the box
+ * are ever seen, so stopping it hides zmanim rather than calming a board. A
+ * shul that wants a still board has two better answers in the widget's own
+ * settings — "Page through them", which is a plain swap with no motion at
+ * all, or a taller box.
+ */
+@keyframes zmanim-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}

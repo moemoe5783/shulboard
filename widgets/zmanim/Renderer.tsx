@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
@@ -9,6 +9,7 @@ import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zman
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
+import { splitTimeColumns } from "./display-time";
 import { fitFontSizePx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 import { overflowState } from "./overflow";
@@ -17,6 +18,33 @@ import { overflowState } from "./overflow";
  *  sentence of prose sitting under a table of figures, and it must never
  *  compete with the times. */
 const FOOTNOTE_SCALE = 0.5;
+
+/**
+ * The gap between the label column and the time column.
+ *
+ * NOT `column-gap`, and that is deliberate rather than awkward. The times
+ * are three tracks now (hours, ":MM", meridiem — see `Row`) and those three
+ * must sit flush against each other, which a single grid `column-gap`
+ * cannot express: one value applies to every gap in the row. So the gap is
+ * padding on whichever time cell is adjacent to the label, and the grid's
+ * own gap is zero.
+ *
+ * In `em`, so it scales with the type and so the fit measurement below
+ * reads it as part of the width it protects.
+ */
+const LABEL_GAP = "1em";
+
+/**
+ * The row grid's tracks: the label takes the slack, each piece of the time
+ * takes exactly what it needs.
+ *
+ * THE LABEL IS ALWAYS TRACK ONE, in both scripts, because it is always the
+ * first cell emitted — which is what lets the fit measurement below read
+ * the label's used track width out of `gridTemplateColumns` and subtract
+ * it. Mirroring for Hebrew is done by `dir` plus the cell order in `Row`,
+ * not by reordering these.
+ */
+const GRID_COLUMNS = "1fr max-content max-content max-content";
 
 export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) {
   const location = useBoardLocation();
@@ -80,7 +108,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
    */
   useZmanimFit({
     boxRef,
-    contentRef,
     gridRef,
     canvasWidth: canvas.width,
     enabled: isFit,
@@ -148,6 +175,89 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
 
   const footnotes = config.showFootnotes ? distinctFootnotes(rows) : [];
 
+  /*
+   * The table, built twice: once for real and once for the scroll seam.
+   *
+   * A FUNCTION RATHER THAN ONE ELEMENT RENDERED IN TWO PLACES, and that is
+   * the fix for a real reported bug — "switching into fit from another mode
+   * stops it resizing entirely." The seam used to be `{children}` rendered
+   * a second time inside `OverflowViewport`. React mounts two DOM nodes from
+   * one element descriptor and attaches every ref inside it twice, so
+   * `gridRef.current` ended up pointing at the HIDDEN copy (it commits
+   * last) — and unmounting it nulled the ref outright. In `fixed`/`hug`
+   * nothing showed, because React writes the type size through the style
+   * prop and both copies got it; in `fit` the measured size was written
+   * imperatively to the copy nobody could see, and the visible table sat at
+   * its inherited size forever.
+   *
+   * Only one copy carries the refs now. The other is identical and inert.
+   */
+  const table = (attachRefs: boolean) => (
+    <div ref={attachRefs ? contentRef : undefined} className="flex w-full flex-col">
+      {/*
+        A FOUR-COLUMN GRID, and that is the whole reason the times form a
+        clean edge.
+
+        The times are three tracks, not one, and that is the fix for "7:22
+        PM and 11:21 AM don't line up." Right-aligning the whole string
+        cannot line them up — the strings are different lengths, so a
+        two-digit hour hangs a digit out past every single-digit one, no
+        matter how tabular the figures are. Splitting the hour into its own
+        `max-content` track shared by every row, and right-aligning inside
+        it, puts the colon at one fixed x for the whole table; ":MM" and the
+        meridiem then follow in their own tracks and the outer edge is
+        straight whatever the hour's width.
+
+        `1fr` on the label track gives the label the slack, so a long label
+        grows into the gutter and neither edge moves — docs/sizing.md §3's
+        growth rule, satisfied by the geometry. It is also the track that
+        absorbs a narrow box, which is what lets ./fit.ts stop shrinking the
+        type the moment the box is narrower than ideal.
+
+        RTL MIRRORS IT with `dir` plus the cell order in `Row`: `direction:
+        rtl` lays track one out on the RIGHT, so the labels move to the
+        right edge and the time's three tracks form their column on the
+        left, where a Hebrew reader's eye starts. `Row` emits the time cells
+        in reverse for that case so the time still reads hour, minutes,
+        meridiem from left to right — a clock time is Latin digits in a
+        fixed order and no luach prints it backwards.
+      */}
+      <div
+        ref={attachRefs ? gridRef : undefined}
+        dir={isHebrew ? "rtl" : "ltr"}
+        className="grid w-full"
+        style={{ gridTemplateColumns: GRID_COLUMNS, columnGap: 0 }}
+      >
+        {rows.map((row) => (
+          <Row
+            key={row.id}
+            row={row}
+            label={labelOf(row)}
+            labelIsHebrew={isHebrew && row.hebrewLabel !== null}
+            mirrored={isHebrew}
+          />
+        ))}
+      </div>
+
+      {footnotes.length > 0 && (
+        <div
+          dir={isHebrew ? "rtl" : "ltr"}
+          className="flex flex-col opacity-60"
+          style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
+        >
+          {/* The footnote TEXT is Chabad's English either way — the
+              response carries no Hebrew for it — so only the block's
+              own alignment mirrors, not the words. */}
+          {footnotes.map((text) => (
+            <span key={text} dir="ltr" className="leading-tight">
+              {text}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       ref={boxRef}
@@ -158,6 +268,15 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
        * there is nothing to clip.
        */
       className={`relative flex h-full w-full flex-col justify-start ${isHug ? "" : "overflow-hidden"}`}
+      /*
+       * THE TYPE SIZE LIVES ON THE BOX, not on the content, so that both
+       * copies of the table inherit it — the seam is only invisible while
+       * the two copies are the same size. In `fit` this property is written
+       * straight to this element by `useZmanimFit`; React leaves it alone
+       * there (`undefined` on every render, so nothing to diff), which is
+       * what lets a resize drag re-measure every frame without a re-render.
+       */
+      style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
     >
       <OverflowViewport
         boxRef={boxRef}
@@ -167,58 +286,9 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         second={second}
         rowCount={rows.length}
         canvasWidth={canvas.width}
+        seam={table(false)}
       >
-        <div
-          ref={contentRef}
-          className="flex w-full flex-col"
-          // In `fit` the size is written straight to this element's style
-          // by useZmanimFit — see its note on why that is not React state.
-          style={{ fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width) }}
-        >
-          {/*
-            A TWO-COLUMN GRID, and that is the whole reason the times form a
-            clean right edge. `auto` on the second track makes every time
-            cell exactly as wide as the widest time, so the figures stack in
-            one column; a flex pair per row would right-align each row's
-            time to its own row and nothing would line up with anything.
-            `1fr` on the first track gives the label the slack, so a long
-            label grows into the gutter and neither edge moves — docs/
-            sizing.md §3's growth rule, satisfied by the geometry.
-
-            RTL MIRRORS IT, and one attribute is the whole implementation:
-            `direction: rtl` puts the first grid item in the RIGHT track, so
-            the labels move to the right edge and the times form their
-            column on the left, which is where a Hebrew reader's eye
-            starts. The track sizes keep their jobs unchanged.
-          */}
-          <div
-            ref={gridRef}
-            dir={isHebrew ? "rtl" : "ltr"}
-            className="grid w-full"
-            style={{ gridTemplateColumns: "1fr auto", columnGap: "1em" }}
-          >
-            {rows.map((row) => (
-              <Row key={row.id} row={row} label={labelOf(row)} isHebrew={isHebrew && row.hebrewLabel !== null} />
-            ))}
-          </div>
-
-          {footnotes.length > 0 && (
-            <div
-              dir={isHebrew ? "rtl" : "ltr"}
-              className="flex flex-col opacity-60"
-              style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
-            >
-              {/* The footnote TEXT is Chabad's English either way — the
-                  response carries no Hebrew for it — so only the block's
-                  own alignment mirrors, not the words. */}
-              {footnotes.map((text) => (
-                <span key={text} dir="ltr" className="leading-tight">
-                  {text}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        {table(true)}
       </OverflowViewport>
     </div>
   );
@@ -230,37 +300,37 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
  * NOT `useFitFontSize`, and that is the point rather than duplication. That
  * hook implements docs/sizing.md §2's fit: a binary search for the largest
  * size at which content fits BOTH axes. This widget's fit lets height
- * overflow and never lets width clip, which is a different question with a
- * closed-form answer — for rows that do not wrap, width and row height
- * both scale linearly with font size, so ONE measurement at a known size
- * gives exact ratios and no search is needed.
+ * overflow and never lets the times clip, which is a different question
+ * with a closed-form answer — for rows that do not wrap, width and row
+ * height both scale linearly with font size, so ONE measurement at a known
+ * size gives exact ratios and no search is needed.
  *
- * The result is written straight to the element's style rather than
- * returned through state, for the reason `useFitFontSize` gives: it lets
- * the ResizeObserver re-measure on every frame of a resize drag without a
+ * The result is written straight to the box's style rather than returned
+ * through state, for the reason `useFitFontSize` gives: it lets the
+ * ResizeObserver re-measure on every frame of a resize drag without a
  * re-render each time, and it is safe because nothing else React owns
  * touches that property.
  */
 function useZmanimFit(options: {
   boxRef: RefObject<HTMLElement | null>;
-  contentRef: RefObject<HTMLElement | null>;
   gridRef: RefObject<HTMLElement | null>;
   canvasWidth: number;
   enabled: boolean;
   rowCount: number;
   signature: string;
 }) {
-  const { boxRef, contentRef, gridRef, canvasWidth, enabled, rowCount, signature } = options;
+  const { boxRef, gridRef, canvasWidth, enabled, rowCount, signature } = options;
   const pendingFrame = useRef<number | null>(null);
 
   useEffect(() => {
     const box = boxRef.current;
-    const content = contentRef.current;
     const grid = gridRef.current;
-    if (!enabled || !box || !content || !grid || rowCount === 0) return;
+    if (!enabled || !box || !grid || rowCount === 0) return;
 
     const measure = () => {
-      if (box.clientWidth === 0 || box.clientHeight === 0) return;
+      const boxWidthPx = box.clientWidth;
+      const boxHeightPx = box.clientHeight;
+      if (boxWidthPx === 0 || boxHeightPx === 0) return;
 
       // A known size to measure at. Any size works — the ratios below are
       // size-independent — and a design-unit probe is what makes it a real
@@ -268,7 +338,7 @@ function useZmanimFit(options: {
       // editor happens to be at.
       const reference = resolveDesignPx(100, canvasWidth, box);
       if (reference <= 0) return;
-      content.style.fontSize = `${reference}px`;
+      box.style.fontSize = `${reference}px`;
 
       /*
        * MEASURED AT `max-content`, briefly. The grid's label cell clips
@@ -277,20 +347,41 @@ function useZmanimFit(options: {
        * track shrinks the label rather than overflowing — and `scrollWidth`
        * would report the box's width back, not the text's. Letting the grid
        * size to its content for the length of one measurement is the only
-       * way to read the natural width the width rule needs.
+       * way to read the natural geometry the rules need.
        */
       const previousWidth = grid.style.width;
       grid.style.width = "max-content";
-      const naturalWidth = grid.getBoundingClientRect().width;
-      const naturalHeight = grid.getBoundingClientRect().height;
+      const natural = grid.getBoundingClientRect();
+      /*
+       * THE USED TRACK SIZES, which is how the width rule gets told what it
+       * is allowed to give up.
+       *
+       * `gridTemplateColumns` computes to the resolved track widths in px,
+       * and `GRID_COLUMNS` puts the label in track one in both scripts. So
+       * the whole natural width minus that track is exactly the time
+       * column plus the gap that separates it from the label (the gap is
+       * padding inside the adjacent time cell — see `LABEL_GAP`), which is
+       * the width ./fit.ts protects. Subtracting rather than measuring a
+       * cell directly keeps this correct when a row falls back to printing
+       * an unrecognised string across all three time tracks.
+       */
+      const tracks = getComputedStyle(grid)
+        .gridTemplateColumns.split(/\s+/)
+        .map((track) => Number.parseFloat(track));
       grid.style.width = previousWidth;
+
+      const labelTrack = Number.isFinite(tracks[0]) ? tracks[0] : 0;
+      // Falls back to the whole width if the subtraction produces nothing
+      // usable — a conservative answer (it shrinks sooner) rather than an
+      // unconstrained one.
+      const protectedWidth = natural.width - labelTrack > 0 ? natural.width - labelTrack : natural.width;
 
       const fitted = fitFontSizePx(
         {
-          boxHeightPx: box.clientHeight,
-          boxWidthPx: box.clientWidth,
-          widthPerFontPx: naturalWidth / reference,
-          rowHeightPerFontPx: naturalHeight / Math.max(1, rowCount) / reference,
+          boxHeightPx,
+          boxWidthPx,
+          protectedWidthPerFontPx: protectedWidth / reference,
+          rowHeightPerFontPx: natural.height / Math.max(1, rowCount) / reference,
         },
         {
           minPx: resolveDesignPx(manifest.sizing.minFontSize ?? 14, canvasWidth, box),
@@ -298,7 +389,7 @@ function useZmanimFit(options: {
         },
       );
 
-      content.style.fontSize = `${fitted}px`;
+      box.style.fontSize = `${fitted}px`;
 
       // docs/sizing.md: the properties panel shows an objective, read-only
       // type size in fit mode. Plain DOM state rather than a prop back
@@ -320,17 +411,18 @@ function useZmanimFit(options: {
       observer.disconnect();
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
     };
-  }, [boxRef, contentRef, gridRef, canvasWidth, enabled, rowCount, signature]);
+  }, [boxRef, gridRef, canvasWidth, enabled, rowCount, signature]);
 }
 
 /**
- * What happens to rows that don't fit — `scroll`, `page` or `clip`.
+ * What happens to rows that don't fit the box — `scroll`, `page` or `clip`.
  *
- * BOTH MOVING MODES DRIVE OFF THE MASTER SECOND TICK (lib/tick.ts) and
- * neither creates a timer. plan.md §3e: "one master rAF/second-tick that
- * all time widgets subscribe to. No setInterval accumulation." A display
- * route runs for months, so a widget with its own interval leaks one timer
- * per remount until the TV WebView dies at 3am.
+ * NEITHER MOVING MODE CREATES A TIMER. plan.md §3e: "one master rAF/
+ * second-tick that all time widgets subscribe to. No setInterval
+ * accumulation." A display route runs for months, so a widget with its own
+ * interval leaks one timer per remount until the TV WebView dies at 3am.
+ * `page` steps off the master second tick (lib/tick.ts); `scroll` hands CSS
+ * a duration and reads no clock at all, which accumulates even less.
  *
  * BOTH ARE INERT WHEN NOTHING OVERFLOWS, which is why `page` can be the
  * default without putting motion on boards that don't need it.
@@ -339,14 +431,16 @@ function useZmanimFit(options: {
  * transition, so one screenful is replaced by the next between two frames.
  * A cross-fade at twenty feet reads as a moment of illegibility.
  *
- * `scroll` is the one place a transition is right, because the transition
- * IS the content: the tick sets a new target every second and CSS
- * interpolates linearly across that second, which is how a once-a-second
- * clock produces continuous motion without a rAF loop.
+ * `scroll` IS A CSS ANIMATION OVER TWO COPIES OF THE LIST, and the pair is
+ * the mechanism rather than a trick: `translateY(-50%)` of a two-copy stack
+ * is exactly one copy, so the end of a cycle is pixel-identical to its
+ * start and the loop closes with no seam to hide. It replaced a
+ * once-a-second transitioned target, which could not close that loop — see
+ * ./overflow.ts's scroll branch for the measurement.
  *
  * THE ARITHMETIC IS IN ./overflow.ts, not here. This component measures and
- * renders; where the list should sit is a pure function of four numbers and
- * an elapsed time.
+ * renders; where the list should sit, or how fast it should cycle, is a
+ * pure function of four numbers and an elapsed time.
  */
 function OverflowViewport({
   boxRef,
@@ -356,6 +450,7 @@ function OverflowViewport({
   second,
   rowCount,
   canvasWidth,
+  seam,
   children,
 }: {
   boxRef: RefObject<HTMLDivElement | null>;
@@ -365,6 +460,10 @@ function OverflowViewport({
   second: number | null;
   rowCount: number;
   canvasWidth: number;
+  /** A second, ref-free copy of `children`, rendered only while scrolling.
+   *  Passed in rather than rendered from `children` twice — the Renderer's
+   *  `table` explains what that cost. */
+  seam: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [{ boxHeight, boxWidth, contentHeight }, setMeasured] = useState({
@@ -411,24 +510,17 @@ function OverflowViewport({
   }, [boxRef, contentRef, mode, rowCount]);
 
   /*
-   * WHERE THE SCROLL STARTS FROM, and the fix for a real reported bug: "on
-   * load it scrolls through the list very fast, then slows almost to a
-   * stop."
+   * WHERE PAGING STARTS FROM. `page` reads an elapsed time rather than the
+   * absolute tick so it opens on page one instead of on whichever page the
+   * wall clock lands on, and the origin is re-taken whenever anything the
+   * cycle is computed FROM changes — the mode, the row count, the measured
+   * box or content — so a resize restarts from the top rather than jumping
+   * mid-cycle.
    *
-   * The offset used to be `(second * speed) % contentHeight` off the
-   * absolute epoch tick. That is in range, so nothing looked wrong, but its
-   * value at any moment is arbitrary — and the frame before measurement has
-   * no offset at all. So the first measured frame jumped from 0 to whatever
-   * the epoch produced (224px, measured, at the old 16 units/second on a
-   * 504-unit list) and CSS interpolated the whole distance over one second:
-   * a fourteen-times sweep, then a settle to the real rate, which reads as
-   * stopping.
-   *
-   * An origin makes the first frame's elapsed time zero by construction.
-   * It is re-taken whenever anything the cycle is computed FROM changes —
-   * the mode, the speed, the row count, the measured box or content — so a
-   * resize restarts from the top rather than jumping to a new arbitrary
-   * point mid-cycle.
+   * This was originally the fix for a scroll bug ("on load it scrolls
+   * through the list very fast, then slows almost to a stop"); scroll no
+   * longer reads a clock, and ./overflow.ts's scroll branch has that whole
+   * history.
    *
    * ADJUSTED DURING RENDER, not in an effect. React's own
    * state-derived-from-props pattern, and the same one
@@ -447,7 +539,7 @@ function OverflowViewport({
   const elapsedSeconds =
     second === null || origin === null || origin.key !== cycleKey ? null : second - origin.second;
 
-  const { offset, animate, wrapped } = overflowState({
+  const { offset, animate, scrollSeconds } = overflowState({
     mode,
     elapsedSeconds,
     boxHeight,
@@ -458,29 +550,30 @@ function OverflowViewport({
     speed,
   });
 
+  /*
+   * Two shapes, never both. Scrolling is one declarative animation over the
+   * two-copy stack; paging is a bare translate with no transition at all.
+   *
+   * `zmanim-scroll` is in app/globals.css, and `-50%` there is why the seam
+   * needs exactly two copies — no measured height is involved in closing
+   * the loop, so a stale measurement can only change the speed, never
+   * reintroduce a jump.
+   */
+  const motion: CSSProperties = animate
+    ? { animation: `zmanim-scroll ${scrollSeconds}s linear infinite` }
+    : { transform: offset === 0 ? undefined : `translateY(${-offset}px)` };
+
   return (
-    <div
-      className="w-full"
-      style={{
-        transform: offset === 0 ? undefined : `translateY(${-offset}px)`,
-        // Exactly the tick interval, linear: the target moves once a second
-        // and the browser fills in the second, which is what makes a
-        // once-a-second clock look continuous. `page` never transitions —
-        // design.md's plain-swap rule. Suppressed on the frame the scroll
-        // wraps, or CSS would animate the whole list backwards.
-        transition: animate && !wrapped ? "transform 1s linear" : undefined,
-      }}
-    >
+    <div className="w-full" style={motion}>
       {children}
-      {/* The seam. A second copy of the list means the moment the offset
-          reaches the first copy's full height, what is on screen is
-          pixel-identical to the offset being zero — so the reset is
-          invisible. Rendered only while actually scrolling, so a static
-          table has no duplicate in the DOM to confuse a measurement.
-          `aria-hidden` because it is the same content twice. */}
+      {/* The seam. A second copy of the list is what makes the wrap
+          invisible: at `-50%` of the pair, what is on screen is
+          pixel-identical to `0`. Rendered only while actually scrolling, so
+          a static table has no duplicate in the DOM to confuse a
+          measurement. `aria-hidden` because it is the same content twice. */}
       {animate && (
         <div aria-hidden className="w-full">
-          {children}
+          {seam}
         </div>
       )}
     </div>
@@ -497,56 +590,131 @@ function OverflowViewport({
  * gabbai selected never appears on screen — it exists so the board document
  * survives a provider change, not to be read.
  *
- * A row is two grid cells rather than a wrapper div, so the times in every
- * row share one column. That is why this returns a fragment.
+ * A row is four grid cells rather than a wrapper div, so every row's label,
+ * hour, minutes and meridiem each share one column with every other row's.
+ * That is why this returns a fragment, and it is also the whole of the
+ * alignment: the hour has its own `max-content` track and right-aligns
+ * inside it, so a "7" and an "11" put their colons at the same x and the
+ * outer edge of the column is straight. ./display-time.ts does the split,
+ * and the pieces rejoin to the provider's exact string — laying the same
+ * characters out in columns is display, not reformatting.
  *
  * NEITHER CELL WRAPS, and that is load-bearing rather than cosmetic: the
  * paging mode divides measured content height by row count to find one
  * row's height, which is only correct while every row is the same height,
  * and the fit measures one row's height the same way. A wrapping label
  * would make one row taller and page boundaries would start cutting rows in
- * half. Horizontal clipping is the last resort behind that — ./fit.ts's
- * width rule shrinks the type first, and only a box too narrow at
- * `minFontSize` reaches the clip.
+ * half. Horizontal clipping of the LABEL is the deliberate absorber behind
+ * that — ./fit.ts protects the time column and lets a long label truncate
+ * rather than shrinking the whole table in a narrow box.
  */
-function Row({ row, label, isHebrew }: { row: ResolvedZman; label: string; isHebrew: boolean }) {
+function Row({
+  row,
+  label,
+  labelIsHebrew,
+  mirrored,
+}: {
+  row: ResolvedZman;
+  label: string;
+  labelIsHebrew: boolean;
+  mirrored: boolean;
+}) {
+  const parts = splitTimeColumns(row.display);
+
+  /*
+   * Which way "flush against the next piece" points, and where the gap
+   * from the label goes. In a mirrored table the tracks lay out right to
+   * left, so the inline start of a cell is its right-hand side — which is
+   * the side the hour has to hug to reach its colon, and the side the
+   * meridiem has to hug for the column's outer edge to be straight.
+   */
+  const flush = mirrored ? ("start" as const) : ("end" as const);
+  const gap: CSSProperties = mirrored ? { paddingRight: LABEL_GAP } : { paddingLeft: LABEL_GAP };
+  const time: CSSProperties = { fontFamily: BOARD_FONTS.sefarim };
+  /*
+   * ALWAYS LTR, in either script, and Frank Ruhl Libre with `numeric`.
+   *
+   * The direction: a clock time is Latin digits in a fixed order, and
+   * rendering it right-to-left would turn "7:22 PM" into something no
+   * luach prints. Mirroring is about which SIDE the column sits on and the
+   * order the cells are emitted in, never the order inside a cell.
+   *
+   * The face: measured, not assumed. scripts/test-font-parity.mjs reads
+   * `11111` against `00000` in the real board and finds the sefarim face
+   * closes a 6.97px spread to 0.00px under `tabular-nums` while the UI
+   * face is unchanged at 3.08px either way — which is CLAUDE.md's caveat,
+   * still true on the board. So the figures within a track line up because
+   * of this face; the tracks are what line the hours up with each other.
+   */
+  const timeClass = "numeric font-semibold leading-snug whitespace-nowrap";
+
+  const labelCell = (
+    <span
+      key="label"
+      /*
+       * `lang` and `dir` on the CELL, not only on the grid. A Hebrew
+       * label inside an RTL grid still needs its own direction declared
+       * for the browser to order it correctly — and a row that fell back
+       * to English inside an RTL table needs the opposite, which is a
+       * distinction only the cell can express.
+       */
+      {...(labelIsHebrew ? { lang: "he", dir: "rtl" as const } : { dir: "ltr" as const })}
+      className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80"
+    >
+      {label}
+    </span>
+  );
+
+  // A shape ./display-time.ts doesn't recognise still gets printed, whole,
+  // across the three time tracks. Unaligned beats absent on a board
+  // somebody is standing in front of.
+  if (!parts) {
+    return (
+      <>
+        {labelCell}
+        <span
+          dir="ltr"
+          className={timeClass}
+          style={{ ...time, ...gap, gridColumn: "span 3", justifySelf: flush }}
+        >
+          {row.display}
+        </span>
+      </>
+    );
+  }
+
+  const hours = (
+    <span
+      key="hours"
+      dir="ltr"
+      className={timeClass}
+      style={{ ...time, justifySelf: flush, ...(mirrored ? null : gap) }}
+    >
+      {parts.hours}
+    </span>
+  );
+  const minutes = (
+    <span key="minutes" dir="ltr" className={timeClass} style={time}>
+      {parts.minutes}
+    </span>
+  );
+  const meridiem = (
+    <span
+      key="meridiem"
+      dir="ltr"
+      className={timeClass}
+      // `pre`, so the provider's own space before "PM" renders as the
+      // separator instead of being replaced by padding we invented.
+      style={{ ...time, whiteSpace: "pre", justifySelf: flush, ...(mirrored ? gap : null) }}
+    >
+      {parts.meridiem}
+    </span>
+  );
+
   return (
     <>
-      <span
-        /*
-         * `lang` and `dir` on the CELL, not only on the grid. A Hebrew
-         * label inside an RTL grid still needs its own direction declared
-         * for the browser to order it correctly — and a row that fell back
-         * to English inside an RTL table needs the opposite, which is a
-         * distinction only the cell can express.
-         */
-        {...(isHebrew ? { lang: "he", dir: "rtl" as const } : { dir: "ltr" as const })}
-        className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80"
-      >
-        {label}
-      </span>
-      {/*
-        ALWAYS LTR, in either script, and Frank Ruhl Libre with `numeric`.
-
-        The direction: a clock time is Latin digits in a fixed order, and
-        rendering it right-to-left would turn "7:22 PM" into something no
-        luach prints. Item 3's mirroring is about which SIDE the column
-        sits on, not the order inside a cell.
-
-        The face: measured, not assumed. scripts/test-font-parity.mjs reads
-        `11111` against `00000` in the real board and finds the sefarim face
-        closes a 6.97px spread to 0.00px under `tabular-nums` while the UI
-        face is unchanged at 3.08px either way — which is CLAUDE.md's
-        caveat, still true on the board. So the clean right edge comes from
-        setting this face, not from the utility class alone.
-      */}
-      <span
-        dir="ltr"
-        className="numeric font-semibold leading-snug whitespace-nowrap"
-        style={{ fontFamily: BOARD_FONTS.sefarim }}
-      >
-        {row.display}
-      </span>
+      {labelCell}
+      {mirrored ? [meridiem, minutes, hours] : [hours, minutes, meridiem]}
     </>
   );
 }

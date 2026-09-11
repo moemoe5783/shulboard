@@ -191,23 +191,32 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
    * declared selection count with spacer rows, so the count the fit saw
    * could not vary. The second and current answer is better: the size does
    * not depend on the row count at all. It is
-   * `min(boxHeight / (8 rows × per-row height), boxWidth / row width)` —
-   * ./fit.ts — so a returning candle-lighting row changes nothing about
-   * the height term, and the spacers had nothing left to hold steady.
+   * `min(boxHeight / (8 rows × per-row height), boxWidth / time-column
+   * width)` — ./fit.ts — so a returning candle-lighting row changes
+   * nothing about either term, and the spacers had nothing left to hold
+   * steady.
    *
    * That also means fit DOES now need the overflow mode, where the spacer
    * version did not: the height term deliberately ignores how many rows
    * there are, so a twelve-row selection in a box sized for eight
    * overflows by design and scrolls or pages. Vertical overflow is
-   * acceptable; horizontal truncation is not, which is the second term.
+   * acceptable; a clipped TIME is not, which is the second term.
    *
    * THE SPACERS ARE GONE, and so is the binary search — `fit` means
    * something different here now, and ./fit.ts is the whole argument. In
-   * short: the size is `min(height-driven, width-allowed)`, width is never
-   * compromised, height may overflow into the scroll or page mode above.
-   * Neither term reads the row count, so there is nothing left for a
-   * spacer to hold steady, and a spacer would now actively hurt by
-   * inflating the content height the overflow check reads.
+   * short: the size is `min(height-driven, width-allowed)`, the time
+   * column is never compromised, height may overflow into the scroll or
+   * page mode above. Neither term reads the row count, so there is nothing
+   * left for a spacer to hold steady, and a spacer would now actively hurt
+   * by inflating the content height the overflow check reads.
+   *
+   * WHAT THE SECOND TERM PROTECTS, corrected after a live look. It used to
+   * be the whole row's natural width — every label at full length — which
+   * made narrowing a perfectly roomy box shrink the type over a 2.5× band
+   * of widths where nothing would have clipped. It protects the time
+   * column and its gap now, and the `1fr` label track absorbs the rest by
+   * truncating, which is what its clip was always for. ./fit.ts has the
+   * measurement.
    *
    * WHERE `fit` IS STILL NOT RECOMMENDED: `"next"` display mode. One row,
    * and the row's own label changes through the day ("Sunrise", then
