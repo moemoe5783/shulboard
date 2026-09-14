@@ -278,8 +278,76 @@ export function resolveZmanimTable(input: {
   const next =
     [...today, ...tomorrow].find((row) => row.time.getTime() > input.now.getTime()) ?? null;
 
+  if (today.length === 0) reportUnavailable(date, input.ids, input.chabadZmanim);
+
   return {
     today: today.length > 0 ? { status: "ok", rows: today } : { status: "unavailable" },
     next,
   };
+}
+
+/**
+ * Signatures already reported, so a board that renders every second logs
+ * once rather than 86,400 times a day.
+ *
+ * Capped, because the display route runs for months (plan.md §3e's whole
+ * concern): a screen stuck in the unavailable state adds one entry a day
+ * as the date rolls, and the cap means the set cannot grow without bound
+ * even in a case nobody has thought of. Losing a log line after twenty
+ * distinct failures costs nothing — the first one says everything.
+ */
+const reported = new Set<string>();
+const REPORT_CAP = 20;
+
+/**
+ * WHY THE UNAVAILABLE STATE LOGS AT ALL, and it is not defensive noise.
+ *
+ * With the computed fallback gone (plan.md §5c) a cache full of rows the
+ * widget cannot reach renders identically to an empty cache: both say "No
+ * zmanim for this date", correctly, with nothing anywhere to say which. That
+ * ambiguity has now cost three separate debugging rounds — the `item.Date`
+ * parse, the four missing candle-lighting parameters, and a warm that wrote
+ * 93 good rows and queued no bundle rebuild.
+ *
+ * So this prints the three things that distinguish every failure in the
+ * chain, and they are all client-side facts:
+ *
+ *  - `wantedDate` against `cachedRange` — a date-convention or window
+ *    mismatch (the shul's zone against UTC, or a bundle built before the
+ *    warm) shows up as a range that does not contain the date.
+ *  - `cachedDates: 0` — nothing reached this board at all, which points at
+ *    the bundle, not at the cache.
+ *  - `idsOnWantedDate` against `wantedIds` — the date is there and the
+ *    selected ids are not, which points at the canonical mapping.
+ *
+ * The cache KEY is deliberately absent: it is server plumbing and a widget
+ * has no business knowing it (that half is logged at both read sites, in
+ * lib/bundle/build.ts and the editor's board page). Between the two logs
+ * the whole path is named.
+ */
+function reportUnavailable(
+  date: string,
+  ids: readonly string[],
+  cache: ChabadZmanimByDate | null,
+): void {
+  const signature = `${date}|${ids.join(",")}`;
+  if (reported.has(signature)) return;
+  if (reported.size < REPORT_CAP) reported.add(signature);
+
+  const dates = cache ? Object.keys(cache).sort() : [];
+  console.warn(
+    "[zmanim-resolve] " +
+      JSON.stringify({
+        where: "widget",
+        wantedDate: date,
+        wantedIds: [...ids],
+        cachedDates: dates.length,
+        cachedRange: dates.length > 0 ? [dates[0], dates[dates.length - 1]] : null,
+        // `null` means the date is not in the cache at all; an array means
+        // it is, and these are the ids it actually holds — which is the
+        // one comparison that separates a window problem from a mapping
+        // problem.
+        idsOnWantedDate: cache?.[date] ? Object.keys(cache[date]).sort() : null,
+      }),
+  );
 }

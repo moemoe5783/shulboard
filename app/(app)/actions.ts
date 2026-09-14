@@ -691,7 +691,25 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
     return { status: "failed", message: `Fetching ${location.locationId} failed: ${outcome.error}` };
   }
 
-  const { dates, datesWithCandleLighting, lastDate } = outcome;
+  const { dates, datesWithCandleLighting, lastDate, screensQueued } = outcome;
+
+  /*
+   * WHAT HAPPENS TO THE SCREENS, said out loud, because its being unsaid
+   * is what cost a debugging round. `zmanim_cache` is read at BUILD time
+   * and frozen into each screen's bundle (lib/bundle/build.ts), so a fetch
+   * that does not queue a rebuild changes nothing in any lobby — and this
+   * button used to report a flawless success while every board carried on
+   * saying "No zmanim for this date". The warm queues those rebuilds now
+   * (lib/zmanim/warm.ts) and this sentence is how a gabbai can tell that it
+   * did.
+   *
+   * "Around five minutes" is the external scheduler's own cadence for
+   * build-bundles (docs/environment.md), not a guess.
+   */
+  const screens =
+    screensQueued > 0
+      ? ` ${screensQueued} ${screensQueued === 1 ? "screen" : "screens"} will pick it up within about five minutes.`
+      : " No screen is waiting on it — every screen using this location is already up to date, or none uses it.";
 
   if (datesWithCandleLighting === 0) {
     return {
@@ -699,7 +717,8 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
       message:
         `Fetched ${location.locationId}, but not one date had a candle-lighting time. ` +
         `Worth reporting — the window covers thirteen Fridays, so this points at chabad.org ` +
-        `having changed what it sends.`,
+        `having changed what it sends.` +
+        screens,
     };
   }
 
@@ -711,7 +730,8 @@ export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
     status: "done",
     message:
       `Fetched zmanim for ${location.locationId} through ${formatCoverageDate(lastDate)}. ` +
-      `${dates} days, ${datesWithCandleLighting} with candle lighting.`,
+      `${dates} days, ${datesWithCandleLighting} with candle lighting.` +
+      screens,
   };
 }
 

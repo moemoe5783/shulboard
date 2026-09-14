@@ -44,6 +44,16 @@ Environment variables: @docs/environment.md
   org, so a write policy for tenant admins would let one shul's admin
   poison rows twenty neighbouring shuls read. The settings action that
   calls it holds no key of its own.
+  **It also queues the bundle rebuilds, and that is not incidental.** The
+  cache is read at BUILD time and frozen into `screen_bundles`
+  (plan.md §3a), so writing it changes nothing any screen shows until that
+  screen's bundle is rebuilt. Every other content table gets that for free
+  from the `request_org_rebuild()` triggers; `zmanim_cache` cannot, because
+  that function keys on `org_id` and this table deliberately has none. So
+  the invalidation is application code here, and the count of screens
+  queued is reported back through the cron's JSON and the settings
+  button — a warm that queues nothing on a location a shul really uses is
+  the signature of a board that will keep saying "No zmanim for this date".
   Nowhere else uses the service-role key.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,
   Settings.tsx

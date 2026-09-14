@@ -186,6 +186,12 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
     requestedEndDate?: string;
     echoedEndDate?: string | null;
     zmanIds?: string[];
+    /** Screens whose bundle this warm queued for a rebuild. ZERO ON A
+     *  LOCATION A SHUL ACTUALLY USES IS THE ALARM — see
+     *  lib/zmanim/warm.ts's `queueRebuildsForCacheKey`: the cache is read
+     *  at build time and frozen into the bundle, so a warm that queues
+     *  nothing changes nothing any screen shows. */
+    screensQueued?: number;
     error?: string;
   }[] = [];
 
