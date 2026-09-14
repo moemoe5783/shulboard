@@ -3,7 +3,6 @@
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { CANONICAL_ZMAN_ORDER, CHABAD_SUPPLIES, ZMAN_PANEL_LABEL } from "@/lib/zmanim/zman";
 import type { WidgetSettingsProps } from "@/widgets/types";
-import { StyleControls } from "../StyleControls";
 import type { ZmanimConfig } from "./manifest";
 
 /**
@@ -46,8 +45,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           <option value="next">Next one only</option>
         </select>
         <span className={PANEL_LABEL}>
-          The table always fits its box — the type shrinks so every row stays visible, never cut off. Set the type
-          size above to resize the box to it.
+          The table always fits its box — the type shrinks so every row stays visible, never cut off. Set a type size
+          on the Size tab to resize the box to it.
         </span>
       </label>
 
@@ -121,8 +120,6 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           night of a Yom Tov. Off by default because of the space they take.
         </span>
       </label>
-
-      <StyleControls config={config} onChange={onChange} />
     </div>
   );
 }

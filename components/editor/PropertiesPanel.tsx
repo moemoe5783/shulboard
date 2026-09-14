@@ -1,8 +1,9 @@
 "use client";
 
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
+import { AppearanceControls } from "@/components/editor/AppearanceControls";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
@@ -12,7 +13,12 @@ import { widgetRect } from "@/lib/editor/geometry";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
 import { getManifest } from "@/widgets/manifests";
 import { getSettings } from "@/widgets/settings";
+import { normalizeWidgetStyle, type WidgetStyleConfig } from "@/widgets/style";
 import type { SizingMode, WidgetManifest } from "@/widgets/types";
+
+/** The three groups of controls the panel splits a widget into — the widget's
+ *  own options, the shared appearance, and how it sizes to its box. */
+type PanelTab = "options" | "appearance" | "size";
 
 /*
  * The properties panel — design.md §4's right rail, 264px, the same geometry
@@ -57,6 +63,10 @@ function Body({
   const overflowing = useElementOverflow(selected.length === 1 ? selected[0].id : null);
   const applyRects = useEditor((s) => s.applyRects);
   const canvas = useEditor((s) => s.canvas);
+  // Which group of controls is showing. Kept across selection changes on
+  // purpose — a gabbai restyling several widgets in a row stays on the
+  // Appearance tab rather than being thrown back to Options each click.
+  const [tab, setTab] = useState<PanelTab>("options");
 
   /*
    * Resize a fit-mode widget's BOX so its content renders at `target` design
@@ -116,6 +126,13 @@ function Body({
   // if a caller wanted that, which no widget's settings ask for yet.
   const config = selected[0].config as { sizingMode?: SizingMode; size?: number };
 
+  const showSizing = Boolean(manifest?.sizing.userToggleable) || Boolean(manifest && isTextSized(manifest));
+  const sizeTabVisible = showSizing || overflowing;
+  const styleConfig = normalizeWidgetStyle(selected[0].config as Record<string, unknown>);
+  // The Size tab can vanish when the selection changes to a widget with nothing
+  // to size; fall the pane back to Options rather than render an empty one.
+  const activeTab: PanelTab = tab === "size" && !sizeTabVisible ? "options" : tab;
+
   return (
     <>
       <h2
@@ -126,57 +143,111 @@ function Body({
           : widgetLabel(selected[0])}
       </h2>
 
+      <TabBar tab={activeTab} onChange={setTab} showSize={sizeTabVisible} />
+
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {manifest?.sizing.userToggleable && (
-          <SizingToggle
-            mode={config.sizingMode ?? manifest.sizing.mode}
-            recommended={manifest.sizing.recommended}
-            onChange={(mode) => setWidgetConfig(ids, { sizingMode: mode })}
+        {/* Options — the widget's own settings, and only those. */}
+        {activeTab === "options" &&
+          (Settings ? (
+            // createElement, not JSX: the lint rule against components created
+            // during render cannot tell a lookup in a module-level map (stable
+            // for the life of the bundle — widgets/settings.ts builds it once)
+            // from a component defined inline, and flags the second while
+            // meaning the first. Same reasoning as BoardRenderer.tsx's Renderer.
+            createElement(Settings, {
+              config: config as never,
+              onChange: (patch: Record<string, unknown>) => setWidgetConfig(ids, patch),
+            })
+          ) : (
+            <p className={CHROME_META}>
+              {manifest ? `${manifest.name} has nothing to configure yet.` : "This element has no settings."}
+            </p>
+          ))}
+
+        {/* Appearance — the shared design controls every widget carries. */}
+        {activeTab === "appearance" && (
+          <AppearanceControls
+            config={styleConfig}
+            onChange={(patch: Partial<WidgetStyleConfig>) => setWidgetConfig(ids, patch)}
           />
         )}
 
-        {manifest && isTextSized(manifest) && (
-          <TypeSizeField
-            widgetId={selected[0].id}
-            mode={config.sizingMode ?? manifest.sizing.mode}
-            size={config.size}
-            onChange={(size) => setWidgetConfig(ids, { size })}
-            // Editable-in-fit (resize the box to the typed size) only for a
-            // widget whose ONLY mode is fit — zmanim and candle lighting. A
-            // widget that also offers Fixed (userToggleable) keeps fit
-            // read-only: setting a number there means switching to Fixed, which
-            // is the whole point of having the toggle. Single selection only —
-            // the fitted size is per-widget.
-            onResizeToFit={
-              selected.length === 1 && !manifest.sizing.userToggleable ? resizeToTypeSize : undefined
-            }
-          />
-        )}
+        {/* Size — how the widget fits its box, plus the clip warning. */}
+        {activeTab === "size" && (
+          <>
+            {manifest?.sizing.userToggleable && (
+              <SizingToggle
+                mode={config.sizingMode ?? manifest.sizing.mode}
+                recommended={manifest.sizing.recommended}
+                onChange={(mode) => setWidgetConfig(ids, { sizingMode: mode })}
+              />
+            )}
 
-        {overflowing && (
-          <p className="text-meta text-stale border-paper/15 mb-3 border-b pb-3">
-            This doesn&rsquo;t fit its box on the screen — the rest is clipped,
-            not shown. Make the box bigger or shorten the content.
-          </p>
-        )}
+            {manifest && isTextSized(manifest) && (
+              <TypeSizeField
+                widgetId={selected[0].id}
+                mode={config.sizingMode ?? manifest.sizing.mode}
+                size={config.size}
+                onChange={(size) => setWidgetConfig(ids, { size })}
+                // Editable-in-fit (resize the box to the typed size) only for a
+                // widget whose ONLY mode is fit — zmanim, candle lighting, title.
+                // A widget that also offers Fixed (userToggleable) keeps fit
+                // read-only: setting a number there means switching to Fixed,
+                // which is the whole point of having the toggle. Single
+                // selection only — the fitted size is per-widget.
+                onResizeToFit={
+                  selected.length === 1 && !manifest.sizing.userToggleable ? resizeToTypeSize : undefined
+                }
+              />
+            )}
 
-        {Settings ? (
-          // createElement, not JSX: the lint rule against components created
-          // during render cannot tell a lookup in a module-level map (stable
-          // for the life of the bundle — widgets/settings.ts builds it once)
-          // from a component defined inline, and flags the second while
-          // meaning the first. Same reasoning as BoardRenderer.tsx's Renderer.
-          createElement(Settings, {
-            config: config as never,
-            onChange: (patch: Record<string, unknown>) => setWidgetConfig(ids, patch),
-          })
-        ) : (
-          <p className={CHROME_META}>
-            {manifest ? `${manifest.name} has nothing to configure yet.` : "This element has no settings."}
-          </p>
+            {overflowing && (
+              <p className="text-meta text-stale border-paper/15 border-b pb-3">
+                This doesn&rsquo;t fit its box on the screen — the rest is clipped,
+                not shown. Make the box bigger or shorten the content.
+              </p>
+            )}
+
+            {!showSizing && !overflowing && (
+              <p className={CHROME_META}>This element sizes itself to its box — nothing to set.</p>
+            )}
+          </>
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The three tabs — the widget's own options, the shared appearance, and how it
+ * sizes to its box (design/appearance and sizing each get their own section,
+ * with widget-specific settings kept separate). The Size tab is hidden for a
+ * widget with nothing to size (an image, which fills its box either way) unless
+ * it is actively overflowing, where the warning lives.
+ */
+function TabBar({ tab, onChange, showSize }: { tab: PanelTab; onChange: (tab: PanelTab) => void; showSize: boolean }) {
+  const tabs: { value: PanelTab; label: string }[] = [
+    { value: "options", label: "Options" },
+    { value: "appearance", label: "Appearance" },
+    ...(showSize ? [{ value: "size" as const, label: "Size" }] : []),
+  ];
+
+  return (
+    <div className={`flex shrink-0 gap-1 border-b px-2 py-2 ${CHROME_RULE}`}>
+      {tabs.map((one) => (
+        <button
+          key={one.value}
+          type="button"
+          aria-pressed={tab === one.value}
+          onClick={() => onChange(one.value)}
+          className={`${CHROME_BUTTON} flex-1 border ${
+            tab === one.value ? `${CHROME_BUTTON_ON} border-transparent` : "border-paper/20"
+          }`}
+        >
+          {one.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

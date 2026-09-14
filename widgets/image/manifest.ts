@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { widgetStyleFields } from "../style";
 import type { WidgetManifest } from "../types";
 
 export const imageConfigSchema = z.object({
@@ -31,8 +32,11 @@ export const imageConfigSchema = z.object({
    */
   focalX: z.number().min(0).max(1).default(0.5),
   focalY: z.number().min(0).max(1).default(0.5),
-  /** Design pixels. 0 is square, which is the default a board should have. */
-  radius: z.number().min(0).max(200).default(0),
+  // Background, colour, font, padding, radius, border, shadow and header —
+  // shared appearance for every widget (../style.ts). `radius` here rounds the
+  // picture's own corners (the Renderer reads it), the same field the
+  // appearance panel's corner-radius control writes.
+  ...widgetStyleFields,
 });
 
 export type ImageConfig = z.infer<typeof imageConfigSchema>;

@@ -284,6 +284,12 @@ try {
   // string instead. This drives the real properties panel through the
   // exact sequence that produced it.
 
+  // Type size moved to the properties panel's Size tab (Options / Appearance /
+  // Size). Exact-match the tab so it can't collide with the "Fixed size" button
+  // in the sizing toggle.
+  await page.getByRole("button", { name: "Size", exact: true }).click();
+  await settle();
+
   const sizeField = page.locator("label", { hasText: "Type size" }).locator("input");
   await sizeField.waitFor();
 

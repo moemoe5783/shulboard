@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { widgetStyleFields } from "../style";
 import type { WidgetManifest } from "../types";
 
 /*
@@ -15,6 +16,9 @@ export const titleConfigSchema = z.object({
   align: z.enum(["left", "center", "right"]).default("left"),
   /** Sub-line size, as a fraction of the title's. */
   subtitleScale: z.number().min(0.1).max(1).default(0.45),
+  // Background, colour, font, padding, radius, border, shadow and header —
+  // shared appearance for every widget (../style.ts).
+  ...widgetStyleFields,
 });
 
 export type TitleConfig = z.infer<typeof titleConfigSchema>;

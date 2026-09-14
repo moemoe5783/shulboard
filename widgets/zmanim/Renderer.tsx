@@ -12,7 +12,6 @@ import { resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
 import { splitTimeColumns } from "./display-time";
 import { fitFontSizePx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
-import { widgetStyle } from "../style";
 
 /** The footnote block, relative to a row's own type size. Small — it is a
  *  sentence of prose sitting under a table of figures, and it must never
@@ -99,32 +98,29 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     signature: `${rows.map(labelOf).join("|")}::${footnotes.join("|")}`,
   });
 
-  /*
-   * The widget's own background, padding, radius, text colour and font — board
-   * content (../style.ts, design.md §1b). Applied to an outer frame that fills
-   * the widget box, so the inner `boxRef` measures the padded content area
-   * rather than the frame. Every render branch is wrapped, so a styled box
-   * keeps its background even in an empty state.
-   */
-  const frame = (node: React.ReactNode) => <div style={widgetStyle(config, canvas.width)}>{node}</div>;
+  // The widget's appearance — background, padding, radius, border, colour, font
+  // and an optional header — is applied by BoardRenderer.WidgetFrame around this
+  // Renderer (widgets/style.ts), for every widget in one place. This Renderer
+  // returns only the table itself, and `boxRef` measures the padded, header-less
+  // content area WidgetFrame gives it, which is exactly what the fit needs.
 
   if (!location) {
-    return frame(<EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — zmanim need it." />);
+    return <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — zmanim need it." />;
   }
   // A distinct gap from the one above: lat/long can be set while the ZIP Chabad
   // needs is not, and an unconfigured widget must never read as "no times for
   // this date," a different and temporary condition.
   if (chabadUnconfigured) {
-    return frame(
+    return (
       <EmptyLocation
         canvas={canvas}
         message="This shul hasn't set a ZIP or Chabad.org location yet — zmanim need it."
-      />,
+      />
     );
   }
 
   if (config.zmanim.length === 0) {
-    return frame(<EmptyLocation canvas={canvas} message="No zmanim chosen yet — pick which times to show." />);
+    return <EmptyLocation canvas={canvas} message="No zmanim chosen yet — pick which times to show." />;
   }
 
   /*
@@ -136,16 +132,16 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
    * date.
    */
   if (rows.length === 0) {
-    return frame(
+    return (
       <div className="flex h-full w-full flex-col justify-center">
         <span className="leading-tight opacity-60" style={{ fontSize: boardFontSize(config.size, canvas.width) }}>
           No zmanim for this date
         </span>
-      </div>,
+      </div>
     );
   }
 
-  return frame(
+  return (
     <div
       ref={boxRef}
       // overflow-hidden is the last-resort clip if the content doesn't fit even
@@ -180,7 +176,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
           </div>
         )}
       </div>
-    </div>,
+    </div>
   );
 }
 

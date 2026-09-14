@@ -125,11 +125,19 @@ try {
   const typeSizeInput = () => page.locator("label", { hasText: "Type size" }).locator("input");
   const fontSizeOf = (locator) =>
     locator.evaluate((el) => parseFloat(getComputedStyle(el.querySelector("span")).fontSize));
+  // The properties panel now groups controls into tabs (Options / Appearance /
+  // Size); the sizing controls live on the Size tab. The tab is exact-matched so
+  // "Size" can't collide with the "Fixed size" button inside the SizingToggle.
+  const openSizeTab = async () => {
+    await page.getByRole("button", { name: "Size", exact: true }).click();
+    await settle();
+  };
 
   // ---- fit-only widget: editable, and typing a size resizes the box ------
 
   await widget(TITLE_ID).click();
   await settle();
+  await openSizeTab();
   check(!(await typeSizeInput().isDisabled()), "a fit-only widget's type size is editable — it drives the box");
   const titleSize = Number(await typeSizeInput().inputValue());
   check(titleSize > 0, "title's type size shows a real computed number, not zero", `${titleSize}`);
@@ -153,6 +161,7 @@ try {
 
   await widget(CLOCK_FIXED_ID).click();
   await settle();
+  await openSizeTab();
   check(!(await typeSizeInput().isDisabled()), "clock's type size is editable in fixed mode");
   check((await typeSizeInput().inputValue()) === "96", "showing the document's own declared size", await typeSizeInput().inputValue());
 

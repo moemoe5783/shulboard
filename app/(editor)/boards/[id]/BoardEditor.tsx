@@ -121,7 +121,20 @@ export function BoardEditor({
 
     startSaving(async () => {
       if (mountedRef.current) setSaveState("saving");
-      const result = await saveBoardDoc(boardId, next);
+      // A save can REJECT, not just return { ok: false } — the server action
+      // throws when auth or Supabase is unreachable (requireUser), and a
+      // transient network failure rejects too. An unguarded await here would
+      // surface that as an unhandled error and white-screen the whole editor
+      // (React "Server Components render" error) rather than the save
+      // indicator's own "error" state, which is exactly the failure this
+      // catch turns back into a recoverable one — the draft stays in the
+      // store and the next edit retries.
+      let result: Awaited<ReturnType<typeof saveBoardDoc>>;
+      try {
+        result = await saveBoardDoc(boardId, next);
+      } catch {
+        result = { ok: false, error: "Couldn't save — check your connection." };
+      }
       if (!mountedRef.current) return;
       setSaveState(result.ok ? "saved" : "error");
       if (result.ok) {

@@ -3,26 +3,45 @@ import { z } from "zod";
 import { BOARD_FONTS, boardLength, type BoardFont } from "@/lib/board-theme";
 
 /*
- * Per-widget appearance: a background box, its padding and corner radius, a
- * text colour, and a font — shared by the widgets that offer them (zmanim,
- * candle lighting) so the fields, their defaults, and how they become CSS all
- * live once.
+ * Per-widget appearance — the design/appearance controls EVERY widget carries:
+ * a background box with its own transparency, corner radius, padding, a border,
+ * a drop shadow, a text colour, a font, and an optional header (a title above
+ * the widget, like "Zmanim" over the zmanim table). The fields, their defaults,
+ * how they become CSS, and the ready-made frame presets all live here once, and
+ * the properties panel renders them generically for every widget
+ * (components/editor/AppearanceControls.tsx) rather than each Settings.tsx
+ * repeating them.
  *
  * THESE ARE BOARD CONTENT, NOT CHROME. design.md §1b: a board is a
- * user-authored artifact and its content may use any colour, radius or font
- * the shul chooses — so `background` and `textColor` are free CSS colour
- * strings (a hex a gabbai picked), not the named tokens the dashboard chrome
- * is restricted to. The no-raw-hex rule governs the application interface, not
- * what a shul puts on its board.
+ * user-authored artifact and its content may use any colour, radius or font the
+ * shul chooses — so `background`, `textColor` and `borderColor` are free CSS
+ * colour strings (a hex a gabbai picked), not the named tokens the dashboard
+ * chrome is restricted to. The no-raw-hex rule governs the application
+ * interface, not what a shul puts on its board.
  *
- * Every default is the current behaviour: no background, inherited text colour
- * and font, no padding. So a widget that spreads these fields and a document
- * written before they existed both render exactly as they did.
+ * Every default is the current behaviour: no background, full opacity, inherited
+ * text colour and font, no padding, no radius, no border, no shadow, no header.
+ * So a widget that spreads these fields and a document written before they
+ * existed both render exactly as they did.
  */
 
-/** The three board faces plus "inherit" — the widget's own font, or the
- *  board's. `boardFont` here is the same vocabulary lib/board-theme.ts uses. */
-export const widgetFontSchema = z.enum(["inherit", "assistant", "sefarim", "system"]).default("inherit");
+/** The board faces plus "inherit" — the widget's own face, or the board's.
+ *  The keys are lib/board-theme.ts's own BOARD_FONTS vocabulary. */
+export const widgetFontSchema = z
+  .enum([
+    "inherit",
+    "assistant",
+    "heebo",
+    "rubik",
+    "alef",
+    "secularOne",
+    "sefarim",
+    "davidLibre",
+    "miriamLibre",
+    "suezOne",
+    "system",
+  ])
+  .default("inherit");
 export type WidgetFont = z.infer<typeof widgetFontSchema>;
 
 /** The style fields a widget spreads into its config schema. */
@@ -30,46 +49,250 @@ export const widgetStyleFields = {
   /** A CSS colour for the widget's background box, or "" for none
    *  (transparent — the board shows through). Free-form: board content. */
   background: z.string().max(64).default(""),
+  /** The background's opacity, 0–100. Only meaningful with a background; a
+   *  translucent panel over a photo is the point. */
+  backgroundOpacity: z.number().min(0).max(100).default(100),
   /** A CSS colour for the widget's text, or "" to inherit the board's ink. */
   textColor: z.string().max(64).default(""),
   /** The widget's font, or "inherit" to use the board's. */
   font: widgetFontSchema,
-  /** Inner padding, in board design units. Only visible with a background. */
+  /** Inner padding, in board design units. */
   padding: z.number().min(0).max(400).default(0),
   /** Background corner radius, in board design units. */
   radius: z.number().min(0).max(400).default(0),
+  /** Border thickness, in board design units. 0 is no border. */
+  borderWidth: z.number().min(0).max(80).default(0),
+  /** A CSS colour for the border, or "" (falls back to the text colour). */
+  borderColor: z.string().max(64).default(""),
+  /** A soft drop shadow, so a frame reads as floating above the board. Board
+   *  content, so design.md's "shadows only on chrome that floats" does not
+   *  apply — a shul may give its own panel a shadow. */
+  shadow: z.boolean().default(false),
+  /** An optional header shown above the widget — "" for none. */
+  title: z.string().max(120).default(""),
+  /** The header's type size, in board design units. */
+  titleSize: z.number().min(8).max(400).default(40),
 } as const;
 
 /** The subset of a widget's config these controls read and write. */
 export type WidgetStyleConfig = {
   background: string;
+  backgroundOpacity: number;
   textColor: string;
   font: WidgetFont;
   padding: number;
   radius: number;
+  borderWidth: number;
+  borderColor: string;
+  shadow: boolean;
+  title: string;
+  titleSize: number;
 };
 
 /**
+ * A ready-made frame — the "predesigned text boxes designed to look nice" a
+ * gabbai picks instead of dialing in a background, radius and padding by hand.
+ * Each is just a patch over the style fields, applied on click; the gabbai can
+ * then adjust any of it. `swatch` is the CSS the panel paints its preview chip
+ * with, so the choice is visual rather than a list of words.
+ *
+ * COLOURS ARE LITERAL, and that is correct here — board content, not chrome
+ * (design.md §1b). The one that touches nothing visual is "None", which is how
+ * a widget goes back to no frame at all.
+ */
+export type FramePreset = {
+  id: string;
+  label: string;
+  patch: Partial<WidgetStyleConfig>;
+  swatch: CSSProperties;
+};
+
+export const FRAME_PRESETS: FramePreset[] = [
+  {
+    id: "none",
+    label: "None",
+    patch: { background: "", backgroundOpacity: 100, padding: 0, radius: 0, borderWidth: 0, shadow: false },
+    swatch: { background: "transparent", border: "1px dashed rgba(242,244,243,0.3)" },
+  },
+  {
+    id: "card",
+    label: "Card",
+    patch: {
+      background: "#ffffff",
+      backgroundOpacity: 100,
+      textColor: "#1b2a2e",
+      padding: 28,
+      radius: 12,
+      borderWidth: 0,
+      shadow: true,
+    },
+    swatch: { background: "#ffffff", borderRadius: "4px", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" },
+  },
+  {
+    id: "dark",
+    label: "Dark panel",
+    patch: {
+      background: "#1b2a2e",
+      backgroundOpacity: 100,
+      textColor: "#f2f4f3",
+      padding: 28,
+      radius: 12,
+      borderWidth: 0,
+      shadow: false,
+    },
+    swatch: { background: "#1b2a2e", borderRadius: "4px" },
+  },
+  {
+    id: "glass",
+    label: "Glass",
+    patch: {
+      background: "#0f1e22",
+      backgroundOpacity: 55,
+      textColor: "#f2f4f3",
+      padding: 28,
+      radius: 16,
+      borderWidth: 1,
+      borderColor: "#f2f4f3",
+      shadow: false,
+    },
+    swatch: { background: "rgba(15,30,34,0.55)", borderRadius: "5px", border: "1px solid rgba(242,244,243,0.5)" },
+  },
+  {
+    id: "outline",
+    label: "Outline",
+    patch: {
+      background: "",
+      backgroundOpacity: 100,
+      padding: 24,
+      radius: 10,
+      borderWidth: 3,
+      borderColor: "#1b2a2e",
+      shadow: false,
+    },
+    swatch: { background: "transparent", borderRadius: "4px", border: "2px solid rgba(242,244,243,0.7)" },
+  },
+  {
+    id: "parchment",
+    label: "Parchment",
+    patch: {
+      background: "#f4ecd8",
+      backgroundOpacity: 100,
+      textColor: "#3a2f1e",
+      padding: 28,
+      radius: 8,
+      borderWidth: 0,
+      shadow: true,
+    },
+    swatch: { background: "#f4ecd8", borderRadius: "4px", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" },
+  },
+  {
+    id: "accent",
+    label: "Accent",
+    patch: {
+      background: "#1e6b63",
+      backgroundOpacity: 100,
+      textColor: "#ffffff",
+      padding: 26,
+      radius: 10,
+      borderWidth: 0,
+      shadow: false,
+    },
+    swatch: { background: "#1e6b63", borderRadius: "4px" },
+  },
+];
+
+/**
+ * Read the style subset off a widget's raw config, filling every default.
+ *
+ * The board document stores config as a plain record (lib/board-doc.ts does not
+ * re-validate it against each widget's schema), so a board saved before these
+ * fields existed has none of them. This is the one place that gap is closed —
+ * BoardRenderer.WidgetFrame calls it for every widget, present or old — so a
+ * document from before the appearance system renders exactly as it did, with no
+ * frame, and every field has a concrete value the CSS builder can trust.
+ */
+export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetStyleConfig {
+  const str = (key: string) => (typeof config[key] === "string" ? (config[key] as string) : "");
+  const num = (key: string, fallback: number) =>
+    typeof config[key] === "number" && Number.isFinite(config[key]) ? (config[key] as number) : fallback;
+  const font = config.font;
+  return {
+    background: str("background"),
+    backgroundOpacity: num("backgroundOpacity", 100),
+    textColor: str("textColor"),
+    font: (typeof font === "string" && font in BOARD_FONTS ? font : "inherit") as WidgetFont,
+    padding: num("padding", 0),
+    radius: num("radius", 0),
+    borderWidth: num("borderWidth", 0),
+    borderColor: str("borderColor"),
+    shadow: config.shadow === true,
+    title: str("title"),
+    titleSize: num("titleSize", 40),
+  };
+}
+
+/** #rgb or #rrggbb -> {r,g,b}, or null for anything else (a named colour, a
+ *  gradient) — in which case the caller keeps the string as-is. */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(hex);
+  if (short) {
+    return {
+      r: parseInt(short[1] + short[1], 16),
+      g: parseInt(short[2] + short[2], 16),
+      b: parseInt(short[3] + short[3], 16),
+    };
+  }
+  const full = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (full) {
+    return { r: parseInt(full[1], 16), g: parseInt(full[2], 16), b: parseInt(full[3], 16) };
+  }
+  return null;
+}
+
+/** A background colour composed with its opacity. Full opacity (or a colour
+ *  this can't parse) returns the string untouched; otherwise it becomes rgba. */
+export function composeBackground(color: string, opacityPct: number): string {
+  if (!color || opacityPct >= 100) return color;
+  const rgb = hexToRgb(color);
+  if (!rgb) return color;
+  const alpha = Math.max(0, Math.min(100, opacityPct)) / 100;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+/**
  * The style for a widget's outer frame — the element that carries the
- * background, padding and radius and fills the widget's box.
+ * background, padding, radius, border, shadow, colour and font, and fills the
+ * widget's box. It is a flex column so an optional header can sit above the
+ * content (BoardRenderer.WidgetFrame lays that out).
  *
  * `height`/`width`/`boxSizing` are always set so the frame fills the widget's
  * positioned box and its padding insets the content (rather than growing the
  * box); in `hug` mode the box is auto-height, where a percentage height
  * resolves to the content height, so this stays correct there too.
  *
- * The visual properties are set only when chosen, so an unstyled widget's
- * frame is a transparent, padding-less pass-through that changes nothing about
+ * The visual properties are set only when chosen, so an unstyled widget's frame
+ * is a transparent, padding-less flex pass-through that changes nothing about
  * how it renders.
  */
 export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number): CSSProperties {
-  const style: CSSProperties = { height: "100%", width: "100%", boxSizing: "border-box" };
+  const style: CSSProperties = {
+    height: "100%",
+    width: "100%",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  };
 
-  if (config.background) style.backgroundColor = config.background;
+  if (config.background) style.backgroundColor = composeBackground(config.background, config.backgroundOpacity);
   if (config.textColor) style.color = config.textColor;
   if (config.font !== "inherit") style.fontFamily = BOARD_FONTS[config.font as BoardFont];
   if (config.padding > 0) style.padding = boardLength(config.padding, canvasWidth);
   if (config.radius > 0) style.borderRadius = boardLength(config.radius, canvasWidth);
+  if (config.borderWidth > 0) {
+    style.border = `${boardLength(config.borderWidth, canvasWidth)} solid ${config.borderColor || "currentColor"}`;
+  }
+  if (config.shadow) style.boxShadow = "0 0.4cqw 1.6cqw rgba(0, 0, 0, 0.28)";
 
   return style;
 }

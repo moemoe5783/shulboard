@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { nekudosSchema, numeralsSchema, scriptSchema, sunsetRolloverSchema } from "@/lib/hebrew/format";
+import { widgetStyleFields } from "../style";
 import type { WidgetManifest } from "../types";
 
 export const dafYomiConfigSchema = z.object({
@@ -11,6 +12,8 @@ export const dafYomiConfigSchema = z.object({
   /** Design pixels. Read in `fixed` and `hug` modes; ignored in `fit`. */
   size: z.number().min(8).max(400).default(72),
   sizingMode: z.enum(["fit", "fixed", "hug"]).default("fixed"),
+  // Shared appearance for every widget (../style.ts).
+  ...widgetStyleFields,
 });
 
 export type DafYomiConfig = z.infer<typeof dafYomiConfigSchema>;

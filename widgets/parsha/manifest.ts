@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { nekudosSchema, scriptSchema } from "@/lib/hebrew/format";
+import { widgetStyleFields } from "../style";
 import type { WidgetManifest } from "../types";
 
 export const parshaConfigSchema = z.object({
@@ -9,6 +10,8 @@ export const parshaConfigSchema = z.object({
   /** Design pixels. Read in `fixed` and `hug` modes; ignored in `fit`. */
   size: z.number().min(8).max(400).default(80),
   sizingMode: z.enum(["fit", "fixed", "hug"]).default("fit"),
+  // Shared appearance for every widget (../style.ts).
+  ...widgetStyleFields,
 });
 
 export type ParshaConfig = z.infer<typeof parshaConfigSchema>;
