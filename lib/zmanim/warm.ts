@@ -1,20 +1,32 @@
 import "server-only";
 import { fetchChabadRssZmanim } from "./chabad-rss.ts";
+import { fetchChabadEmbed } from "./chabad-embed.ts";
 import { resolveChabadLocation, type ChabadLocation } from "./location";
 import { serviceClientOrNull } from "@/lib/supabase/service";
+import type { ChabadZman } from "./zman.ts";
 
 /*
  * Warming one (chabad, location) pair into `zmanim_cache` — plan.md §5c's
  * "bundle reads from cache only, never calls a provider inline."
  *
- * ONE DAY, because the source is now the published RSS feed
- * (lib/zmanim/chabad-rss.ts), which returns today only and no date range.
- * The 92-day Get_Zmanim reader is kept unwired (chabad-adapter.ts). The cost
- * is offline coverage: a screen that goes offline for more than a day shows
- * the zmanim widget's unavailable state for the new date until it reconnects
- * and the next daily warm rebuilds its bundle. The daily cron
+ * TWO SOURCES, ONE CACHE:
+ *
+ *  - The daily zmanim table comes from the published RSS feed
+ *    (lib/zmanim/chabad-rss.ts), which returns TODAY only, no date range —
+ *    so the full luach (all thirteen zmanim) is cached for today alone. A
+ *    screen offline for more than a day shows the zmanim widget's unavailable
+ *    state for the new date until it reconnects and the next daily warm
+ *    rebuilds its bundle.
+ *  - Candle lighting and Shabbos-end times come from the published embed
+ *    (lib/zmanim/chabad-embed.ts), which returns FOUR WEEKS. So the
+ *    candle-lighting widget's "upcoming" view keeps working days ahead, where
+ *    the RSS feed alone would only carry the current erev-Shabbos date.
+ *
+ * Both are merged into `zmanim_cache.times` per date. The 92-day Get_Zmanim
+ * reader (chabad-adapter.ts) is kept unwired for the day one request has to
+ * carry the whole span again. The daily cron
  * (app/api/cron/warm-zmanim/route.ts) is what keeps today's date always
- * present.
+ * present and slides the four-week candle-lighting window forward.
  *
  * EXTRACTED SO THERE IS ONE COPY. Two things warm this cache: the daily
  * cron and the settings page's "Use this address" action. They differ
@@ -37,15 +49,25 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
 export type WarmOutcome =
   | {
       status: "warmed";
-      /** Dates the feed carried zmanim for — 1 on success, since the RSS is
-       *  a single day, 0 if the feed parsed to nothing. */
+      /** Total date rows written — today's from the RSS feed, plus the
+       *  candle-lighting/Shabbos-end dates from the 4-week embed. */
       dates: number;
-      /** Whether the day carried a candle-lighting time. On a weekday this
-       *  is simply false (no alarm) — the RSS gives one day, and most days
-       *  have no candle lighting. */
-      hasCandleLighting: boolean;
-      /** The date warmed, `YYYY-MM-DD` — the feed's own date. */
+      /** The date the RSS feed warmed, `YYYY-MM-DD` — today for the ZIP. The
+       *  daily zmanim table lives on this date. */
       date: string | null;
+      /** Dates carrying a candle-lighting time across the merged cache (RSS +
+       *  embed) — the number the candle-lighting widget can actually reach. */
+      candleLightingDates: number;
+      /** The furthest candle-lighting date written, `YYYY-MM-DD` — how far
+       *  ahead candle lighting is covered. */
+      lastCandleLighting: string | null;
+      /**
+       * The 4-week candle-lighting embed failed while the RSS leg succeeded.
+       * Today's zmanim are cached; upcoming candle lighting is not, until the
+       * next run. A degraded warm, not a failed one — the zmanim widget still
+       * works, the candle-lighting widget is a week behind.
+       */
+      embedFailed: boolean;
       /** Distinct zman ids written, so a mapping regression is visible in
        *  the cron's own JSON rather than only in a log line. */
       zmanIds: string[];
@@ -194,19 +216,28 @@ async function queueRebuildsForCacheKey(
   return queued?.length ?? 0;
 }
 
+/** The embed's own unit of coverage, capped at 4 by chabad.org — see
+ *  chabad-embed.ts's header (13 and 52 both come back byte-identical to 4).
+ *  Asking for 4 is asking for the most it will give. */
+const EMBED_WEEKS = 4;
+
 /**
- * Fetches and upserts one location's zmanim for today. Never throws: every
- * caller reports an outcome rather than a stack trace — the cron into its
- * JSON response, the settings action into a line a gabbai reads.
+ * Fetches and upserts one location's zmanim. Never throws: every caller
+ * reports an outcome rather than a stack trace — the cron into its JSON
+ * response, the settings action into a line a gabbai reads.
+ *
+ * TWO LEGS. The RSS feed is the daily table (today only) and is the primary
+ * one: if it fails, the warm fails. The embed is the four-week candle-lighting
+ * window and is best-effort: if it fails, today's zmanim are still cached and
+ * the outcome carries `embedFailed` rather than throwing away the good leg.
  *
  * Rate limiting is deliberately NOT here. The cron runs once a day and must
  * never be refused because a settings save happened moments earlier; any
  * caller-side limit lives with the caller.
  *
- * `now` is accepted for signature stability and so a test can pin a clock;
- * the RSS feed decides its own date (today for the ZIP), which is what the
- * row is keyed by. `todayInZone` is logged alongside the feed's date so a
- * timezone or DST mismatch between the two is visible.
+ * `now` is accepted so a test can pin a clock; the RSS feed decides its own
+ * date (today for the ZIP). `todayInZone` is logged alongside the feed's date
+ * so a timezone or DST mismatch between the two is visible.
  */
 export async function warmChabadLocation(
   target: ChabadLocation & { timezone: string },
@@ -215,9 +246,9 @@ export async function warmChabadLocation(
   const db = serviceClientOrNull();
   if (!db) return { status: "failed", error: "Supabase isn't configured on this deployment." };
 
-  // US ZIP only — the RSS feed is `locationType=2` (lib/zmanim/chabad-rss.ts).
-  // A non-US city id (`locationtype=1`) has no RSS path, so it is reported
-  // rather than fetched against an endpoint that would ignore it.
+  // US ZIP only — both sources are `locationtype=2` (chabad-rss.ts,
+  // chabad-embed.ts). A non-US city id (`locationtype=1`) has no path here, so
+  // it is reported rather than fetched against endpoints that would ignore it.
   if (target.locationType !== "2") {
     return {
       status: "failed",
@@ -228,22 +259,51 @@ export async function warmChabadLocation(
   const requestedToday = todayInZone(target.timezone, now);
 
   try {
-    const result = await fetchChabadRssZmanim({
+    // Primary: today's full luach.
+    const rss = await fetchChabadRssZmanim({
       locationId: target.locationId,
       locationType: target.locationType,
       timeZone: target.timezone,
     });
 
-    const { times, rawResponseByDate } = result;
+    // Best-effort: four weeks of candle lighting / Shabbos ends. Its failure
+    // must not lose the RSS leg — the zmanim widget still works without it,
+    // the candle-lighting widget is just a week behind.
+    let embed: Awaited<ReturnType<typeof fetchChabadEmbed>> | null = null;
+    let embedFailed = false;
+    try {
+      embed = await fetchChabadEmbed({ locationId: target.locationId, weeks: EMBED_WEEKS, timeZone: target.timezone });
+    } catch (cause) {
+      embedFailed = true;
+      console.warn(
+        `[chabad-zmanim-warm] embed failed for ${target.cacheKey}, caching RSS only: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
 
-    // One row per date the feed carried — one, since the RSS is a single day.
-    const rows = Object.keys(times).map((date) => ({
+    // MERGE: the embed's candle-lighting/Shabbos-end dates first, then the RSS
+    // day overlaid on top — so today keeps its full table and every other date
+    // carries what the embed supplied. Per-id, the RSS wins on today (its
+    // candle_lighting is from the same 18-min-before-sunset source anyway).
+    const merged: Record<string, Record<string, ChabadZman>> = {};
+    const rawByDate: Record<string, unknown> = {};
+    if (embed) {
+      for (const [date, ids] of Object.entries(embed.times)) {
+        merged[date] = { ...ids };
+        rawByDate[date] = { source: "embed", raw: embed.raw };
+      }
+    }
+    for (const [date, ids] of Object.entries(rss.times)) {
+      merged[date] = { ...(merged[date] ?? {}), ...ids };
+      rawByDate[date] = { source: "rss", rss: rss.rawResponseByDate[date] ?? null, ...(embed?.times[date] ? { embed: embed.raw } : {}) };
+    }
+
+    const rows = Object.keys(merged).map((date) => ({
       provider: "chabad" as const,
       location_id: target.cacheKey,
       date,
       timezone: target.timezone,
-      times: times[date],
-      raw_response: (rawResponseByDate[date] ?? null) as never,
+      times: merged[date],
+      raw_response: (rawByDate[date] ?? null) as never,
       fetched_at: new Date().toISOString(),
     }));
 
@@ -254,22 +314,29 @@ export async function warmChabadLocation(
       if (error) throw new Error(error.message);
     }
 
-    // Only when rows were actually written. A feed that parsed to nothing
+    // Only when rows were actually written. A response that parsed to nothing
     // changes no screen's answer, so queueing a rebuild would be work for
     // nothing.
     const screensQueued = rows.length > 0 ? await queueRebuildsForCacheKey(db, target.cacheKey) : 0;
+
+    const candleLightingDatesList = Object.keys(merged)
+      .filter((date) => merged[date].candle_lighting)
+      .sort();
+    const zmanIds = [...new Set(Object.values(merged).flatMap((ids) => Object.keys(ids)))].sort();
 
     console.info(
       "[chabad-zmanim-warm] " +
         JSON.stringify({
           cacheKey: target.cacheKey,
           requestedToday,
-          feedDate: result.date,
-          location: result.location,
+          feedDate: rss.date,
+          location: rss.location,
           rows: rows.length,
-          zmanIds: result.zmanIds,
-          hasCandleLighting: result.hasCandleLighting,
-          bytes: result.bytes,
+          zmanIds,
+          candleLightingDates: candleLightingDatesList.length,
+          lastCandleLighting: candleLightingDatesList.at(-1) ?? null,
+          embedFailed,
+          embedEntries: embed?.entries ?? 0,
           screensQueued,
         }),
     );
@@ -277,9 +344,11 @@ export async function warmChabadLocation(
     return {
       status: "warmed",
       dates: rows.length,
-      hasCandleLighting: result.hasCandleLighting,
-      date: result.date,
-      zmanIds: result.zmanIds,
+      date: rss.date,
+      candleLightingDates: candleLightingDatesList.length,
+      lastCandleLighting: candleLightingDatesList.at(-1) ?? null,
+      embedFailed,
+      zmanIds,
       screensQueued,
     };
   } catch (cause) {

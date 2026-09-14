@@ -93,6 +93,7 @@ export function OrgSettingsForm({
       <AddressSetup
         locationLabel={locationLabel}
         postalCode={postalCode}
+        timezone={zone}
         chabadEnabled={chabadEnabled}
         geocodingConfigured={geocodingConfigured}
         canEdit={canEdit}

@@ -13,13 +13,14 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  * one hour to the next. Daily is generous against how slowly those minutes
  * move, and it is a courtesy to an endpoint this product is a guest on.
  *
- * DAILY IS NOW LOAD-BEARING FOR COVERAGE, not only freshness. The source is
- * the published RSS feed (lib/zmanim/chabad-rss.ts), which returns TODAY
- * only — no date range — so each run covers exactly one day. A day the cron
- * doesn't run is a day with no zmanim once every screen's existing bundle
- * rolls past it. That is the accepted trade for US-only-for-now; the 92-day
- * Get_Zmanim reader is kept unwired (lib/zmanim/chabad-adapter.ts) for the
- * day range matters again.
+ * DAILY IS NOW LOAD-BEARING FOR COVERAGE, not only freshness. The daily
+ * zmanim table comes from the published RSS feed (lib/zmanim/chabad-rss.ts),
+ * which returns TODAY only — so a day the cron doesn't run is a day with no
+ * zmanim once every screen's existing bundle rolls past it. Candle lighting
+ * comes from the published embed (lib/zmanim/chabad-embed.ts), four weeks per
+ * run, so the daily cron also slides that window forward. That is the accepted
+ * trade for US-only-for-now; the 92-day Get_Zmanim reader is kept unwired
+ * (lib/zmanim/chabad-adapter.ts) for the day range matters again.
  *
  * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
  * the key for its own reason, separate from the warming it delegates: it
@@ -160,17 +161,18 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   const targets = collectTargets((orgs ?? []) as OrgRow[], (screens ?? []) as unknown as ScreenRow[]);
 
-  // Two outcomes per target now — the RSS feed is a single day, so "no
-  // candle lighting today" is ordinary (most days have none) rather than the
-  // 92-day "zero Fridays is a shape regression" alarm the JSON adapter
-  // watched for. `zmanIds` is reported so a mapping regression shows up in
-  // this JSON and not only in a log line.
+  // Two outcomes per target. `candleLightingDates` is how far ahead the
+  // four-week embed reached; `embedFailed` marks a run that cached today's
+  // zmanim but not the candle-lighting window. `zmanIds` is reported so a
+  // mapping regression shows up in this JSON and not only in a log line.
   const results: {
     cacheKey: string;
     status: "warmed" | "failed";
     dates?: number;
-    hasCandleLighting?: boolean;
     date?: string | null;
+    candleLightingDates?: number;
+    lastCandleLighting?: string | null;
+    embedFailed?: boolean;
     zmanIds?: string[];
     /** Screens whose bundle this warm queued for a rebuild. ZERO ON A
      *  LOCATION A SHUL ACTUALLY USES IS THE ALARM — see
@@ -193,6 +195,9 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
     enabled: true,
     targets: targets.size,
     warmed: results.filter((r) => r.status === "warmed").length,
+    // A run that cached today's zmanim but not the four-week candle-lighting
+    // window — worth alerting on separately from an outright failure.
+    embedFailed: results.filter((r) => r.embedFailed).length,
     failed: results.filter((r) => r.status === "failed").length,
     results,
   });

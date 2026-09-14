@@ -179,6 +179,9 @@ export type LocationLookupState =
        *  of the label. `null` for a result that has none — the form leaves
        *  the stored ZIP alone in that case rather than clearing it. */
       postcode: string | null;
+      /** ISO country code, lowercased. Lets the settings preview say "US
+       *  only" before the confirm rather than only on the save. */
+      countryCode: string | null;
       candleLighting: string | null;
       candleLightingWhen: string | null;
     }
@@ -226,7 +229,7 @@ export async function lookupShulLocation(
   const outcome = await geocodeAddress(query);
   if (!outcome.ok) return { status: "failed", message: outcome.message };
 
-  const { label, latitude, longitude, postcode } = outcome.place;
+  const { label, latitude, longitude, postcode, countryCode } = outcome.place;
 
   // A timezone the gabbai hasn't picked yet, or a hand-posted junk value:
   // the preview is worth less without it but the coordinates are still
@@ -234,7 +237,7 @@ export async function lookupShulLocation(
   // the whole lookup.
   const preview = previewCandleLighting({ latitude, longitude, timeZone: timezone });
 
-  return { status: "found", label, latitude, longitude, postcode, ...preview };
+  return { status: "found", label, latitude, longitude, postcode, countryCode, ...preview };
 }
 
 /** Non-throwing on a bad timezone (`Intl` throws on an unknown zone) and on
@@ -563,10 +566,19 @@ export async function saveShulAddress(query: string): Promise<SaveShulAddressSta
       ? ` ${warm.screensQueued} ${warm.screensQueued === 1 ? "screen" : "screens"} will pick it up within about five minutes.`
       : " No screen is waiting on it yet.";
 
+  // The candle-lighting coverage is what the four-week embed reached. If that
+  // leg failed, today's zmanim are cached but candle lighting isn't yet — say
+  // so rather than reporting a clean success.
+  const zmanim = warm.embedFailed
+    ? "Fetched today's zmanim, but couldn't reach the candle-lighting list — the daily fetch will try again."
+    : `Fetched today's zmanim and candle lighting for the next ${warm.candleLightingDates} ${
+        warm.candleLightingDates === 1 ? "date" : "dates"
+      }.`;
+
   return {
     status: "done",
     label,
-    message: `Saved ${label}.${lighting} Fetched today's zmanim.${screens}`,
+    message: `Saved ${label}.${lighting} ${zmanim}${screens}`,
   };
 }
 
