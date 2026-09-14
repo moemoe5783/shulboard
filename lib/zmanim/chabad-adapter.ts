@@ -12,14 +12,18 @@ import {
  * Chabad.org's Get_Zmanim endpoint, read into this project's own
  * `zmanim_cache.times` vocabulary — plan.md §5c.
  *
- * THIS IS THE LIVE READER AGAIN, and it now covers both halves of §5c's
- * Chabad support in ONE request: all thirteen daily zmanim AND candle
- * lighting, 92 days at a time. It supersedes both of the two surfaces
- * that were previously thought to be the only sanctioned options — the
- * published candle-lighting embed (chabad-embed.ts, four weeks, candle
- * lighting only, now kept unwired as a fallback) and the published zmanim
- * RSS feed (one day per request, no date parameter, so it could never
- * fill a cache at all).
+ * NO LONGER THE LIVE READER — KEPT UNWIRED, like chabad-embed.ts and
+ * hebcal-zmanim.ts. The warm (lib/zmanim/warm.ts) now reads the published
+ * zmanim RSS feed (lib/zmanim/chabad-rss.ts) instead: US-only, one day per
+ * request, but it carries the transliterated Hebrew names the widget needs
+ * and needs no undocumented parameters. This module is retained because it
+ * is the only reader that can fill a 90-day cache in one request and support
+ * non-US city ids — the day either of those matters again, it is the reader
+ * to re-wire. The city-search settings actions (searchChabadCity /
+ * checkChabadCity in app/(app)/actions.ts) still call it.
+ *
+ * When it WAS live it covered both halves of §5c's Chabad support in ONE
+ * request: all thirteen daily zmanim AND candle lighting, 92 days at a time.
  *
  * WHAT CHANGED, AND IT WAS THE REQUEST, NOT THE ENDPOINT. An earlier
  * 91-day call against this same endpoint returned 91 days and zero
@@ -602,7 +606,10 @@ export async function fetchChabadZmanim(input: {
       // group's own title when the nested one is, since that shape carries
       // it per day and there may be no root heading for a type.
       const label = labels[type] ?? (entry.essentialTitle ? flattenTitle(entry.essentialTitle) : undefined);
-      const hebrewLabel = entry.hebrewTitle ? flattenTitle(entry.hebrewTitle) : undefined;
+      // This endpoint's own Hebrew (`HebrewTitle`) is Hebrew SCRIPT, not the
+      // Latin transliteration `ChabadClockZman.translit` now holds, so it is
+      // deliberately not stored here — the field carries the RSS feed's
+      // transliteration and this reader is unwired anyway (see the header).
       const display = entry.zman.replace(/\s+/g, " ").trim();
       // Exact match on the canonical table, then the provider-namespaced
       // key for the four §5c has no id for. Nothing is dropped for want
@@ -618,7 +625,6 @@ export async function fetchChabadZmanim(input: {
           display,
           ...(footnote ? { footnote } : {}),
           ...(label ? { label } : {}),
-          ...(hebrewLabel ? { hebrewLabel } : {}),
         };
         continue;
       }
@@ -647,7 +653,6 @@ export async function fetchChabadZmanim(input: {
         display,
         ...(footnote ? { footnote } : {}),
         ...(label ? { label } : {}),
-        ...(hebrewLabel ? { hebrewLabel } : {}),
       };
       if (type === "CandleLighting") candleLightingDates.push(date);
     }

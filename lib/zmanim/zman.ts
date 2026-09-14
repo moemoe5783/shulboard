@@ -22,7 +22,7 @@ export type ChabadClockZman = {
   display: string;
   footnote?: ChabadFootnote;
   label?: string;
-  hebrewLabel?: string;
+  translit?: string;
 };
 
 /**
@@ -45,7 +45,7 @@ export type ChabadDurationZman = {
   display: string;
   footnote?: ChabadFootnote;
   label?: string;
-  hebrewLabel?: string;
+  translit?: string;
 };
 
 /**
@@ -85,19 +85,22 @@ export type ChabadFootnote = { type: string; text: string | null };
  * vocabulary is allowed to reach a board — and only in the absence of the
  * provider's own.
  *
- * `hebrewLabel` IS THE PROVIDER'S OWN HEBREW, and it only exists when the
- * response carried the nested `TimeGroups` shape — the flat one has no
- * Hebrew at all (chabad-adapter.ts's note on the two shapes). It is
- * per-day rather than per-type on purpose: Chabad sent "הדלקת נרות" for
- * `ShabbatEndTime` on the second night of a two-day Yom Tov and "צאת החג"
- * for the same type the next day, a halachic distinction its own English
- * title flattens away.
+ * `translit` IS THE HEBREW ZMAN NAME SPELLED IN LATIN LETTERS — "Alot
+ * Hashachar", "Shkiah", "Tzeit Hakochavim" — and it is the PROVIDER'S OWN,
+ * read out of the RSS feed's title (lib/zmanim/chabad-rss.ts). The feed
+ * writes each name as "English (Transliteration)", so the transliteration is
+ * what sits in the parentheses; a row the feed gives no parenthetical for
+ * (the feed is inconsistent — "Latest Shema" has none) has `translit`
+ * undefined, and the widget's transliteration option falls back to the
+ * English label there rather than inventing one.
  *
- * THERE IS DELIBERATELY NO HOUSE HEBREW TABLE. When a row has no
- * `hebrewLabel`, the Hebrew option falls back to the provider's English
- * rather than to names this project asserted — showing a zman under a
- * Hebrew name the provider did not send would be this product making a
- * halachic claim, which is a different thing from displaying theirs.
+ * THERE IS DELIBERATELY NO HOUSE LABEL TABLE feeding a board. Both `label`
+ * and `translit` are the provider's own words. The Hebrew-script name
+ * spelled in Hebrew is NOT carried: the RSS feed does not contain it, so
+ * asserting one here would be this product making a halachic claim rather
+ * than displaying the provider's — see plan.md §5c. (The unwired Get_Zmanim
+ * adapter once read a `HebrewTitle`; the RSS feed this project now reads has
+ * no Hebrew script at all.)
  */
 
 export type ChabadZman = ChabadClockZman | ChabadDurationZman;

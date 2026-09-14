@@ -300,6 +300,22 @@ manual override.** The shul picks a source, then picks which zmanim from that
 source appear. Rationale: shuls want the board to match the printed luach on
 their wall, and these three genuinely differ by a minute or two.
 
+> **READER UPDATE (current): the live source is the published RSS feed, not
+> `Get_Zmanim`.** `lib/zmanim/chabad-rss.ts` reads
+> `chabad.org/tools/rss/zmanim.xml?locationId=<zip>&locationType=2` — **US
+> ZIP only, one day per request, no date range.** It was chosen because it
+> carries the transliterated Hebrew zman names ("English (Transliteration)")
+> the Zmanim widget offers, and needs no undocumented parameters. The
+> consequence is offline coverage: the warm caches today only, so a screen
+> offline for more than a day shows the unavailable state for the new date
+> until it reconnects. The 92-day `Get_Zmanim` reader
+> (`lib/zmanim/chabad-adapter.ts`) described throughout this section is **kept
+> unwired** for the day range or non-US city ids matter again; everything
+> below about its shapes, parameters and 92-day span describes that dormant
+> reader, not current runtime. The Zmanim widget's label options are now
+> **English** and **transliterated Hebrew** (both the provider's own words);
+> Hebrew script is not shown, because the RSS feed does not carry it.
+>
 > **CURRENT STATE: CHABAD.ORG ONLY, AND NOTHING IS SELECTABLE.** The
 > multi-provider decision above is still the design; only one leg of it is
 > built and offered. Hebcal and Manual are gone as **zmanim providers** —

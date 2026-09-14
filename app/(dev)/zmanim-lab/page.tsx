@@ -58,17 +58,17 @@ export const ZMANIM_ID = "55555555-5555-4555-8555-555555555555";
 const ROWS: {
   id: string;
   label: string;
-  hebrewLabel: string;
+  translit: string;
   display: string;
   hour24: number;
   minute: number;
   nextDay?: boolean;
 }[] = [
-  { id: "netz", label: "Sunrise", hebrewLabel: "נץ החמה", display: "7:14 AM", hour24: 7, minute: 14 },
+  { id: "netz", label: "Sunrise", translit: "Netz", display: "7:14 AM", hour24: 7, minute: 14 },
   {
     id: "sof_zman_shma_baal_hatanya",
     label: "Latest Shema",
-    hebrewLabel: "סוף זמן קריאת שמע",
+    translit: "Sof Zman Shema",
     display: "10:18 AM",
     hour24: 10,
     minute: 18,
@@ -76,16 +76,16 @@ const ROWS: {
   {
     id: "sof_zman_tfila_baal_hatanya",
     label: "Latest Shacharit",
-    hebrewLabel: "סוף זמן תפילה",
+    translit: "Sof Zman Tefila",
     display: "11:21 AM",
     hour24: 11,
     minute: 21,
   },
-  { id: "chatzos", label: "Midday", hebrewLabel: "חצות היום", display: "1:27 PM", hour24: 13, minute: 27 },
+  { id: "chatzos", label: "Midday", translit: "Chatzos", display: "1:27 PM", hour24: 13, minute: 27 },
   {
     id: "mincha_gedola",
     label: "Earliest Mincha",
-    hebrewLabel: "מנחה גדולה",
+    translit: "Mincha Gedola",
     display: "1:59 PM",
     hour24: 13,
     minute: 59,
@@ -93,7 +93,7 @@ const ROWS: {
   {
     id: "mincha_ketana",
     label: "Mincha Ketana",
-    hebrewLabel: "מנחה קטנה",
+    translit: "Mincha Ketana",
     display: "5:08 PM",
     hour24: 17,
     minute: 8,
@@ -101,7 +101,7 @@ const ROWS: {
   {
     id: "plag_hamincha",
     label: "Plag HaMincha",
-    hebrewLabel: "פלג המנחה",
+    translit: "Plag HaMincha",
     display: "6:26 PM",
     hour24: 18,
     minute: 26,
@@ -109,16 +109,16 @@ const ROWS: {
   {
     id: "candle_lighting",
     label: "Candle Lighting",
-    hebrewLabel: "הדלקת נרות",
+    translit: "Hadlakas Neiros",
     display: "7:22 PM",
     hour24: 19,
     minute: 22,
   },
-  { id: "shkia", label: "Sunset", hebrewLabel: "שקיעת החמה", display: "7:41 PM", hour24: 19, minute: 41 },
+  { id: "shkia", label: "Sunset", translit: "Shkia", display: "7:41 PM", hour24: 19, minute: 41 },
   {
     id: "tzeis_baal_hatanya",
     label: "Nightfall",
-    hebrewLabel: "צאת הכוכבים",
+    translit: "Tzeis HaKochavim",
     display: "8:05 PM",
     hour24: 20,
     minute: 5,
@@ -126,7 +126,7 @@ const ROWS: {
   {
     id: "chatzos_laila",
     label: "Midnight",
-    hebrewLabel: "חצות הלילה",
+    translit: "Chatzos HaLaila",
     display: "1:27 AM",
     hour24: 1,
     minute: 27,
@@ -148,7 +148,7 @@ function todayInZone(timeZone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-function buildCache(script: "english" | "hebrew"): ChabadZmanimByDate {
+function buildCache(script: "english" | "transliteration"): ChabadZmanimByDate {
   const date = todayInZone(DEMO_LOCATION.timeZone);
   const [year, month, day] = date.split("-").map(Number);
   const day1 = Object.fromEntries(
@@ -161,9 +161,9 @@ function buildCache(script: "english" | "hebrew"): ChabadZmanimByDate {
           display: row.display,
           label: row.label,
           // Absent in the English case, so the label fallback is exercised
-          // rather than assumed — a row with no provider Hebrew shows its
-          // English (plan.md §5c: no house Hebrew table).
-          ...(script === "hebrew" ? { hebrewLabel: row.hebrewLabel } : {}),
+          // rather than assumed — a row with no provider transliteration
+          // shows its English (plan.md §5c: no house table).
+          ...(script === "transliteration" ? { translit: row.translit } : {}),
         },
       ];
     }),
@@ -207,7 +207,7 @@ function buildDoc(options: {
 function ZmanimLabInner() {
   const params = useSearchParams();
   const overflow = params.get("overflow") ?? "page";
-  const script = params.get("script") === "hebrew" ? "hebrew" : "english";
+  const script = params.get("script") === "transliteration" ? "transliteration" : "english";
   const w = Number(params.get("w") ?? 60);
   const h = Number(params.get("h") ?? 60);
 

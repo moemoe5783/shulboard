@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   const { data, error } = await supabase
     .from("orgs")
-    .select("name, timezone, latitude, longitude, location_label, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
+    .select("name, timezone, location_label, postal_code")
     .eq("id", org.orgId)
     .single();
 
@@ -42,23 +42,15 @@ export default async function SettingsPage() {
         <OrgSettingsForm
           name={data.name}
           timezone={data.timezone}
-          latitude={data.latitude}
-          longitude={data.longitude}
           locationLabel={data.location_label}
           postalCode={data.postal_code}
-          zmanimLocationId={data.zmanim_location_id}
-          zmanimLocationType={data.zmanim_location_type}
-          zmanimLocationName={data.zmanim_location_name}
-          // Off by default (docs/environment.md). There is no longer a
-          // provider option for this to hide — Chabad.org is the only
-          // source — so what it controls now is whether the city search
-          // reaches chabad.org at all, and the form says so when it is
-          // off. Both server actions behind that search re-check the same
-          // flag; this only controls what the form offers.
+          // Off by default (docs/environment.md). It gates whether "Use this
+          // address" actually fetches zmanim; the address is still saved
+          // either way, and AddressSetup says so when it is off.
           chabadEnabled={process.env.ZMANIM_CHABAD_ENABLED === "true"}
           // Whether GEOCODING_API_KEY is set (docs/environment.md). Without
-          // it the form says so and points at the coordinate fields, rather
-          // than offering a Look up button that can only fail.
+          // it AddressSetup says a location can't be set here, rather than
+          // offering a lookup that can only fail.
           geocodingConfigured={isGeocodingConfigured()}
           timezones={timezones}
           canEdit={hasRoleAtLeast(org.role, "admin")}

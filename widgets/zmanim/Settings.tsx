@@ -83,8 +83,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
             dragging a box needs to know which handle does what. */}
         {config.displayMode === "all" && config.sizingMode === "fit" && (
           <span className={PANEL_LABEL}>
-            Drag the box taller for bigger type. Widening it doesn&rsquo;t change the size — it only stops long
-            labels having to shrink.
+            Drag the box wider for bigger type. Making it taller doesn&rsquo;t change the size — the list scrolls
+            instead.
           </span>
         )}
       </label>
@@ -97,11 +97,11 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           className={PANEL_CONTROL}
         >
           <option value="english">English</option>
-          <option value="hebrew">Hebrew</option>
+          <option value="transliteration">Transliterated Hebrew</option>
         </select>
         <span className={PANEL_LABEL}>
-          {config.labelScript === "hebrew"
-            ? "Chabad.org's own Hebrew names, and the table mirrors — labels right, times left. Rows Chabad.org hasn't sent a Hebrew name for stay in English rather than being translated here."
+          {config.labelScript === "transliteration"
+            ? "The Hebrew name spelled in English — “Shkiah”, “Tzeit Hakochavim” — from Chabad.org's own feed. A row Chabad.org sends no transliteration for stays in English."
             : "Chabad.org's own English names, exactly as it sends them."}
         </span>
       </label>

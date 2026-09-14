@@ -269,6 +269,15 @@ is present and bad; the latter means it never reached the deployment at all.
 §5c and §10.4. Set to the exact string `true` to turn it on; anything else,
 including unset, means off.
 
+> **Current reader:** the warm now reads Chabad's **published RSS feed**
+> (`lib/zmanim/chabad-rss.ts`), which is **US-only and returns one day**, not
+> the 92-day `Get_Zmanim` endpoint this file describes below. The cron setup
+> is unchanged — same URL, same `CRON_SECRET`, once a day — but "once a day"
+> is now load-bearing for coverage rather than a courtesy, since each run
+> caches only that day. The two server actions this flag also gated
+> (`searchChabadCity` / `checkChabadCity`, the non-US city search) are no
+> longer surfaced in settings, which now takes a single US address.
+
 Three things read it. `app/api/cron/warm-zmanim/route.ts` no-ops —
 returns `{"enabled": false, "warmed": 0}` without touching the database or
 chabad.org — when this isn't `true`; and the two server actions behind the

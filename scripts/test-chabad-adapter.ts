@@ -600,18 +600,19 @@ for (const [servedName, label] of [
     result.location);
 }
 
-console.log("\n-- the NESTED shape, and the Hebrew only it carries ---------");
+console.log("\n-- the NESTED shape parses too ------------------------------");
 
 /*
  * WHICH PARAMETER SWITCHES THE SHAPE IS UNKNOWN — see the adapter's own
- * note. Two captures exist: a 92-day request returned flat `Zmanim[]` with
- * no Hebrew anywhere, and a 4-day request returned nested
- * `TimeGroups[].Items[]` with `HebrewTitle` on every group. Their roots are
- * structurally identical, `IsAdvanced: false` in both, so it is a per-day
- * difference and not a whole-response mode.
+ * note. Two captures exist: a 92-day request returned flat `Zmanim[]`, and a
+ * 4-day request returned nested `TimeGroups[].Items[]`. The reader has to
+ * handle both, and this is where that is proved against the real nested body.
  *
- * Which means the reader has to handle both, and this is where that is
- * proved against the real nested body rather than a reconstruction.
+ * NOTE: this adapter is now kept UNWIRED — the RSS feed (lib/zmanim/chabad-rss.ts)
+ * is the live reader — and it no longer emits any secondary label. The nested
+ * shape's `HebrewTitle` is Hebrew SCRIPT, not the Latin transliteration the
+ * cache's `translit` field now holds, so it is deliberately dropped rather
+ * than mis-stored; these checks assert that.
  */
 const NESTED = JSON.parse(
   readFileSync(fileURLToPath(new URL("../test/fixtures/chabad-zmanim-33710-nested-4day.json", import.meta.url)), "utf8"),
@@ -647,56 +648,36 @@ check(nestedClock("2026-09-11", "chatzos_laila")?.iso === "2026-09-12T05:27:00.0
   "and the chatzos halayla rollover holds through the nested reader too",
   nestedClock("2026-09-11", "chatzos_laila")?.iso);
 
-// THE HEBREW. Chabad's own names, from the group, for every type.
-for (const [id, hebrew] of [
-  ["alos_baal_hatanya", "עלות השחר"],
-  ["misheyakir", "משיכיר"],
-  ["netz", "הנץ החמה"],
-  ["sof_zman_shma_baal_hatanya", "סוף זמן קריאת שמע"],
-  ["sof_zman_tfila_baal_hatanya", "סוף זמן תפילה"],
-  ["chatzos", "חצות היום"],
-  ["mincha_gedola", "מנחה גדולה"],
-  ["mincha_ketana", "מנחה קטנה"],
-  ["plag_hamincha", "פלג המנחה"],
-  ["candle_lighting", "הדלקת נרות"],
-  ["shkia", "שקיעת החמה"],
-  ["tzeis_baal_hatanya", "צאת הכוכבים"],
-  ["chatzos_laila", "חצות הלילה"],
-] as const) {
-  check(nestedClock("2026-09-11", id)?.hebrewLabel === hebrew,
-    `${id} carries Chabad's own Hebrew "${hebrew}"`, nestedClock("2026-09-11", id)?.hebrewLabel);
-}
+// The English label still comes through from the nested group's title.
 check(nestedClock("2026-09-11", "netz")?.label === "Sunrise",
-  "and the English still comes through beside it", nestedClock("2026-09-11", "netz")?.label);
+  "the nested shape's English label comes through", nestedClock("2026-09-11", "netz")?.label);
+
+// NO SECONDARY LABEL from either shape. The nested `HebrewTitle` is Hebrew
+// script, not the Latin transliteration the cache's `translit` field holds,
+// so the adapter drops it rather than mis-storing it — the RSS reader is the
+// only writer of `translit`.
+check(
+  Object.values(nested.times["2026-09-11"]).every((zman) => zman.translit === undefined),
+  "the adapter emits no translit from the nested shape — its Hebrew is script, not transliteration",
+);
 
 /*
- * THE HEBREW IS PER-DAY, NOT PER-TYPE, and this is the assertion that says
- * why it is cached on the value rather than harvested once. `ShabbatEndTime`
- * came back as "הדלקת נרות" — candle lighting — on 9/12, where the footnote
- * is `LightCandlesAfter` and the time is when to light on the second night
- * of a two-day Yom Tov; and as "צאת החג", the festival ends, for the same
- * type the next day. Chabad's Hebrew carries a halachic distinction its own
- * English flattens to "Shabbat Ends" on both days.
+ * The footnote still reads from the group, where the nested shape puts it —
+ * `LightCandlesAfter` on 9/12's Shabbos-end row (the second night of a
+ * two-day Yom Tov), which the English "Shabbat Ends" flattens.
  */
-check(nestedClock("2026-09-12", "shabbos_ends")?.hebrewLabel === "הדלקת נרות",
-  "9/12's Shabbos-end row is Hebrew-labelled as candle lighting — the second night of a two-day Yom Tov",
-  nestedClock("2026-09-12", "shabbos_ends")?.hebrewLabel);
-check(nestedClock("2026-09-13", "shabbos_ends")?.hebrewLabel === "צאת החג",
-  "and 9/13's as the festival ending — same type, same English, different Hebrew",
-  nestedClock("2026-09-13", "shabbos_ends")?.hebrewLabel);
 check(
   nestedClock("2026-09-12", "shabbos_ends")?.label === nestedClock("2026-09-13", "shabbos_ends")?.label,
-  "which the English does NOT distinguish, so harvesting one Hebrew name per type would lose it",
+  "both Yom Tov nights share the English 'Shabbat Ends' label",
   nestedClock("2026-09-12", "shabbos_ends")?.label,
 );
 check(nestedClock("2026-09-12", "shabbos_ends")?.footnote?.type === "LightCandlesAfter",
   "and the footnote reads from the group, where the nested shape puts it");
 
-// The flat 92-day fixture has none, which is the gap the setting has to
-// cope with rather than paper over.
+// The flat 92-day fixture carries no secondary label either.
 check(
-  dates.every((date) => Object.values(times[date]).every((zman) => zman.hebrewLabel === undefined)),
-  "the flat 92-day response carries NO Hebrew on any row — the setting falls back to English there",
+  dates.every((date) => Object.values(times[date]).every((zman) => zman.translit === undefined)),
+  "the flat 92-day response carries no translit on any row",
 );
 
 console.log("");

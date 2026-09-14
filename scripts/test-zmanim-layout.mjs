@@ -5,9 +5,9 @@
  * pure-function suites (test-zmanim-fit.ts, test-zmanim-overflow.ts) cannot
  * reach any of them. All three were reported from a live board:
  *
- *  1. WIDTH. "Narrowing the box makes the font smaller." Only a box narrow
- *     enough to squeeze the TIME column may change the size
- *     (widgets/zmanim/fit.ts); every roomier width must leave it alone.
+ *  1. FIT IS WIDTH-DRIVEN. A wider box gives bigger type, a narrower box
+ *     smaller, and the box's height changes nothing (widgets/zmanim/fit.ts) —
+ *     height overflow scrolls instead.
  *  2. SWITCHING INTO FIT. "It stops resizing entirely." The fitted size has
  *     to land on the table a room can see. It used to land on the scroll
  *     seam's hidden copy, because both copies were rendered from one element
@@ -204,7 +204,7 @@ try {
 
   console.log("\n-- ITEM 3: the column's outer edge, and the colon ----------");
 
-  for (const script of ["english", "hebrew"]) {
+  for (const script of ["english", "transliteration"]) {
     const table = await open(`sizing=fixed&overflow=clip&script=${script}&w=60&h=80`);
     if (!table) {
       check(false, `${script}: the table rendered at all`);
@@ -213,8 +213,8 @@ try {
 
     check(table.rows.length === 11, `${script}: all eleven rows rendered`, `${table.rows.length} rows`);
     check(
-      table.mirrored === (script === "hebrew"),
-      `${script}: the grid's direction is ${script === "hebrew" ? "rtl" : "ltr"}`,
+      !table.mirrored,
+      `${script}: the grid is LTR — both label forms are Latin, nothing mirrors`,
       `mirrored: ${table.mirrored}`,
     );
 
@@ -227,23 +227,10 @@ try {
       [...hourWidths].join(" and "),
     );
 
-    /*
-     * EVERY EDGE BELOW IS THE SAME PHYSICAL EDGE IN BOTH SCRIPTS, and that
-     * is not laziness about mirroring — it follows from the time staying
-     * LTR. A clock time reads hour, colon, minutes, meridiem from left to
-     * right in Hebrew too (no luach prints it backwards), so the hour's
-     * inner edge is its RIGHT edge either way and the colon is always the
-     * minutes cell's LEFT.
-     *
-     * What mirroring changes is which side of the label the block sits on,
-     * and therefore which of the two ends faces the box's own margin. In
-     * English the aligned end (the meridiem) is the outer one and the
-     * hour's indent faces the label gap; in Hebrew the labels are on the
-     * right, so the aligned end faces the label and the hour's indent
-     * faces the margin. Both are the same table reflected about the
-     * label; neither reverses a time, which is the only thing that could
-     * have made them literal mirrors.
-     */
+    // The time is LTR in both label forms: hour, colon, minutes, meridiem
+    // from left to right, so the hour's inner edge is its RIGHT edge, the
+    // colon is the minutes cell's LEFT, and the meridiem's RIGHT is the
+    // column's aligned outer edge.
     const alignedEnd = table.rows.map((row) => row.meridiemRight);
     check(
       spread(alignedEnd) < EPSILON,
@@ -275,70 +262,47 @@ try {
       `${script}: while a one-digit hour indents from a two-digit one — that is the absorbed raggedness`,
       `${spread(hourIndent).toFixed(2)}px`,
     );
-
-    if (script === "hebrew") {
-      check(
-        table.rows.every((row) => /[֐-׿]/.test(row.label ?? "")),
-        "hebrew: the labels really are Hebrew, so the mirrored measurement means something",
-        table.rows[0]?.label ?? "",
-      );
-      // The time itself never reverses — a clock time is Latin digits in a
-      // fixed order and no luach prints it backwards.
-      check(
-        table.rows.every((row) => row.hoursLeft < row.minutesLeft && row.minutesLeft < row.meridiemLeft),
-        "hebrew: and the time still reads hour, minutes, meridiem from left to right",
-      );
-    }
   }
 
-  console.log("\n-- ITEM 1: narrowing a roomy box changes nothing -----------");
+  console.log("\n-- ITEM 1: width drives the size, height does not -----------");
 
   {
-    /*
-     * The band the bug lived in. At a fixed height, the fitted size is the
-     * height-driven one until the box is narrow enough to squeeze the time
-     * column. These widths walk down through what the old measurement
-     * (the whole untruncated row) would have called "too narrow".
-     */
-    const sizes = [];
-    for (const w of [70, 60, 50, 40, 32]) {
-      const table = await open(`sizing=fit&overflow=clip&script=english&w=${w}&h=70`);
-      sizes.push({ w, fitted: table?.fittedSize, font: table?.visibleFontSize });
-    }
-    const first = sizes[0];
-    for (const one of sizes) {
-      check(
-        one.fitted === first.fitted,
-        `a box at ${one.w}% width fits to the same type size as one at ${first.w}%`,
-        `${one.fitted} design units (${one.font?.toFixed(1)}px)`,
-      );
-    }
+    // A wider box gives proportionally bigger type at a fixed height. w=40
+    // and w=80 both stay inside the min/max clamp, so the ratio is ~2.
+    const narrow = await open("sizing=fit&overflow=clip&script=english&w=40&h=70");
+    const wide = await open("sizing=fit&overflow=clip&script=english&w=80&h=70");
+    check(Number(narrow?.fittedSize) > 0, "the narrow box has a real fitted size", String(narrow?.fittedSize));
     check(
-      Number(first.fitted) > 0,
-      "and that size is a real fitted value rather than a missing one",
-      String(first.fitted),
+      Number(wide?.fittedSize) > Number(narrow?.fittedSize),
+      "a wider box fits to bigger type",
+      `${narrow?.fittedSize} -> ${wide?.fittedSize}`,
+    );
+    const ratio = Number(wide?.fittedSize) / Number(narrow?.fittedSize);
+    check(
+      Math.abs(ratio - 2) < 0.2,
+      "and proportionally — twice the width is about twice the type",
+      `${ratio.toFixed(2)}×`,
     );
 
-    // Narrow enough that the time column itself cannot fit: the size MUST
-    // come down. Rule 3 is still in force; it just starts where the
-    // clipping would.
+    // A box too narrow for even the widest row at minFontSize settles at the
+    // minimum and the label truncates.
     const squeezed = await open("sizing=fit&overflow=clip&script=english&w=8&h=70");
     check(
-      Number(squeezed?.fittedSize) < Number(first.fitted),
-      "while a box too narrow for the time column does shrink the type",
-      `${squeezed?.fittedSize} against ${first.fitted}`,
+      Number(squeezed?.fittedSize) < Number(narrow?.fittedSize),
+      "while a very narrow box comes down to the minimum",
+      `${squeezed?.fittedSize} against ${narrow?.fittedSize}`,
     );
   }
 
   {
-    // Rule 1, in a real box: twice the height, twice the type.
+    // Height does NOT change the size — the same width at two heights fits to
+    // the same type; the taller box just shows more rows before it scrolls.
     const short = await open("sizing=fit&overflow=clip&script=english&w=60&h=35");
     const tall = await open("sizing=fit&overflow=clip&script=english&w=60&h=70");
-    const ratio = Number(tall?.fittedSize) / Number(short?.fittedSize);
     check(
-      Math.abs(ratio - 2) < 0.05,
-      "twice the box height gives twice the type size — height is what drives it",
-      `${short?.fittedSize} -> ${tall?.fittedSize} (${ratio.toFixed(2)}×)`,
+      Math.abs(Number(tall?.fittedSize) - Number(short?.fittedSize)) <= 1,
+      "twice the box height leaves the type size unchanged — height doesn't drive it",
+      `${short?.fittedSize} vs ${tall?.fittedSize}`,
     );
   }
 
