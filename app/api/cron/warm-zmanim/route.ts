@@ -9,36 +9,30 @@ import { serviceClientOrNull } from "@/lib/supabase/service";
  *
  * ONCE DAILY, not the build worker's 5 minutes (app/api/cron/build-bundles).
  * That route polls fast because a gabbai fixing a davening time before
- * Mincha needs it live; this one refreshes 92 days of zmanim, none of
- * which changes from one hour to the next. Daily is generous against how
- * slowly those minutes move, and it is a courtesy to an endpoint this
- * product is a guest on.
+ * Mincha needs it live; this one refreshes zmanim, which don't change from
+ * one hour to the next. Daily is generous against how slowly those minutes
+ * move, and it is a courtesy to an endpoint this product is a guest on.
  *
- * Daily still matters for coverage and not only for freshness, just far
- * less urgently than it did when the window was four weeks: each run
- * slides a 92-day window forward, so the schedule can lapse for weeks
- * before any date starts falling through to Hebcal. See WARM_DAYS in
- * lib/zmanim/warm.ts.
+ * DAILY IS NOW LOAD-BEARING FOR COVERAGE, not only freshness. The source is
+ * the published RSS feed (lib/zmanim/chabad-rss.ts), which returns TODAY
+ * only — no date range — so each run covers exactly one day. A day the cron
+ * doesn't run is a day with no zmanim once every screen's existing bundle
+ * rolls past it. That is the accepted trade for US-only-for-now; the 92-day
+ * Get_Zmanim reader is kept unwired (lib/zmanim/chabad-adapter.ts) for the
+ * day range matters again.
  *
  * A NAMED SERVICE-ROLE EXCEPTION — see CLAUDE.md's list. This route needs
  * the key for its own reason, separate from the warming it delegates: it
  * sweeps EVERY org and screen to discover which locations are referenced
  * at all, which is a cross-tenant read no RLS policy can express. The
  * write into `zmanim_cache` is `lib/zmanim/warm.ts`'s, shared with the
- * settings page's own "Fetch now" button so there is one copy of it.
+ * settings page's "Use this address" action so there is one copy of it.
  *
  * OFF BY DEFAULT. ZMANIM_CHABAD_ENABLED (docs/environment.md) gates the
  * whole handler, not just the org settings UI: even if a `zmanim_provider`
  * column somehow already says `'chabad'` for some row, this route does
  * nothing until the flag is explicitly on. That's the actual gate the
  * proposal's "off by default... until I turn it on myself" refers to.
- *
- * The source it warms from is Chabad.org's Get_Zmanim endpoint
- * (lib/zmanim/chabad-adapter.ts), which returns all thirteen daily zmanim
- * and candle lighting for the whole 92 days in one request. The published
- * candle-lighting embed is kept as an unwired fallback
- * (lib/zmanim/chabad-embed.ts) and covers only four weeks of candle
- * lighting.
  *
  * Same CRON_SECRET as build-bundles (docs/environment.md) — one shared
  * secret between an external scheduler and every cron route in this
@@ -166,25 +160,17 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
 
   const targets = collectTargets((orgs ?? []) as OrgRow[], (screens ?? []) as unknown as ScreenRow[]);
 
-  // Three outcomes per target, not two — the distinction between "fetched
-  // fine, nothing to light" and "the fetch broke" is made in
-  // lib/zmanim/warm.ts, which explains why zero candle lightings across
-  // the whole 92-day window is a signal rather than a failure. This route
-  // only counts them up.
-  //
-  // `requestedEndDate` and `echoedEndDate` are both reported because the
-  // 92-day span is verified rather than known to be a ceiling — if
-  // chabad.org ever starts coercing it, the two disagree here instead of
-  // the cache going quietly short. `zmanIds` is reported so a mapping
-  // regression shows up in this JSON and not only in a log line.
+  // Two outcomes per target now — the RSS feed is a single day, so "no
+  // candle lighting today" is ordinary (most days have none) rather than the
+  // 92-day "zero Fridays is a shape regression" alarm the JSON adapter
+  // watched for. `zmanIds` is reported so a mapping regression shows up in
+  // this JSON and not only in a log line.
   const results: {
     cacheKey: string;
-    status: "warmed" | "warmed-no-candle-lighting" | "failed";
+    status: "warmed" | "failed";
     dates?: number;
-    datesWithCandleLighting?: number;
-    lastDate?: string | null;
-    requestedEndDate?: string;
-    echoedEndDate?: string | null;
+    hasCandleLighting?: boolean;
+    date?: string | null;
     zmanIds?: string[];
     /** Screens whose bundle this warm queued for a rebuild. ZERO ON A
      *  LOCATION A SHUL ACTUALLY USES IS THE ALARM — see
@@ -198,8 +184,7 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
   // Serially, same reasoning as build-bundles: this is a small, deduped list
   // (twenty Crown Heights shuls collapse to one target — plan.md §5c's own
   // point of the cache), and an endpoint this product is a guest on is not
-  // one to hit concurrently — the more so now that each call is a 92-day
-  // ~105KB response rather than a 6KB one.
+  // one to hit concurrently.
   for (const target of targets.values()) {
     results.push({ cacheKey: target.cacheKey, ...(await warmChabadLocation(target)) });
   }
@@ -208,11 +193,6 @@ async function handleWarmRequest(request: Request): Promise<NextResponse> {
     enabled: true,
     targets: targets.size,
     warmed: results.filter((r) => r.status === "warmed").length,
-    // Counted separately from both — a caller watching this route can alert
-    // on `failed` for breakage and on a persistently non-zero
-    // `warmedNoCandleLighting` for a shape regression, which are different
-    // problems with different fixes.
-    warmedNoCandleLighting: results.filter((r) => r.status === "warmed-no-candle-lighting").length,
     failed: results.filter((r) => r.status === "failed").length,
     results,
   });

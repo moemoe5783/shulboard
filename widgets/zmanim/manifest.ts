@@ -118,27 +118,28 @@ export const zmanimConfigSchema = z.object({
    */
   scrollSpeed: z.enum(["slow", "medium", "fast"]).default("medium"),
   /**
-   * Which language the row labels are in.
+   * Which form the row labels take: the English name, or the Hebrew zman name
+   * spelled in Latin letters (the transliteration).
    *
-   * `"english"` and `"hebrew"` are both THE PROVIDER'S OWN WORDS where
-   * there are any — Chabad sends "Latest Shacharit" and "סוף זמן תפילה",
-   * and the board shows whichever was asked for. There is no house Hebrew
-   * table: a row with no Hebrew from the provider falls back to its
-   * English, because putting a zman under a Hebrew name this project
-   * asserted would be a halachic claim rather than a translation.
+   * BOTH ARE THE PROVIDER'S OWN WORDS. The RSS feed writes each name as
+   * "English (Transliteration)" — "Dawn (Alot Hashachar)" — so `"english"`
+   * shows "Dawn" and `"transliteration"` shows "Alot Hashachar", from
+   * Chabad's own text (lib/zmanim/chabad-rss.ts). There is no house table.
    *
-   * A ROW MAY WELL HAVE NO HEBREW. Only the response's nested
-   * `TimeGroups` shape carries `HebrewTitle`; the flat shape the 92-day
-   * request returns has none at all, and which parameter switches between
-   * them is unresolved — see lib/zmanim/chabad-adapter.ts. So this is a
-   * setting that may currently do nothing for a given shul's cache, and
-   * Settings.tsx says so rather than leaving it looking broken.
+   * A ROW MAY HAVE NO TRANSLITERATION. The feed is inconsistent — "Latest
+   * Shema" has no parenthetical at all — so a row with none falls back to its
+   * English rather than to a name this project invented (plan.md §5c).
    *
-   * HEBREW IS RTL, and the table mirrors: the label and time columns swap
-   * sides rather than staying put. That is one `dir="rtl"` on the grid —
-   * see the Renderer.
+   * NO HEBREW-SCRIPT OPTION for now: the RSS feed carries no Hebrew script,
+   * only the Latin transliteration. Both forms render left-to-right, so
+   * nothing mirrors.
+   *
+   * Legacy `"hebrew"` (from before the feed switch) is read forward as
+   * `"transliteration"` so a stored board keeps parsing.
    */
-  labelScript: z.enum(["english", "hebrew"]).default("english"),
+  labelScript: z
+    .preprocess((value) => (value === "hebrew" ? "transliteration" : value), z.enum(["english", "transliteration"]))
+    .default("english"),
   /**
    * The provider's halachic footnotes, under the table.
    *
@@ -187,36 +188,27 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
    * most-watched element" applied to a table, and it is still true of a
    * `fit` that re-measures on every row-count change.
    *
-   * WHAT CHANGED, TWICE. The first answer padded the measured list to the
-   * declared selection count with spacer rows, so the count the fit saw
-   * could not vary. The second and current answer is better: the size does
-   * not depend on the row count at all. It is
-   * `min(boxHeight / (8 rows × per-row height), boxWidth / time-column
-   * width)` — ./fit.ts — so a returning candle-lighting row changes
-   * nothing about either term, and the spacers had nothing left to hold
-   * steady.
+   * WHAT CHANGED: the size no longer depends on the row count OR on the box
+   * height. `fit` here means WIDTH FITS, HEIGHT SCROLLS — the type is as
+   * large as it can be while the widest row's full text (label, gap and
+   * time) still fits the box's width, and nothing more. ./fit.ts is the
+   * whole argument; in short the size is
+   * `clamp(boxWidth / widest-row-width, min, max)`.
    *
-   * That also means fit DOES now need the overflow mode, where the spacer
-   * version did not: the height term deliberately ignores how many rows
-   * there are, so a twelve-row selection in a box sized for eight
-   * overflows by design and scrolls or pages. Vertical overflow is
-   * acceptable; a clipped TIME is not, which is the second term.
+   * Because height plays no part, a selection taller than the box overflows
+   * by design and the overflow mode below (scroll or page) handles it —
+   * dragging the box taller shows more rows at the same size rather than
+   * shrinking the type to cram them in. That is the point: a taller box is
+   * more of the luach, not smaller type.
    *
-   * THE SPACERS ARE GONE, and so is the binary search — `fit` means
-   * something different here now, and ./fit.ts is the whole argument. In
-   * short: the size is `min(height-driven, width-allowed)`, the time
-   * column is never compromised, height may overflow into the scroll or
-   * page mode above. Neither term reads the row count, so there is nothing
-   * left for a spacer to hold steady, and a spacer would now actively hurt
-   * by inflating the content height the overflow check reads.
-   *
-   * WHAT THE SECOND TERM PROTECTS, corrected after a live look. It used to
-   * be the whole row's natural width — every label at full length — which
-   * made narrowing a perfectly roomy box shrink the type over a 2.5× band
-   * of widths where nothing would have clipped. It protects the time
-   * column and its gap now, and the `1fr` label track absorbs the rest by
-   * truncating, which is what its clip was always for. ./fit.ts has the
-   * measurement.
+   * THE WHOLE ROW IS KEPT VISIBLE, deliberately. An earlier version fitted
+   * only the time column and let long labels truncate; this fits the full
+   * width so every label reads in full. The direct cost is a little
+   * day-to-day wobble — a returning "Candle Lighting" row on Friday is
+   * wider, so the type eases down to keep it in view and back up on Sunday —
+   * which is simply what "the whole text is always visible" means. Below the
+   * min font size the label truncates (`1fr min-w-0 overflow-hidden`), the
+   * one case the width cannot be honoured.
    *
    * WHERE `fit` IS STILL NOT RECOMMENDED: `"next"` display mode. One row,
    * and the row's own label changes through the day ("Sunrise", then

@@ -371,55 +371,50 @@ console.log("\n-- a missing value is missing, full stop -------------------");
   check(unknown.length === 0, "so does an id that is not canonical at all");
 }
 
-console.log("\n-- the Hebrew label, and where it must not come from -------");
+console.log("\n-- the transliteration label, and its fallback -------------");
 
 {
-  // The flat 92-day cache has no Hebrew, so every row resolves with none.
-  // The widget falls back to the provider's English there rather than to a
-  // house Hebrew table — see the note in lib/zmanim/zman.ts on why there
-  // deliberately is not one.
+  // The 92-day flat fixture carries no translit (only the RSS feed does), so
+  // every row resolves with none. The widget falls back to the provider's
+  // English there rather than to a house table — see lib/zmanim/zman.ts.
   const rows = resolveZmanimForDate({ ...base, date: "2026-09-10", ids: ["netz", "chatzos"] });
-  check(rows.every((row) => row.hebrewLabel === null),
-    "a flat-shape cache resolves every row with no Hebrew, never an invented one",
-    rows.map((r) => `${r.id}:${r.hebrewLabel}`).join(" "));
+  check(rows.every((row) => row.translit === null),
+    "a cache with no transliteration resolves every row with none, never an invented one",
+    rows.map((r) => `${r.id}:${r.translit}`).join(" "));
   check(rows.every((row) => row.label.length > 0), "while the English is always there to fall back to");
 }
 
 {
   /*
-   * A cache that DOES carry Hebrew — what the nested response shape
-   * produces. Hand-built here rather than loaded, because the nested
-   * fixture is a different ZIP and four days; what matters is that the
-   * resolver passes the field through from the row it read, including
-   * through a substitution.
+   * A cache that DOES carry the transliteration — what the RSS feed produces
+   * ("English (Transliteration)"). Hand-built here; what matters is that the
+   * resolver passes the field through from the row it read, including through
+   * a substitution.
    */
-  const withHebrew: ChabadZmanimByDate = {
+  const withTranslit: ChabadZmanimByDate = {
     "2026-09-12": {
       shabbos_ends: {
         iso: "2026-09-13T00:14:00.000Z",
         display: "8:14 PM",
         label: "Shabbat Ends",
-        hebrewLabel: "הדלקת נרות",
+        translit: "Tzeis Shabbos",
       },
     },
   };
-  const direct = resolveZmanimForDate({ ...base, chabadZmanim: withHebrew, date: "2026-09-12", ids: ["shabbos_ends"] });
-  check(direct[0]?.hebrewLabel === "הדלקת נרות", "a row's Hebrew comes through", direct[0]?.hebrewLabel);
+  const direct = resolveZmanimForDate({ ...base, chabadZmanim: withTranslit, date: "2026-09-12", ids: ["shabbos_ends"] });
+  check(direct[0]?.translit === "Tzeis Shabbos", "a row's transliteration comes through", direct[0]?.translit);
 
-  // THE SUBSTITUTION CARRIES THE SUBSTITUTE'S HEBREW, not the requested
-  // id's. That is the same rule the English label follows, and it is what
-  // puts the Yom Tov distinction on the right day: Chabad's Hebrew for a
-  // second-night Shabbos-end row says candle lighting, and the row a
-  // nightfall request is served by has to say what it actually is.
+  // THE SUBSTITUTION CARRIES THE SUBSTITUTE'S TRANSLITERATION, not the
+  // requested id's — the same rule the English label follows.
   const substituted = resolveZmanimForDate({
     ...base,
-    chabadZmanim: withHebrew,
+    chabadZmanim: withTranslit,
     date: "2026-09-12",
     ids: ["tzeis_baal_hatanya"],
   });
-  check(substituted[0]?.suppliedBy === "shabbos_ends" && substituted[0]?.hebrewLabel === "הדלקת נרות",
-    "and a substituted row carries the Hebrew of the id that supplied it",
-    `${substituted[0]?.hebrewLabel} via ${substituted[0]?.suppliedBy}`);
+  check(substituted[0]?.suppliedBy === "shabbos_ends" && substituted[0]?.translit === "Tzeis Shabbos",
+    "and a substituted row carries the transliteration of the id that supplied it",
+    `${substituted[0]?.translit} via ${substituted[0]?.suppliedBy}`);
   check(substituted[0]?.label === "Shabbat Ends", "alongside that id's English");
 }
 

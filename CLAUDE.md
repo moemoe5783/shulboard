@@ -20,24 +20,24 @@ Environment variables: @docs/environment.md
   route does, immediately, for the screens the just-published board reaches,
   rather than a second copy of the build logic. `warm-zmanim` is the Chabad
   cache-warming cron (plan.md §5c) — once daily, not the 5-minute cadence
-  `build-bundles` runs at, because it's refreshing 92 days of zmanim from
-  Chabad.org's `Get_Zmanim` endpoint, not serving a live edit. One request
-  returns the whole span: every day in it, all thirteen daily zmanim, plus
-  candle lighting on every Erev Shabbos and Yom Tov. **92 days is verified,
-  not a measured cap** — nobody has established where this endpoint stops,
-  which is why the warmer reports the response's own `EndDate` next to the
-  range it asked for rather than assuming they agree. (The published
-  candle-lighting embed, which this replaced, *did* have a measured
-  four-week cap; `lib/zmanim/chabad-embed.ts` is kept unwired as a
-  fallback.) Daily still matters for coverage as well as freshness, just
-  far less urgently than at four weeks: each run slides a three-month
-  window forward. It
+  `build-bundles` runs at, because zmanim don't change from one hour to the
+  next. The source is now the **published RSS feed**
+  (`lib/zmanim/chabad-rss.ts`), which is **US-only and returns today only** —
+  one day per request, no date range. It carries the transliterated Hebrew
+  zman names the widget needs and needs no undocumented parameters. Because
+  it is one day, the daily run is load-bearing for coverage, not only
+  freshness: a day the cron doesn't run is a day with no zmanim once every
+  screen's bundle rolls past it. The 92-day `Get_Zmanim` reader
+  (`lib/zmanim/chabad-adapter.ts`) is kept **unwired** — like
+  `chabad-embed.ts` and `hebcal-zmanim.ts` — for the day range or non-US
+  city ids matter again. `warm-zmanim`
   earns the key for a reason separate from the warming itself: it sweeps
   every org and screen to discover which locations are referenced at all,
   a cross-tenant read no RLS policy can express.
   `lib/zmanim/warm.ts` is a lib module rather than a route, and it is what
   actually writes `zmanim_cache`. Two things warm that cache — the cron
-  above and the "Fetch now" button in org settings — so the write lives
+  above and the "Use this address" action in org settings (which geocodes,
+  saves the location, and warms in one step) — so the write lives
   here once rather than as two copies that can drift. It needs the key
   because `zmanim_cache` has exactly one RLS policy, a SELECT, and
   deliberately no write policy at all: the table is shared across every
@@ -52,7 +52,7 @@ Environment variables: @docs/environment.md
   that function keys on `org_id` and this table deliberately has none. So
   the invalidation is application code here, and the count of screens
   queued is reported back through the cron's JSON and the settings
-  button — a warm that queues nothing on a location a shul really uses is
+  action — a warm that queues nothing on a location a shul really uses is
   the signature of a board that will keep saying "No zmanim for this date".
   Nowhere else uses the service-role key.
 - `widgets/<name>/` — one folder per widget: manifest.ts, Renderer.tsx,

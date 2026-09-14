@@ -30,7 +30,7 @@ const FOOTNOTE_SCALE = 0.5;
  * own gap is zero.
  *
  * In `em`, so it scales with the type and so the fit measurement below
- * reads it as part of the width it protects.
+ * reads it as part of the row width it fits.
  */
 const LABEL_GAP = "1em";
 
@@ -38,11 +38,9 @@ const LABEL_GAP = "1em";
  * The row grid's tracks: the label takes the slack, each piece of the time
  * takes exactly what it needs.
  *
- * THE LABEL IS ALWAYS TRACK ONE, in both scripts, because it is always the
- * first cell emitted — which is what lets the fit measurement below read
- * the label's used track width out of `gridTemplateColumns` and subtract
- * it. Mirroring for Hebrew is done by `dir` plus the cell order in `Row`,
- * not by reordering these.
+ * THE LABEL IS TRACK ONE, always the first cell emitted, and the times follow
+ * left to right (hours, ":MM", meridiem). Both label forms are Latin and LTR,
+ * so nothing reorders these.
  */
 const GRID_COLUMNS = "1fr max-content max-content max-content";
 
@@ -95,8 +93,12 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         ? resolved.today.rows
         : [];
 
-  const isHebrew = config.labelScript === "hebrew";
-  const labelOf = (row: ResolvedZman) => (isHebrew ? row.hebrewLabel ?? row.label : row.label);
+  // English name, or the Hebrew name spelled in Latin letters — both the
+  // provider's own words (lib/zmanim/chabad-rss.ts). A row the feed gave no
+  // transliteration for falls back to its English. Both render LTR, so
+  // nothing about the table mirrors.
+  const isTranslit = config.labelScript === "transliteration";
+  const labelOf = (row: ResolvedZman) => (isTranslit ? row.translit ?? row.label : row.label);
 
   /*
    * THE SPACER ROWS ARE GONE. They padded the measured list to the declared
@@ -113,13 +115,12 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     enabled: isFit,
     rowCount: rows.length,
     /*
-     * The LABELS, not the times. The size is a function of the box and of
-     * one row's geometry, so what can change it is a label long enough to
-     * bind the width term — a returning "Candle Lighting" row, or the whole
-     * table switching to Hebrew. The times cannot: they are tabular figures
-     * of fixed width (measured, see scripts/test-font-parity.mjs), which is
-     * exactly why they share one column. Re-measuring every tick would be
-     * work for nothing on a screen that runs for months.
+     * The LABELS, not the times. The size fits the widest row's full width
+     * (./fit.ts), so what can change it is a label long enough to widen a row
+     * — a returning "Candle Lighting" row, or switching English for the
+     * transliteration. The times are tabular figures of fixed width (measured,
+     * see scripts/test-font-parity.mjs). Re-measuring every tick would be work
+     * for nothing on a screen that runs for months.
      */
     signature: rows.map(labelOf).join("|"),
   });
@@ -211,45 +212,30 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         `1fr` on the label track gives the label the slack, so a long label
         grows into the gutter and neither edge moves — docs/sizing.md §3's
         growth rule, satisfied by the geometry. It is also the track that
-        absorbs a narrow box, which is what lets ./fit.ts stop shrinking the
-        type the moment the box is narrower than ideal.
+        truncates in a box too narrow for the widest row at minFontSize
+        (./fit.ts).
 
-        RTL MIRRORS IT with `dir` plus the cell order in `Row`: `direction:
-        rtl` lays track one out on the RIGHT, so the labels move to the
-        right edge and the time's three tracks form their column on the
-        left, where a Hebrew reader's eye starts. `Row` emits the time cells
-        in reverse for that case so the time still reads hour, minutes,
-        meridiem from left to right — a clock time is Latin digits in a
-        fixed order and no luach prints it backwards.
+        LTR IN BOTH LABEL MODES. English and the transliteration are both
+        Latin, so nothing mirrors — the removed RTL path was for Hebrew
+        script, which the RSS feed does not carry (lib/zmanim/chabad-rss.ts).
       */}
       <div
         ref={attachRefs ? gridRef : undefined}
-        dir={isHebrew ? "rtl" : "ltr"}
         className="grid w-full"
         style={{ gridTemplateColumns: GRID_COLUMNS, columnGap: 0 }}
       >
         {rows.map((row) => (
-          <Row
-            key={row.id}
-            row={row}
-            label={labelOf(row)}
-            labelIsHebrew={isHebrew && row.hebrewLabel !== null}
-            mirrored={isHebrew}
-          />
+          <Row key={row.id} row={row} label={labelOf(row)} />
         ))}
       </div>
 
       {footnotes.length > 0 && (
         <div
-          dir={isHebrew ? "rtl" : "ltr"}
           className="flex flex-col opacity-60"
           style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
         >
-          {/* The footnote TEXT is Chabad's English either way — the
-              response carries no Hebrew for it — so only the block's
-              own alignment mirrors, not the words. */}
           {footnotes.map((text) => (
-            <span key={text} dir="ltr" className="leading-tight">
+            <span key={text} className="leading-tight">
               {text}
             </span>
           ))}
@@ -299,11 +285,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
  *
  * NOT `useFitFontSize`, and that is the point rather than duplication. That
  * hook implements docs/sizing.md §2's fit: a binary search for the largest
- * size at which content fits BOTH axes. This widget's fit lets height
- * overflow and never lets the times clip, which is a different question
- * with a closed-form answer — for rows that do not wrap, width and row
- * height both scale linearly with font size, so ONE measurement at a known
- * size gives exact ratios and no search is needed.
+ * size at which content fits BOTH axes. This widget's fit ignores height
+ * entirely and only fits the width, which is a different question with a
+ * closed-form answer — for rows that do not wrap, rendered width scales
+ * linearly with font size, so ONE measurement at a known size gives the
+ * exact ratio and no search is needed.
  *
  * The result is written straight to the box's style rather than returned
  * through state, for the reason `useFitFontSize` gives: it lets the
@@ -328,11 +314,13 @@ function useZmanimFit(options: {
     if (!enabled || !box || !grid || rowCount === 0) return;
 
     const measure = () => {
+      // WIDTH ONLY. Height plays no part in the size (./fit.ts rule 2) — the
+      // box's height decides how many rows are visible before the overflow
+      // mode scrolls or pages, never how big the type is.
       const boxWidthPx = box.clientWidth;
-      const boxHeightPx = box.clientHeight;
-      if (boxWidthPx === 0 || boxHeightPx === 0) return;
+      if (boxWidthPx === 0) return;
 
-      // A known size to measure at. Any size works — the ratios below are
+      // A known size to measure at. Any size works — the ratio below is
       // size-independent — and a design-unit probe is what makes it a real
       // pixel value in this box's own `cqw` context at whatever zoom the
       // editor happens to be at.
@@ -347,41 +335,22 @@ function useZmanimFit(options: {
        * track shrinks the label rather than overflowing — and `scrollWidth`
        * would report the box's width back, not the text's. Letting the grid
        * size to its content for the length of one measurement is the only
-       * way to read the natural geometry the rules need.
+       * way to read the natural geometry the rule needs.
+       *
+       * `natural.width` is then the sum of every column's `max-content`: the
+       * widest label, the gap, and the widest time. Fitting the box width to
+       * that keeps every row's full text visible (./fit.ts rule 1) — which
+       * is exactly what "fit to box" now means here.
        */
       const previousWidth = grid.style.width;
       grid.style.width = "max-content";
       const natural = grid.getBoundingClientRect();
-      /*
-       * THE USED TRACK SIZES, which is how the width rule gets told what it
-       * is allowed to give up.
-       *
-       * `gridTemplateColumns` computes to the resolved track widths in px,
-       * and `GRID_COLUMNS` puts the label in track one in both scripts. So
-       * the whole natural width minus that track is exactly the time
-       * column plus the gap that separates it from the label (the gap is
-       * padding inside the adjacent time cell — see `LABEL_GAP`), which is
-       * the width ./fit.ts protects. Subtracting rather than measuring a
-       * cell directly keeps this correct when a row falls back to printing
-       * an unrecognised string across all three time tracks.
-       */
-      const tracks = getComputedStyle(grid)
-        .gridTemplateColumns.split(/\s+/)
-        .map((track) => Number.parseFloat(track));
       grid.style.width = previousWidth;
-
-      const labelTrack = Number.isFinite(tracks[0]) ? tracks[0] : 0;
-      // Falls back to the whole width if the subtraction produces nothing
-      // usable — a conservative answer (it shrinks sooner) rather than an
-      // unconstrained one.
-      const protectedWidth = natural.width - labelTrack > 0 ? natural.width - labelTrack : natural.width;
 
       const fitted = fitFontSizePx(
         {
-          boxHeightPx,
           boxWidthPx,
-          protectedWidthPerFontPx: protectedWidth / reference,
-          rowHeightPerFontPx: natural.height / Math.max(1, rowCount) / reference,
+          rowWidthPerFontPx: natural.width / reference,
         },
         {
           minPx: resolveDesignPx(manifest.sizing.minFontSize ?? 14, canvasWidth, box),
@@ -584,11 +553,10 @@ function OverflowViewport({
  * One row: the provider's own label, and the provider's own time string.
  *
  * NEITHER IS TRANSLATED BY US. Chabad sends "Latest Shacharit" and this
- * prints "Latest Shacharit"; it sends "סוף זמן תפילה" and this prints that;
- * it sends "7:22 PM" and this prints "7:22 PM" (§5c: "never re-round or
- * recompute provider output. Display verbatim"). The canonical id the
- * gabbai selected never appears on screen — it exists so the board document
- * survives a provider change, not to be read.
+ * prints "Latest Shacharit"; it sends "7:22 PM" and this prints "7:22 PM"
+ * (§5c: "never re-round or recompute provider output. Display verbatim"). The
+ * canonical id the gabbai selected never appears on screen — it exists so the
+ * board document survives a provider change, not to be read.
  *
  * A row is four grid cells rather than a wrapper div, so every row's label,
  * hour, minutes and meridiem each share one column with every other row's.
@@ -601,64 +569,34 @@ function OverflowViewport({
  *
  * NEITHER CELL WRAPS, and that is load-bearing rather than cosmetic: the
  * paging mode divides measured content height by row count to find one
- * row's height, which is only correct while every row is the same height,
- * and the fit measures one row's height the same way. A wrapping label
- * would make one row taller and page boundaries would start cutting rows in
- * half. Horizontal clipping of the LABEL is the deliberate absorber behind
- * that — ./fit.ts protects the time column and lets a long label truncate
- * rather than shrinking the whole table in a narrow box.
+ * row's height, which is only correct while every row is the same height. A
+ * wrapping label would make one row taller and page boundaries would start
+ * cutting rows in half. The label truncates instead (`min-w-0
+ * overflow-hidden`), which only bites in a box too narrow for the widest row
+ * at minFontSize — ./fit.ts otherwise fits the whole row's width.
+ *
+ * EVERYTHING IS LTR. Both label forms (English and the Latin transliteration)
+ * and the clock times are Latin, so no cell or track mirrors.
  */
-function Row({
-  row,
-  label,
-  labelIsHebrew,
-  mirrored,
-}: {
-  row: ResolvedZman;
-  label: string;
-  labelIsHebrew: boolean;
-  mirrored: boolean;
-}) {
+function Row({ row, label }: { row: ResolvedZman; label: string }) {
   const parts = splitTimeColumns(row.display);
 
-  /*
-   * Which way "flush against the next piece" points, and where the gap
-   * from the label goes. In a mirrored table the tracks lay out right to
-   * left, so the inline start of a cell is its right-hand side — which is
-   * the side the hour has to hug to reach its colon, and the side the
-   * meridiem has to hug for the column's outer edge to be straight.
-   */
-  const flush = mirrored ? ("start" as const) : ("end" as const);
-  const gap: CSSProperties = mirrored ? { paddingRight: LABEL_GAP } : { paddingLeft: LABEL_GAP };
+  const gap: CSSProperties = { paddingLeft: LABEL_GAP };
   const time: CSSProperties = { fontFamily: BOARD_FONTS.sefarim };
   /*
-   * ALWAYS LTR, in either script, and Frank Ruhl Libre with `numeric`.
-   *
-   * The direction: a clock time is Latin digits in a fixed order, and
-   * rendering it right-to-left would turn "7:22 PM" into something no
-   * luach prints. Mirroring is about which SIDE the column sits on and the
-   * order the cells are emitted in, never the order inside a cell.
-   *
-   * The face: measured, not assumed. scripts/test-font-parity.mjs reads
-   * `11111` against `00000` in the real board and finds the sefarim face
-   * closes a 6.97px spread to 0.00px under `tabular-nums` while the UI
-   * face is unchanged at 3.08px either way — which is CLAUDE.md's caveat,
-   * still true on the board. So the figures within a track line up because
-   * of this face; the tracks are what line the hours up with each other.
+   * Frank Ruhl Libre with `numeric`. The face is measured, not assumed:
+   * scripts/test-font-parity.mjs reads `11111` against `00000` in the real
+   * board and finds the sefarim face closes a 6.97px spread to 0.00px under
+   * `tabular-nums` while the UI face is unchanged at 3.08px either way — which
+   * is CLAUDE.md's caveat, still true on the board. So the figures within a
+   * track line up because of this face; the tracks line the hours up with each
+   * other.
    */
   const timeClass = "numeric font-semibold leading-snug whitespace-nowrap";
 
   const labelCell = (
     <span
       key="label"
-      /*
-       * `lang` and `dir` on the CELL, not only on the grid. A Hebrew
-       * label inside an RTL grid still needs its own direction declared
-       * for the browser to order it correctly — and a row that fell back
-       * to English inside an RTL table needs the opposite, which is a
-       * distinction only the cell can express.
-       */
-      {...(labelIsHebrew ? { lang: "he", dir: "rtl" as const } : { dir: "ltr" as const })}
       className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80"
     >
       {label}
@@ -672,49 +610,27 @@ function Row({
     return (
       <>
         {labelCell}
-        <span
-          dir="ltr"
-          className={timeClass}
-          style={{ ...time, ...gap, gridColumn: "span 3", justifySelf: flush }}
-        >
+        <span className={timeClass} style={{ ...time, ...gap, gridColumn: "span 3", justifySelf: "end" }}>
           {row.display}
         </span>
       </>
     );
   }
 
-  const hours = (
-    <span
-      key="hours"
-      dir="ltr"
-      className={timeClass}
-      style={{ ...time, justifySelf: flush, ...(mirrored ? null : gap) }}
-    >
-      {parts.hours}
-    </span>
-  );
-  const minutes = (
-    <span key="minutes" dir="ltr" className={timeClass} style={time}>
-      {parts.minutes}
-    </span>
-  );
-  const meridiem = (
-    <span
-      key="meridiem"
-      dir="ltr"
-      className={timeClass}
-      // `pre`, so the provider's own space before "PM" renders as the
-      // separator instead of being replaced by padding we invented.
-      style={{ ...time, whiteSpace: "pre", justifySelf: flush, ...(mirrored ? gap : null) }}
-    >
-      {parts.meridiem}
-    </span>
-  );
-
   return (
     <>
       {labelCell}
-      {mirrored ? [meridiem, minutes, hours] : [hours, minutes, meridiem]}
+      <span key="hours" className={timeClass} style={{ ...time, justifySelf: "end", ...gap }}>
+        {parts.hours}
+      </span>
+      <span key="minutes" className={timeClass} style={time}>
+        {parts.minutes}
+      </span>
+      {/* `pre`, so the provider's own space before "PM" renders as the
+          separator instead of being replaced by padding we invented. */}
+      <span key="meridiem" className={timeClass} style={{ ...time, whiteSpace: "pre", justifySelf: "end" }}>
+        {parts.meridiem}
+      </span>
     </>
   );
 }
