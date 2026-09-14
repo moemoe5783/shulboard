@@ -2,7 +2,6 @@
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
-import { StyleControls } from "../StyleControls";
 import type { CandleLightingConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightingConfig>) {
@@ -21,8 +20,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         </select>
         {config.displayMode === "all" && (
           <span className={PANEL_LABEL}>
-            Stacked and fit to the box — the type shrinks so a busier week around Yom Tov stays visible. Set the type
-            size above to resize the box to it.
+            Stacked and fit to the box — the type shrinks so a busier week around Yom Tov stays visible. Set a type
+            size on the Size tab to resize the box to it.
           </span>
         )}
         {config.displayMode === "rotate" && (
@@ -122,8 +121,6 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         the same reason: Chabad publishes candle lighting 18 minutes before
         sunset itself, so there is nothing left for it to adjust.
       */}
-
-      <StyleControls config={config} onChange={onChange} />
     </div>
   );
 }

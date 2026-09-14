@@ -22,11 +22,45 @@ export const BOARD_FONTS = {
   /** Sefarim typography, and the only face here with tabular figures — which is
    *  what makes a column of zmanim line up. */
   sefarim: "var(--type-sefarim)",
+  /** Clean bilingual sans — a lighter, more geometric alternative to Assistant. */
+  heebo: "var(--type-heebo)",
+  /** Rounded bilingual sans, friendly. */
+  rubik: "var(--type-rubik)",
+  /** Plain bilingual sans, a touch of warmth. */
+  alef: "var(--type-alef)",
+  /** Bilingual serif — a lighter sefarim alternative to Frank Ruhl Libre. */
+  davidLibre: "var(--type-david-libre)",
+  /** Bilingual slab, strong at large sizes — good for headers. */
+  miriamLibre: "var(--type-miriam-libre)",
+  /** Heavy bilingual display serif — a title face, read across a room. */
+  suezOne: "var(--type-suez-one)",
+  /** Bold bilingual display sans — a title face. */
+  secularOne: "var(--type-secular-one)",
   /** Whatever the device has. Never the right answer for Hebrew. */
   system: "var(--type-neutral)",
 } as const;
 
 export type BoardFont = keyof typeof BOARD_FONTS;
+
+/**
+ * The board faces a widget may pick, in the order a font menu shows them —
+ * a stable label per face. `sefarim` is spelled "Frank Ruhl Libre" here
+ * because that is the name a gabbai recognises; the key is the document's
+ * stable id (lib/board-theme.ts). "System" is last, an escape hatch rather
+ * than a real choice for a board that carries Hebrew.
+ */
+export const BOARD_FONT_OPTIONS: { value: BoardFont; label: string }[] = [
+  { value: "assistant", label: "Assistant" },
+  { value: "heebo", label: "Heebo" },
+  { value: "rubik", label: "Rubik" },
+  { value: "alef", label: "Alef" },
+  { value: "secularOne", label: "Secular One" },
+  { value: "sefarim", label: "Frank Ruhl Libre" },
+  { value: "davidLibre", label: "David Libre" },
+  { value: "miriamLibre", label: "Miriam Libre" },
+  { value: "suezOne", label: "Suez One" },
+  { value: "system", label: "System" },
+];
 
 /**
  * Board colours, by name.

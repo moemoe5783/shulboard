@@ -4,9 +4,10 @@ import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttribut
 import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
 import { BoardZmanimProvider, type BoardZmanim } from "@/lib/board-zmanim";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
-import { boardRootStyle } from "@/lib/board-theme";
+import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
+import { normalizeWidgetStyle, widgetStyle } from "@/widgets/style";
 import type { SizingMode } from "@/widgets/types";
 
 /*
@@ -127,6 +128,17 @@ function WidgetFrame({
   const frameRef = useRef<HTMLDivElement>(null);
 
   /*
+   * THE APPEARANCE FRAME, ONE PLACE FOR EVERY WIDGET. Background, padding,
+   * radius, border, shadow, colour, font and an optional header (widgets/style.ts)
+   * are applied here rather than inside each Renderer — so every widget gets them
+   * without a per-folder edit, and a widget's Renderer stays `{config, canvas}`
+   * and nothing else (CLAUDE.md's no-fork rule). The Renderer sits inside this
+   * frame's content area, so a `fit`-mode widget measures the padded, header-less
+   * space it actually has, with no coordination between the two.
+   */
+  const style = normalizeWidgetStyle(widget.config as Record<string, unknown>);
+
+  /*
    * docs/sizing.md §2, the `hug` mode: the box resizes to fit the content at
    * the declared type size, height only — width keeps its usual job as a wrap
    * boundary, the same role it has in `fixed`. Read generically off the
@@ -222,16 +234,40 @@ function WidgetFrame({
       }}
     >
       {/*
-        createElement rather than <Renderer />, and not for style: the lint rule
-        against components created during render cannot tell a lookup in a
-        module-level map from a component defined inline, and flags the second
-        while meaning the first. The identity here is stable for the life of the
-        bundle — widgets/renderers.ts builds the map once — so the remounting the
-        rule protects against cannot happen.
+        The appearance frame fills the positioned box and stacks an optional
+        header above the widget's own content (widgets/style.ts). When nothing is
+        styled it is a transparent, padding-less flex pass-through, so an
+        unstyled widget renders exactly as it did before this frame existed.
       */}
-      {Renderer
-        ? createElement(Renderer, { config: widget.config as never, canvas })
-        : <UnknownWidget type={widget.type} />}
+      <div style={widgetStyle(style, canvas.width)}>
+        {style.title && (
+          <div
+            style={{
+              flexShrink: 0,
+              fontWeight: 600,
+              textAlign: "center",
+              lineHeight: 1.1,
+              fontSize: boardLength(style.titleSize, canvas.width),
+              marginBottom: boardLength(style.titleSize * 0.35, canvas.width),
+            }}
+          >
+            {style.title}
+          </div>
+        )}
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {/*
+            createElement rather than <Renderer />, and not for style: the lint
+            rule against components created during render cannot tell a lookup in
+            a module-level map from a component defined inline, and flags the
+            second while meaning the first. The identity here is stable for the
+            life of the bundle — widgets/renderers.ts builds the map once — so the
+            remounting the rule protects against cannot happen.
+          */}
+          {Renderer
+            ? createElement(Renderer, { config: widget.config as never, canvas })
+            : <UnknownWidget type={widget.type} />}
+        </div>
+      </div>
     </div>
   );
 }

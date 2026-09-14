@@ -110,11 +110,12 @@ async function stopServer(child) {
 async function readTable(page) {
   return page.evaluate(() => {
     const lab = document.querySelector("[data-zmanim-lab]");
-    const frame = lab?.querySelector("[data-widget-id]");
-    // The Renderer wraps its box in an appearance frame (widgets/style.ts,
-    // transparent when unstyled), so the measured box — the one carrying the
-    // fitted font size — is one level in from the widget frame.
-    const box = frame?.firstElementChild?.firstElementChild;
+    const widget = lab?.querySelector("[data-widget-id]");
+    // BoardRenderer.WidgetFrame wraps every widget in the shared appearance
+    // frame (widgets/style.ts, transparent when unstyled), so the box carrying
+    // the fitted font size sits a few levels in. Find it by the attribute the
+    // fit writes rather than by counting wrappers.
+    const box = widget?.querySelector("[data-fitted-size]");
     if (!box) return null;
     const grid = box.querySelector(".grid");
     if (!grid) return null;

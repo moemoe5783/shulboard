@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { widgetStyleFields } from "../style";
 import type { WidgetManifest } from "../types";
 
 export const clockConfigSchema = z.object({
@@ -24,6 +25,10 @@ export const clockConfigSchema = z.object({
    * too tall for the line it holds.
    */
   sizingMode: z.enum(["fit", "fixed", "hug"]).default("fixed"),
+  // Background, colour, font, padding, radius, border, shadow and header —
+  // shared appearance for every widget (../style.ts), applied by
+  // BoardRenderer.WidgetFrame.
+  ...widgetStyleFields,
 });
 
 export type ClockConfig = z.infer<typeof clockConfigSchema>;

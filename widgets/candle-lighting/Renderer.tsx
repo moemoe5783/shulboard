@@ -11,7 +11,6 @@ import { WEEK_DAYS, resolveCandleLightings, type ResolvedCandleLighting } from "
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
-import { widgetStyle } from "../style";
 import { manifest, type CandleLightingConfig } from "./manifest";
 
 const LABEL_SCALE = 0.4;
@@ -109,15 +108,15 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
     deps: [shown.map((entry) => `${entry.time.getTime()}:${entry.kind}:${entry.note ?? ""}`).join(",")],
   });
 
-  // The widget's own background, padding, radius, text colour and font — board
-  // content (../style.ts, design.md §1b), on an outer frame that fills the box
-  // and wraps every render branch so a styled box keeps its background even in
-  // an empty state.
-  const frame = (node: React.ReactNode) => <div style={widgetStyle(config, canvas.width)}>{node}</div>;
+  // The widget's appearance — background, padding, radius, border, colour, font
+  // and an optional header — is applied by BoardRenderer.WidgetFrame around this
+  // Renderer (widgets/style.ts), for every widget in one place. This Renderer
+  // returns only the time block, and `boxRef` measures the padded, header-less
+  // content area WidgetFrame gives it.
 
   if (!location) {
-    return frame(
-      <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — candle lighting needs it." />,
+    return (
+      <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — candle lighting needs it." />
     );
   }
   // A distinct gap from the one above: lat/long can be set while the
@@ -127,11 +126,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   // read as "no time for this date," which is a different and temporary
   // condition.
   if (chabadUnconfigured) {
-    return frame(
+    return (
       <EmptyLocation
         canvas={canvas}
         message="This shul hasn't set a ZIP or Chabad.org location yet — candle lighting needs it."
-      />,
+      />
     );
   }
 
@@ -161,7 +160,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
    * instruction to anyone walking past.
    */
   if (resolution?.status === "unavailable") {
-    return frame(
+    return (
       <div className={`flex h-full w-full flex-col justify-center ${align}`}>
         <span
           className="leading-tight opacity-60"
@@ -173,13 +172,13 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         >
           No candle lighting time for this date
         </span>
-      </div>,
+      </div>
     );
   }
 
   if (!now || shown.length === 0) return null;
 
-  return frame(
+  return (
     <div ref={boxRef} className={`relative flex h-full w-full flex-col justify-center ${align}`}>
       <div
         ref={contentRef}
