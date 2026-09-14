@@ -3,8 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { geocodeAddress, geocodePostalCode, reverseGeocode } from "@/lib/geocoding/locationiq";
-import { describeMiles, milesBetween } from "@/lib/geocoding/distance";
+import { geocodeAddress } from "@/lib/geocoding/locationiq";
 import { upcomingCandleLighting } from "@/lib/hebrew/candle-times";
 import { formatTimeOfDay } from "@/lib/hebrew/format";
 import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, requireUser } from "@/lib/orgs";
@@ -69,67 +68,6 @@ function parseLocationFields(formData: FormData): { latitude: number | null; lon
 function parseLocationLabel(formData: FormData, hasCoordinates: boolean): string | null {
   if (!hasCoordinates) return null;
   return String(formData.get("locationLabel") ?? "").trim().slice(0, 300) || null;
-}
-
-/**
- * The settings form's own zmanim fields — its ZIP (`postal_code`, shared
- * with the never-built MyZmanim onboarding this column already existed
- * for) and the manual Chabad location id fallback (lib/zmanim/location.ts)
- * for a shul with no US ZIP on file.
- *
- * THERE IS NO LONGER A PROVIDER FIELD TO PARSE. Chabad.org is the only
- * zmanim source (lib/zmanim/provider.ts), so the form no longer offers a
- * choice and no longer posts one — a one-item dropdown is not a setting.
- * The stored `zmanim_provider` column is deliberately left ALONE rather
- * than rewritten to `'chabad'` on every save: the DB enum still carries all
- * four values, nothing migrates, and `effectiveZmanimProvider()` is the one
- * place that decides what a stored value resolves to. Re-offering Hebcal
- * later is a change to that function and to this form, not a data repair.
- *
- * `chabadEnabled` is still checked here, server-side, because
- * ZMANIM_CHABAD_ENABLED (docs/environment.md) is the actual runtime gate on
- * reaching chabad.org at all. It no longer gates a form value — it gates
- * whether saving a ZIP for this purpose means anything — so a save with the
- * flag off is accepted rather than refused: the ZIP is a fact about the
- * shul either way, and refusing it would make the flag look like a bug.
- */
-function parseZmanimFields(
-  formData: FormData,
-): {
-  postal_code: string | null;
-  zmanim_location_id: string | null;
-  zmanim_location_type: string | null;
-  zmanim_location_name: string | null;
-} {
-  const postalCode = String(formData.get("postalCode") ?? "").trim();
-  const zmanimLocationId = String(formData.get("zmanimLocationId") ?? "").trim();
-  const zmanimLocationType = String(formData.get("zmanimLocationType") ?? "").trim();
-  const zmanimLocationName = String(formData.get("zmanimLocationName") ?? "").trim();
-
-  /*
-   * THE THREE SEARCHED FIELDS MOVE TOGETHER OR NOT AT ALL. An id without
-   * its type is an id whose meaning is a guess, and an id without its name
-   * cannot be verified against the zmanim response — which is the whole
-   * defence against caching another country's times
-   * (lib/zmanim/chabad-adapter.ts). So a post carrying only some of them
-   * clears all three rather than storing a half-configured location that
-   * looks configured.
-   *
-   * The type is checked against the same two values the column's own CHECK
-   * constraint allows, so a hand-crafted POST cannot get a third value as
-   * far as a database error.
-   */
-  const searched =
-    zmanimLocationId && (zmanimLocationType === "1" || zmanimLocationType === "2") && zmanimLocationName
-      ? { id: zmanimLocationId, type: zmanimLocationType, name: zmanimLocationName }
-      : null;
-
-  return {
-    postal_code: postalCode || null,
-    zmanim_location_id: searched?.id ?? null,
-    zmanim_location_type: searched?.type ?? null,
-    zmanim_location_name: searched?.name ?? null,
-  };
 }
 
 export type CreateOrgState = { error?: string };
@@ -468,64 +406,16 @@ export async function checkChabadCity(
   }
 }
 
-export type UpdateOrgSettingsState = { error?: string; saved?: boolean; warning?: string };
-
-/** ~30 miles. Wide enough that a shul's ZIP centroid and its actual
- *  building never trip it — a ZIP is a few miles across at most, and
- *  neighboring-town coordinates are still the same zmanim to the minute —
- *  narrow enough to catch the mistake this exists for, a ZIP and a set of
- *  coordinates that describe different states. */
-const LOCATION_MISMATCH_MILES = 30;
+export type UpdateOrgSettingsState = { error?: string; saved?: boolean };
 
 /**
- * Does the shul's ZIP describe the same place as its coordinates?
+ * Updates the active org's name and timezone — nothing else.
  *
- * NEVER BLOCKS THE SAVE, by design. Both fields are legitimately editable,
- * a gabbai may be part-way through changing one, and the geocoder is
- * allowed to be unavailable — refusing a save on any of that would be
- * worse than the mismatch. So this runs after the row is written and only
- * ever returns prose.
- *
- * It also stays quiet unless it is genuinely sure: no key, either lookup
- * failing, or a `postal_code` that isn't a US ZIP (`geocodePostalCode`
- * pins `countrycodes=us`, so a foreign postcode simply doesn't match) all
- * return `null`. A warning invented from a failed lookup would be worse
- * than no warning at all.
- *
- * Both places are named, not just the distance: "1,100 miles apart" is not
- * actionable, "the ZIP is in Brooklyn and the coordinates are in St.
- * Petersburg" tells a gabbai which field is wrong.
- */
-async function checkLocationAgreement(
-  postalCode: string | null,
-  latitude: number | null,
-  longitude: number | null,
-): Promise<string | null> {
-  if (!postalCode || latitude === null || longitude === null) return null;
-
-  // Sequentially, not in parallel: LocationIQ's free tier allows 2 requests
-  // per second and these are two of them (lib/geocoding/locationiq.ts).
-  const zip = await geocodePostalCode(postalCode);
-  if (!zip.ok) return null;
-  const coordinates = await reverseGeocode(latitude, longitude);
-  if (!coordinates.ok) return null;
-
-  const miles = milesBetween(zip.place, coordinates.place);
-  if (miles <= LOCATION_MISMATCH_MILES) return null;
-
-  return (
-    `Saved, but check the location: ZIP ${postalCode} is ${zip.place.label}, ` +
-    `while the coordinates are ${coordinates.place.label} — ${describeMiles(miles)} apart. ` +
-    `Chabad.org looks up zmanim by the ZIP while the Hebrew date and daf are computed from the ` +
-    `coordinates, so one of the two is describing the wrong place.`
-  );
-}
-
-/**
- * Updates the active org's name, timezone and coordinates — the one place
- * these can be changed after signup. Location especially: candle lighting
- * and the Hebrew-date/Daf-Yomi widgets are wrong without it (plan.md §3b),
- * and org creation is otherwise the only place that ever asked.
+ * LOCATION IS NOT HERE ANY MORE. It is set by `saveShulAddress` below, from
+ * one address field, which geocodes and warms in the same step. So this form
+ * no longer posts coordinates, a ZIP, or a Chabad location — and this action
+ * deliberately does not touch those columns, so saving a name never blanks
+ * the shul's location.
  *
  * The RLS policy on `orgs` already requires admin to update the row; this
  * check is defence in depth so a non-admin gets the same sentence-case
@@ -547,24 +437,8 @@ export async function updateOrgSettings(
   if (!name) return { error: "Give the shul a name." };
   if (!timezone) return { error: "Pick a timezone." };
 
-  const location = parseLocationFields(formData);
-  if ("error" in location) return { error: location.error };
-  const { latitude, longitude } = location;
-
-  const zmanim = parseZmanimFields(formData);
-
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("orgs")
-    .update({
-      name,
-      timezone,
-      latitude,
-      longitude,
-      location_label: parseLocationLabel(formData, latitude !== null),
-      ...zmanim,
-    })
-    .eq("id", org.orgId);
+  const { error } = await supabase.from("orgs").update({ name, timezone }).eq("id", org.orgId);
 
   if (error) {
     return { error: `That didn't save: ${error.message}. Check the fields and try again.` };
@@ -575,175 +449,125 @@ export async function updateOrgSettings(
   // not need a hard reload to show up.
   revalidatePath("/", "layout");
 
-  // After the write, never instead of it — see checkLocationAgreement.
-  const warning = await checkLocationAgreement(zmanim.postal_code, latitude, longitude);
-  return { saved: true, ...(warning ? { warning } : {}) };
+  return { saved: true };
 }
 
-export type FetchZmanimNowState =
+export type SaveShulAddressState =
   | { status: "idle" }
-  | { status: "done"; message: string }
-  | { status: "failed"; message: string };
+  | { status: "failed"; message: string }
+  | { status: "done"; label: string; message: string };
 
 /**
- * How recently this location may have been fetched before "Fetch now"
- * refuses. Chabad's endpoint is undocumented and has no ToS with this
- * project (plan.md §10.4), so a button that fires it must not be usable as
- * a hammer.
+ * The whole of setting a shul's location, from one address field — plan.md
+ * §5c, and the settings page's only location control.
  *
- * PER LOCATION, NOT PER ORG — deliberately stricter than per-org, and the
- * grain that actually matters. Twenty Crown Heights shuls resolve to one
- * ZIP and one cache row (plan.md §5c), so a per-org limit would let those
- * twenty admins hit the same location twenty times a minute. This uses
- * `zmanim_cache.fetched_at` for the location itself, which is durable
- * across deploys and cold starts in a way an in-memory counter is not, and
- * needs no new column.
+ * ONE STEP, EVERYTHING IN THE BACKEND. A gabbai types an address and presses
+ * "Use this address"; this geocodes it, saves the coordinates, ZIP and place
+ * label to the org, and immediately warms Chabad zmanim for that ZIP. There
+ * is no separate coordinate entry, no ZIP field, and no manual "Fetch now" —
+ * they were front-end plumbing for what this does in the backend.
+ *
+ * US ONLY, for now. The zmanim feed is a US ZIP (lib/zmanim/chabad-rss.ts),
+ * so a non-US result is refused here rather than saved as a location no
+ * zmanim can be fetched for.
+ *
+ * SAVING IS NOT GATED ON THE ZMANIM FLAG. The coordinates and ZIP are facts
+ * about the shul that the Hebrew-date, parsha and daf widgets need whether or
+ * not Chabad.org is turned on (plan.md §3b), so they are always written; only
+ * the warm is gated on ZMANIM_CHABAD_ENABLED, and the message says when it
+ * was skipped.
  */
-const FETCH_NOW_COOLDOWN_MS = 60_000;
-
-/**
- * Warms this org's own Chabad location on demand.
- *
- * WHY IT EXISTS: the cron is right for steady state but leaves a gabbai who
- * has just picked Chabad.org with nothing to do but wait, and no way to
- * tell "the cron hasn't run yet" from "the cron is broken". This answers
- * that question directly, with the day counts, in the place the setting was
- * changed.
- *
- * It runs `warmChabadLocation` — the same function the cron calls, not a
- * second copy — so the two can't drift into caching different shapes. That
- * function is what holds the service-role key (`zmanim_cache` has a SELECT
- * policy and deliberately no write policy at all, so nothing running as a
- * tenant can write it); this action holds no key of its own and reads the
- * org row through the caller's own RLS-scoped client.
- *
- * It warms the SAVED row, not what is currently typed into the form, and
- * says which location it used — a gabbai who has changed the ZIP without
- * saving sees the old one named back rather than a success message about
- * the wrong place.
- */
-export async function fetchChabadZmanimNow(): Promise<FetchZmanimNowState> {
+export async function saveShulAddress(query: string): Promise<SaveShulAddressState> {
   const org = await requireActiveOrg();
   if (!hasRoleAtLeast(org.role, "admin")) {
-    return { status: "failed", message: "Only an owner or admin can fetch zmanim." };
+    return { status: "failed", message: "Only an owner or admin can change shul settings." };
   }
 
-  // The same runtime gate the cron checks, for the same reason — the org
-  // settings page only offering the option is not the gate
-  // (docs/environment.md).
-  if (process.env.ZMANIM_CHABAD_ENABLED !== "true") {
-    return { status: "failed", message: "Chabad.org isn't turned on for this product yet." };
+  const outcome = await geocodeAddress(query);
+  if (!outcome.ok) return { status: "failed", message: outcome.message };
+
+  const { label, latitude, longitude, postcode, countryCode } = outcome.place;
+
+  // US only. The feed reads a US ZIP; a foreign address has no ZIP path, so
+  // it is refused with a reason rather than saved as an unusable location.
+  if (countryCode !== "us" || !postcode) {
+    return {
+      status: "failed",
+      message: `“${label}” isn't a US address. The zmanim feed is US-only for now — enter a US address.`,
+    };
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data: existing } = await supabase.from("orgs").select("timezone").eq("id", org.orgId).single();
+  const timezone = existing?.timezone ?? "UTC";
+
+  // Location is written; the label is the place the coordinates came from, for
+  // the settings page to show back. The Chabad location columns for the
+  // non-US city path are cleared so a stale city id can't shadow this ZIP.
+  const { error } = await supabase
     .from("orgs")
-    .select("timezone, postal_code, zmanim_location_id, zmanim_location_type, zmanim_location_name")
-    .eq("id", org.orgId)
-    .single();
+    .update({
+      latitude,
+      longitude,
+      postal_code: postcode,
+      location_label: label,
+      zmanim_location_id: null,
+      zmanim_location_type: null,
+      zmanim_location_name: null,
+    })
+    .eq("id", org.orgId);
 
-  if (error || !data) {
-    return { status: "failed", message: "Couldn't read this shul's settings. Reload and try again." };
+  if (error) {
+    return { status: "failed", message: `That didn't save: ${error.message}. Try again.` };
   }
+  revalidatePath("/", "layout");
 
-  const location = resolveChabadLocation({
-    orgPostalCode: data.postal_code,
-    orgZmanimLocationId: data.zmanim_location_id,
-    orgZmanimLocationType: data.zmanim_location_type,
-    orgZmanimLocationName: data.zmanim_location_name,
-  });
-  if (!location) {
-    return {
-      status: "failed",
-      message:
-        "This shul has no ZIP or Chabad.org city on file. Look one up in the location section, save, then fetch.",
-    };
-  }
+  // A candle-lighting sanity check the gabbai can actually judge, computed
+  // from the coordinates just saved — the same load-bearing confirmation the
+  // old lookup showed (a wrong place shows a visibly wrong time).
+  const preview = previewCandleLighting({ latitude, longitude, timeZone: timezone });
+  const lighting =
+    preview.candleLighting && preview.candleLightingWhen
+      ? ` Candle lighting there on ${preview.candleLightingWhen} is ${preview.candleLighting}.`
+      : "";
 
-  // Readable under RLS by any signed-in user (the table's one policy), so
-  // the cooldown check needs no elevated client of its own.
-  const { data: recent } = await supabase
-    .from("zmanim_cache")
-    .select("fetched_at")
-    .eq("provider", "chabad")
-    .eq("location_id", location.cacheKey)
-    .order("fetched_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (recent?.fetched_at) {
-    const elapsed = Date.now() - new Date(recent.fetched_at).getTime();
-    if (elapsed < FETCH_NOW_COOLDOWN_MS) {
-      const wait = Math.ceil((FETCH_NOW_COOLDOWN_MS - elapsed) / 1000);
-      return {
-        status: "failed",
-        message: `${location.locationId} was fetched less than a minute ago. Wait ${wait}s and try again.`,
-      };
-    }
-  }
-
-  const outcome = await warmChabadLocation({ ...location, timezone: data.timezone });
-
-  if (outcome.status === "failed") {
-    // The provider's own message verbatim, not a paraphrase: this button
-    // exists so a gabbai can tell a broken fetch from a cron that hasn't
-    // run, and "something went wrong" answers neither.
-    return { status: "failed", message: `Fetching ${location.locationId} failed: ${outcome.error}` };
-  }
-
-  const { dates, datesWithCandleLighting, lastDate, screensQueued } = outcome;
-
-  /*
-   * WHAT HAPPENS TO THE SCREENS, said out loud, because its being unsaid
-   * is what cost a debugging round. `zmanim_cache` is read at BUILD time
-   * and frozen into each screen's bundle (lib/bundle/build.ts), so a fetch
-   * that does not queue a rebuild changes nothing in any lobby — and this
-   * button used to report a flawless success while every board carried on
-   * saying "No zmanim for this date". The warm queues those rebuilds now
-   * (lib/zmanim/warm.ts) and this sentence is how a gabbai can tell that it
-   * did.
-   *
-   * "Around five minutes" is the external scheduler's own cadence for
-   * build-bundles (docs/environment.md), not a guess.
-   */
-  const screens =
-    screensQueued > 0
-      ? ` ${screensQueued} ${screensQueued === 1 ? "screen" : "screens"} will pick it up within about five minutes.`
-      : " No screen is waiting on it — every screen using this location is already up to date, or none uses it.";
-
-  if (datesWithCandleLighting === 0) {
+  if (process.env.ZMANIM_CHABAD_ENABLED !== "true") {
     return {
       status: "done",
-      message:
-        `Fetched ${location.locationId}, but not one date had a candle-lighting time. ` +
-        `Worth reporting — the window covers thirteen Fridays, so this points at chabad.org ` +
-        `having changed what it sends.` +
-        screens,
+      label,
+      message: `Saved ${label}.${lighting} Chabad.org isn't turned on for this deployment, so no zmanim were fetched.`,
     };
   }
 
-  // How far ahead the screens are covered, which is the only thing this
-  // answers that a gabbai can act on. The day count is real now: this
-  // endpoint returns every day in the range, not only the candle-lighting
-  // ones, so both numbers mean something and they mean different things.
+  // Same function the cron calls (lib/zmanim/warm.ts) — one copy of the
+  // service-role-keyed write, so the two can't drift.
+  const location = resolveChabadLocation({ orgPostalCode: postcode });
+  const warm = location ? await warmChabadLocation({ ...location, timezone }) : null;
+
+  if (!warm || warm.status === "failed") {
+    return {
+      status: "done",
+      label,
+      message:
+        `Saved ${label}.${lighting} But fetching zmanim failed` +
+        `${warm && warm.status === "failed" ? `: ${warm.error}` : ""}. The daily fetch will try again.`,
+    };
+  }
+
+  // What happens to the screens, said out loud: `zmanim_cache` is read at
+  // BUILD time and frozen into each screen's bundle (lib/bundle/build.ts), so
+  // a warm that queues no rebuild changes nothing in any lobby. "About five
+  // minutes" is the build cron's own cadence (docs/environment.md).
+  const screens =
+    warm.screensQueued > 0
+      ? ` ${warm.screensQueued} ${warm.screensQueued === 1 ? "screen" : "screens"} will pick it up within about five minutes.`
+      : " No screen is waiting on it yet.";
+
   return {
     status: "done",
-    message:
-      `Fetched zmanim for ${location.locationId} through ${formatCoverageDate(lastDate)}. ` +
-      `${dates} days, ${datesWithCandleLighting} with candle lighting.` +
-      screens,
+    label,
+    message: `Saved ${label}.${lighting} Fetched today's zmanim.${screens}`,
   };
-}
-
-/** "2026-12-10" -> "December 10". Read out of a date chabad.org itself
- *  returned, so it is already the right calendar day in the shul's own
- *  zone — parsed as UTC noon rather than midnight so no timezone this
- *  formatter runs in can roll it back a day. */
-function formatCoverageDate(isoDate: string | null): string {
-  if (!isoDate) return "no date";
-  const parsed = new Date(`${isoDate}T12:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return isoDate;
-  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "UTC" }).format(parsed);
 }
 
 /**
