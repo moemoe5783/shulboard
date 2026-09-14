@@ -12,30 +12,7 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         <span className={PANEL_LABEL}>Show</span>
         <select
           value={config.displayMode}
-          onChange={(event) => {
-            const displayMode = event.target.value as CandleLightingConfig["displayMode"];
-            /*
-             * Picking "all" also switches the sizing mode to hug, and that
-             * is the whole answer to how these two settings interact —
-             * docs/sizing.md §2, and manifest.ts's own note on
-             * `displayMode`.
-             *
-             * The week's entry count varies (one most weeks, two or three
-             * around the chagim), which is §2's "content whose amount, not
-             * whose row design, changes at runtime" — the case hug exists
-             * for, and the only mode where overflow is structurally
-             * impossible rather than something to warn about. Leaving it on
-             * `fixed` would clip the busy week or waste the box the rest of
-             * the year; `fit` would rescale between counts and overflow at
-             * minFontSize anyway.
-             *
-             * Switching back to "next" does NOT undo it. Hug is a
-             * defensible mode for a single entry too (manifest.ts says so),
-             * and silently reverting a sizing choice the gabbai can see in
-             * the panel would be worse than leaving it where it landed.
-             */
-            onChange(displayMode === "all" ? { displayMode, sizingMode: "hug" } : { displayMode });
-          }}
+          onChange={(event) => onChange({ displayMode: event.target.value as CandleLightingConfig["displayMode"] })}
           className={PANEL_CONTROL}
         >
           <option value="next">Next only</option>
@@ -44,7 +21,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         </select>
         {config.displayMode === "all" && (
           <span className={PANEL_LABEL}>
-            Stacked, so the box hugs its own height — the week&rsquo;s count changes around Yom Tov.
+            Stacked and fit to the box — the type shrinks so a busier week around Yom Tov stays visible. Set the type
+            size above to resize the box to it.
           </span>
         )}
         {config.displayMode === "rotate" && (
@@ -94,6 +72,21 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
           className={PANEL_CHECKBOX}
         />
         <span className="text-cell text-paper">Show countdown</span>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={config.showShabbosEnd}
+            onChange={(event) => onChange({ showShabbosEnd: event.target.checked })}
+            className={PANEL_CHECKBOX}
+          />
+          <span className="text-cell text-paper">Show Shabbos end</span>
+        </span>
+        <span className={PANEL_LABEL}>
+          The Havdalah time too, in order with the candle lighting. From Chabad.org&rsquo;s four-week feed.
+        </span>
       </label>
 
       <label className="flex flex-col gap-1">

@@ -1,18 +1,15 @@
 /**
  * The Zmanim table's layout, measured in a real browser.
  *
- * Three of the widget's rules are claims about rendered pixels, and the
- * pure-function suites (test-zmanim-fit.ts, test-zmanim-overflow.ts) cannot
- * reach any of them. All three were reported from a live board:
+ * Two of the widget's rules are claims about rendered pixels, and the
+ * pure-function suite (test-zmanim-fit.ts) cannot reach either:
  *
- *  1. FIT IS WIDTH-DRIVEN. A wider box gives bigger type, a narrower box
- *     smaller, and the box's height changes nothing (widgets/zmanim/fit.ts) —
- *     height overflow scrolls instead.
- *  2. SWITCHING INTO FIT. "It stops resizing entirely." The fitted size has
- *     to land on the table a room can see. It used to land on the scroll
- *     seam's hidden copy, because both copies were rendered from one element
- *     and the duplicate's ref committed last.
- *  3. ALIGNMENT. "7:22 PM and 11:21 AM differ in digit count, so
+ *  1. FIT BOTH AXES. The type is the largest at which the whole table fits the
+ *     box — so a narrower box gives smaller type (width binds) AND a shorter
+ *     box gives smaller type (height binds). There is no sizing mode and no
+ *     scroll/page overflow any more (widgets/zmanim/fit.ts): a busier day or a
+ *     smaller box simply renders smaller.
+ *  2. ALIGNMENT. "7:22 PM and 11:21 AM differ in digit count, so
  *     right-aligning the whole string makes the two-digit hour hang out."
  *     The hour, the ":MM" and the meridiem each get a shared grid track, so
  *     the colons land on one x and the outer edge is straight.
@@ -106,11 +103,6 @@ async function stopServer(child) {
 /**
  * Everything one rendered table can say about itself.
  *
- * Reads the VISIBLE copy specifically — `[data-zmanim-lab] [data-widget-id]`
- * then its first grid, which is the one inside `children` rather than the
- * `aria-hidden` seam. That distinction is the whole of item 2: a test that
- * accepted either grid would have passed against the bug.
- *
  * Cells come back in document order, four per row (label, hours, minutes,
  * meridiem — reversed for a mirrored table), so the chunking below is the
  * Renderer's own emit order rather than a guess about selectors.
@@ -119,13 +111,12 @@ async function readTable(page) {
   return page.evaluate(() => {
     const lab = document.querySelector("[data-zmanim-lab]");
     const frame = lab?.querySelector("[data-widget-id]");
-    // The Renderer now wraps its box in an appearance frame (widgets/style.ts,
+    // The Renderer wraps its box in an appearance frame (widgets/style.ts,
     // transparent when unstyled), so the measured box — the one carrying the
     // fitted font size — is one level in from the widget frame.
     const box = frame?.firstElementChild?.firstElementChild;
     if (!box) return null;
-    const grids = box.querySelectorAll(".grid");
-    const grid = grids[0];
+    const grid = box.querySelector(".grid");
     if (!grid) return null;
 
     const mirrored = getComputedStyle(grid).direction === "rtl";
@@ -144,9 +135,6 @@ async function readTable(page) {
       });
     }
 
-    // The OverflowViewport's transform/animation wrapper: the box's own
-    // first child, which is where the scroll cycle is declared.
-    const wrapper = box.firstElementChild;
     return {
       mirrored,
       rows: rows.map((row) => ({
@@ -164,12 +152,6 @@ async function readTable(page) {
       fittedSize: box.dataset.fittedSize ?? null,
       boxFontSize: Number.parseFloat(getComputedStyle(box).fontSize),
       visibleFontSize: Number.parseFloat(getComputedStyle(grid).fontSize),
-      // Every `.grid` in the box: one while still, two while the seam is
-      // live. Their heights must match or the wrap is not seamless.
-      gridHeights: [...grids].map((one) => one.getBoundingClientRect().height),
-      gridFontSizes: [...grids].map((one) => Number.parseFloat(getComputedStyle(one).fontSize)),
-      animation: wrapper ? getComputedStyle(wrapper).animationName : null,
-      animationDuration: wrapper ? getComputedStyle(wrapper).animationDuration : null,
     };
   });
 }
@@ -205,10 +187,10 @@ try {
     return readTable(page);
   };
 
-  console.log("\n-- ITEM 3: the column's outer edge, and the colon ----------");
+  console.log("\n-- ITEM 2: the column's outer edge, and the colon ----------");
 
   for (const script of ["english", "transliteration"]) {
-    const table = await open(`sizing=fixed&overflow=clip&script=${script}&w=60&h=80`);
+    const table = await open(`script=${script}&w=60&h=80`);
     if (!table) {
       check(false, `${script}: the table rendered at all`);
       continue;
@@ -267,171 +249,67 @@ try {
     );
   }
 
-  console.log("\n-- ITEM 1: width drives the size, height does not -----------");
+  console.log("\n-- ITEM 1: fit shrinks the type on BOTH axes ----------------");
 
   {
-    // A wider box gives proportionally bigger type at a fixed height. w=40
-    // and w=80 both stay inside the min/max clamp, so the ratio is ~2.
-    const narrow = await open("sizing=fit&overflow=clip&script=english&w=40&h=70");
-    const wide = await open("sizing=fit&overflow=clip&script=english&w=80&h=70");
+    // WIDTH BINDS in a tall box: a narrower box gives smaller type. Both boxes
+    // are tall (h=90) so the widest row is the constraint in each, and the
+    // width ratio is ~2, so the fitted type is ~2× as well.
+    const narrow = await open("script=english&w=20&h=90");
+    const wide = await open("script=english&w=40&h=90");
     check(Number(narrow?.fittedSize) > 0, "the narrow box has a real fitted size", String(narrow?.fittedSize));
     check(
       Number(wide?.fittedSize) > Number(narrow?.fittedSize),
-      "a wider box fits to bigger type",
+      "a wider box (width-bound) fits to bigger type",
       `${narrow?.fittedSize} -> ${wide?.fittedSize}`,
     );
-    const ratio = Number(wide?.fittedSize) / Number(narrow?.fittedSize);
-    check(
-      Math.abs(ratio - 2) < 0.2,
-      "and proportionally — twice the width is about twice the type",
-      `${ratio.toFixed(2)}×`,
-    );
-
-    // A box too narrow for even the widest row at minFontSize settles at the
-    // minimum and the label truncates.
-    const squeezed = await open("sizing=fit&overflow=clip&script=english&w=8&h=70");
-    check(
-      Number(squeezed?.fittedSize) < Number(narrow?.fittedSize),
-      "while a very narrow box comes down to the minimum",
-      `${squeezed?.fittedSize} against ${narrow?.fittedSize}`,
-    );
+    const wRatio = Number(wide?.fittedSize) / Number(narrow?.fittedSize);
+    check(Math.abs(wRatio - 2) < 0.2, "and proportionally — twice the width is about twice the type", `${wRatio.toFixed(2)}×`);
   }
 
   {
-    // Height does NOT change the size — the same width at two heights fits to
-    // the same type; the taller box just shows more rows before it scrolls.
-    const short = await open("sizing=fit&overflow=clip&script=english&w=60&h=35");
-    const tall = await open("sizing=fit&overflow=clip&script=english&w=60&h=70");
+    // HEIGHT BINDS in a wide box: a shorter box gives smaller type. Both boxes
+    // are wide (w=90) so the stacked height is the constraint in each. This is
+    // the axis the old width-only fit ignored — the whole point of "both axes".
+    const short = await open("script=english&w=90&h=35");
+    const tall = await open("script=english&w=90&h=70");
     check(
-      Math.abs(Number(tall?.fittedSize) - Number(short?.fittedSize)) <= 1,
-      "twice the box height leaves the type size unchanged — height doesn't drive it",
-      `${short?.fittedSize} vs ${tall?.fittedSize}`,
+      Number(tall?.fittedSize) > Number(short?.fittedSize),
+      "a taller box (height-bound) fits to bigger type — height drives it too",
+      `${short?.fittedSize} -> ${tall?.fittedSize}`,
+    );
+    const hRatio = Number(tall?.fittedSize) / Number(short?.fittedSize);
+    check(Math.abs(hRatio - 2) < 0.25, "and proportionally — twice the height is about twice the type", `${hRatio.toFixed(2)}×`);
+  }
+
+  {
+    // A box too small for the table even at minFontSize settles at the minimum
+    // and the shared clip takes over — the one case "never clip" can't hold.
+    const roomy = await open("script=english&w=40&h=90");
+    const squeezed = await open("script=english&w=6&h=8");
+    check(
+      Number(squeezed?.fittedSize) < Number(roomy?.fittedSize),
+      "a tiny box on both axes comes down to the minimum",
+      `${squeezed?.fittedSize} against ${roomy?.fittedSize}`,
     );
   }
 
-  console.log("\n-- ITEM 2: fit sizes the table a room can SEE --------------");
+  console.log("\n-- ITEM 3: the fitted size lands on the visible table ------");
 
   {
-    /*
-     * THE REGRESSION. In `fit` + `scroll` the seam mounts a second copy of
-     * the list. Both copies used to come from one element, so every ref
-     * inside committed twice and the hidden one won — the measured size was
-     * written to the copy nobody sees, and the visible table sat at its
-     * inherited size (16px) forever. Switching modes made it collapse on
-     * the spot; a resize afterwards changed nothing at all.
-     */
-    const table = await open("sizing=fit&overflow=scroll&script=english&w=45&h=45");
-    check((table?.gridHeights.length ?? 0) === 2, "the seam is live: two copies of the list are mounted",
-      `${table?.gridHeights.length} grids`);
+    // The size written to the box is the size the grid actually renders at, and
+    // it matches what the properties panel reads back (data-fitted-size).
+    const table = await open("script=english&w=45&h=60");
     check(
-      Math.abs((table?.visibleFontSize ?? 0) - (table?.boxFontSize ?? -1)) < EPSILON &&
-        (table?.visibleFontSize ?? 0) > 25,
-      "and the VISIBLE copy carries the fitted size rather than an inherited default",
+      Math.abs((table?.visibleFontSize ?? 0) - (table?.boxFontSize ?? -1)) < EPSILON && (table?.visibleFontSize ?? 0) > 0,
+      "the grid renders at the size written to the box",
       `${table?.visibleFontSize?.toFixed(1)}px on screen, box at ${table?.boxFontSize?.toFixed(1)}px`,
-    );
-    check(
-      spread(table?.gridFontSizes ?? [0]) < EPSILON,
-      "both copies are at the same size, which is what makes the wrap invisible",
-      (table?.gridFontSizes ?? []).map((n) => n.toFixed(1)).join(" / "),
-    );
-    check(
-      spread(table?.gridHeights ?? [0]) < EPSILON,
-      "and therefore the same height",
-      (table?.gridHeights ?? []).map((n) => n.toFixed(1)).join(" / "),
     );
     check(
       Math.abs((table?.visibleFontSize ?? 0) - designToPx(table?.fittedSize)) < 1,
       "and the size the panel reports is the size the visible table is actually at",
       `${table?.fittedSize} units = ${designToPx(table?.fittedSize).toFixed(1)}px, measured ${table?.visibleFontSize?.toFixed(1)}px`,
     );
-
-    console.log("\n-- ITEM 4: the scroll is one CSS cycle, not a per-tick step -");
-    check(
-      table?.animation === "zmanim-scroll",
-      "the list is driven by the keyframes in app/globals.css",
-      String(table?.animation),
-    );
-    check(
-      Number.parseFloat(table?.animationDuration ?? "0") > 0,
-      "with a real duration, so one cycle is exactly one copy of the list",
-      String(table?.animationDuration),
-    );
-  }
-
-  {
-    // And the switch itself, which is how it was reported. `fit` is the
-    // lab's default, so this starts in `fixed` and presses the button.
-    // A shorter box than the block above, so the table overflows in `fixed`
-    // too and the seam is ALREADY mounted when the switch happens. That is
-    // the precondition the bug needed: a fresh mount in `fit` wrote the size
-    // before the duplicate existed and merely went stale afterwards, whereas
-    // switching wrote it straight into the hidden copy.
-    const before = await open("sizing=fixed&overflow=scroll&script=english&w=45&h=30");
-    check(before?.fittedSize === undefined || before?.fittedSize === null,
-      "in fixed mode there is no fitted size to report", String(before?.fittedSize));
-    check((before?.gridHeights.length ?? 0) === 2,
-      "and the seam is already mounted before the switch, which is what made this break",
-      `${before?.gridHeights.length} grids`);
-
-    await page.click("[data-toggle-sizing]");
-    await page.waitForTimeout(900);
-    const after = await readTable(page);
-    check(
-      Number(after?.fittedSize) > 0 &&
-        Math.abs((after?.visibleFontSize ?? 0) - (after?.boxFontSize ?? -1)) < EPSILON,
-      "switching into fit resizes the visible table rather than the hidden copy",
-      `${after?.fittedSize} design units, ${after?.visibleFontSize?.toFixed(1)}px on screen`,
-    );
-    check(
-      spread(after?.gridFontSizes ?? [0]) < EPSILON,
-      "and both copies move together, so the seam survives the switch",
-      (after?.gridFontSizes ?? []).map((n) => n.toFixed(1)).join(" / "),
-    );
-    check(
-      Math.abs((after?.visibleFontSize ?? 0) - designToPx(after?.fittedSize)) < 1,
-      "and the measured size is on the visible table — the assertion the old duplicate-ref bug failed",
-      `${after?.fittedSize} units = ${designToPx(after?.fittedSize).toFixed(1)}px, measured ${after?.visibleFontSize?.toFixed(1)}px`,
-    );
-    check(
-      after?.visibleFontSize !== before?.visibleFontSize,
-      "and the size actually changed, so the switch did something",
-      `${before?.visibleFontSize?.toFixed(1)}px -> ${after?.visibleFontSize?.toFixed(1)}px`,
-    );
-  }
-
-  console.log("\n-- ITEM 5: fixed + page shows only whole rows ---------------");
-
-  {
-    // Fixed size, paging, a box whose height is not a whole number of rows.
-    // The page must clip to whole rows so the next page's first row can't
-    // peek in at the bottom — without resizing the text.
-    await open("sizing=fixed&overflow=page&script=english&w=45&h=40");
-    const m = await page.evaluate(() => {
-      const lab = document.querySelector("[data-zmanim-lab]");
-      const frame = lab?.querySelector("[data-widget-id]");
-      const box = frame?.firstElementChild?.firstElementChild;
-      const grid = box?.querySelector(".grid");
-      if (!box || !grid) return null;
-      const rows = grid.children.length / 4; // label + three time cells per row
-      const rowHeight = grid.getBoundingClientRect().height / rows;
-      // In page mode the box's own child is the clip div (widgets/zmanim's
-      // OverflowViewport), whose height is the whole-rows page height.
-      const clip = box.firstElementChild;
-      return { boxHeight: box.clientHeight, clipHeight: clip.getBoundingClientRect().height, rowHeight, rows };
-    });
-
-    if (!m) {
-      check(false, "fixed+page rendered a table");
-    } else {
-      check(m.rows > 1 && m.rowHeight > 0, "the table has measurable rows", `${m.rows} rows, ${m.rowHeight.toFixed(1)}px each`);
-      check(m.clipHeight < m.boxHeight, "the page is clipped tighter than the box", `${m.clipHeight.toFixed(1)} < ${m.boxHeight}`);
-      // The clip is a whole number of rows: what's left over is less than one
-      // row, so no partial row is ever shown.
-      const remainder = m.clipHeight % m.rowHeight;
-      const wholeRows = remainder < 0.5 || m.rowHeight - remainder < 0.5;
-      check(wholeRows, "and it is a whole number of rows — nothing is cut off at the bottom", `${(m.clipHeight / m.rowHeight).toFixed(2)} rows`);
-      check(m.boxHeight - m.clipHeight < m.rowHeight, "the leftover space is under one row", `${(m.boxHeight - m.clipHeight).toFixed(1)}px`);
-    }
   }
 } finally {
   await browser.close();

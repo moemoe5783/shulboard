@@ -7,20 +7,19 @@
  * /font-parity — permanent rather than a throwaway, because
  * scripts/test-zmanim-layout.mjs drives it on every `npm test` run.
  *
- * WHY THIS EXISTS AT ALL. Three of the widget's rules are claims about
+ * WHY THIS EXISTS AT ALL. The widget's layout rules are claims about
  * rendered pixels, and none of them can be checked by a pure function:
  *
  *  - the time column's outer edge is straight whatever the hour's width
  *    (widgets/zmanim/Renderer.tsx's four-track grid),
- *  - narrowing a roomy box does not change the fitted type size
- *    (widgets/zmanim/fit.ts's width rule),
- *  - and in `fit` the size lands on the table a room can SEE, not on the
- *    scroll seam's hidden copy — which is the bug that made "switching into
- *    fit stops it resizing entirely".
+ *  - fit-to-box shrinks the type so the WHOLE table fits both axes — a
+ *    narrower or shorter box renders smaller, never clipped or scrolled
+ *    (widgets/zmanim/fit.ts).
  *
- * scripts/test-zmanim-fit.ts and test-zmanim-overflow.ts cover the
- * arithmetic with no DOM; this page is the other half, the part only a
- * browser can answer.
+ * The table is always fit-to-box now — there is no sizing mode to switch and
+ * no scroll/page overflow to choose; a busier day or a smaller box simply
+ * renders smaller. scripts/test-zmanim-fit.ts covers the arithmetic with no
+ * DOM; this page is the other half, the part only a browser can answer.
  *
  * THE CACHE IS SYNTHETIC, and deliberately so. A real 92-day fixture needs
  * the adapter, which is server-only, and it would pin the values to
@@ -32,7 +31,7 @@
  */
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { parseBoardDoc, type BoardDoc } from "@/lib/board-doc";
 import type { BoardZmanim } from "@/lib/board-zmanim";
@@ -171,13 +170,7 @@ function buildCache(script: "english" | "transliteration"): ChabadZmanimByDate {
   return { [date]: day1 };
 }
 
-function buildDoc(options: {
-  sizingMode: string;
-  overflow: string;
-  script: string;
-  w: number;
-  h: number;
-}): BoardDoc {
+function buildDoc(options: { script: string; w: number; h: number }): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
@@ -193,9 +186,6 @@ function buildDoc(options: {
         config: {
           zmanim: ROWS.map((row) => row.id),
           displayMode: "all",
-          sizingMode: options.sizingMode,
-          overflow: options.overflow,
-          scrollSpeed: "medium",
           labelScript: options.script,
           size: 32,
         },
@@ -206,42 +196,22 @@ function buildDoc(options: {
 
 function ZmanimLabInner() {
   const params = useSearchParams();
-  const overflow = params.get("overflow") ?? "page";
   const script = params.get("script") === "transliteration" ? "transliteration" : "english";
   const w = Number(params.get("w") ?? 60);
   const h = Number(params.get("h") ?? 60);
-
-  /*
-   * SIZING MODE IS STATE, not just a query param, and that is the whole
-   * point of the button below. The bug this page was added for only shows
-   * on a SWITCH into `fit` while the scroll seam is already mounted: a
-   * fresh mount in `fit` writes the size before the duplicate exists and
-   * then merely goes stale, whereas switching writes it straight to the
-   * hidden copy and the visible table collapses on the spot. A page that
-   * could only be navigated to would miss the second case.
-   */
-  const [sizingMode, setSizingMode] = useState(params.get("sizing") ?? "fit");
 
   const zmanim: BoardZmanim = {
     provider: "chabad",
     hasChabadLocation: true,
     chabadZmanim: buildCache(script),
   };
-  const doc = buildDoc({ sizingMode, overflow, script, w, h });
+  const doc = buildDoc({ script, w, h });
 
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center gap-3">
-        <button
-          type="button"
-          data-toggle-sizing
-          onClick={() => setSizingMode((mode) => (mode === "fit" ? "fixed" : "fit"))}
-          className="border-rule-firm h-8 rounded-[5px] border px-3 text-[13px]"
-        >
-          Sizing: {sizingMode} — switch
-        </button>
         <span className="text-ink-soft text-[13px]" data-lab-state>
-          {`${sizingMode} · ${overflow} · ${script} · ${w}×${h}%`}
+          {`fit · ${script} · ${w}×${h}%`}
         </span>
       </div>
       <div data-zmanim-lab style={{ position: "relative", ...BOARD_PX }}>

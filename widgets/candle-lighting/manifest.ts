@@ -28,10 +28,20 @@ export const candleLightingConfigSchema = z.object({
   nekudos: nekudosSchema,
   hour12: hour12Schema,
   showCountdown: z.boolean().default(true),
+  /**
+   * Also show the Shabbos/Yom-Tov end (Havdalah) time, interleaved in time
+   * order with the candle lighting(s) — off by default, because the widget's
+   * name is "candle lighting" and a shul that wants the end time asks for it.
+   * The time comes from Chabad's four-week embed (lib/zmanim/chabad-embed.ts);
+   * hebcal only says which dates end a Shabbos or Yom Tov.
+   */
+  showShabbosEnd: z.boolean().default(false),
   align: z.enum(["left", "center", "right"]).default("center"),
-  /** Design pixels. Read in `fixed` and `hug` modes; ignored in `fit`. */
+  /** Design pixels — used only for the empty-state message's size now. The
+   *  time block itself is always fit-to-box (see `sizing`); the box is what
+   *  sets its size. Kept in the schema so stored documents keep parsing, and
+   *  read by PropertiesPanel to resize the box to a typed size. */
   size: z.number().min(8).max(400).default(72),
-  sizingMode: z.enum(["fit", "fixed", "hug"]).default("fixed"),
   provider: candleLightingProviderSchema,
   /** Minutes before sunset — the Manual provider's own field, unread for
    *  the same reason `provider` is. Chabad publishes candle lighting 18
@@ -46,19 +56,12 @@ export const candleLightingConfigSchema = z.object({
    * abutting Shabbos produces a run. `"next"` is the behaviour before this
    * existed.
    *
-   * `"all"` INTERACTS WITH SIZING — docs/sizing.md §2. The entry count
-   * varies week to week (one most weeks, two or three around the chagim),
-   * which is exactly that section's "content whose amount, not whose row
-   * design, changes at runtime" and therefore exactly what `hug` is for:
-   * overflow is structurally impossible in that mode rather than something
-   * to warn about. In `fixed` the same box either clips the busy week or
-   * sits mostly empty the rest of the year — §2's own words. In `fit` it
-   * is worse than either: the type would rescale between one entry and
-   * three, hit `minFontSize`, and then overflow anyway. So Settings.tsx
-   * switches `sizingMode` to `"hug"` when this is set to `"all"`, and the
-   * Renderer additionally ignores fit measurement in this mode so a
-   * hand-edited `fit` config degrades to the declared size rather than to
-   * a scaling loop.
+   * `"all"` STACKS, AND THE FIT HANDLES THE VARYING COUNT. The entry count
+   * varies week to week (one most weeks, two or three around the chagim, and
+   * more once Shabbos ends are interleaved). With fit-to-box as the only
+   * sizing mode, that is no longer a special case: a busier week renders
+   * smaller so the whole stack stays visible, the same shrink a smaller box
+   * produces (widgets/useFitFontSize.ts). No mode switch, no clipping.
    */
   displayMode: z.enum(["next", "all", "rotate"]).default("next"),
   // Background, text colour, font, padding, radius — board content, shared
@@ -90,13 +93,22 @@ export const manifest: WidgetManifest<CandleLightingConfig> = {
   settingsSchema: candleLightingConfigSchema,
   dataNeeds,
   /**
-   * docs/sizing.md §2: defaults to `fixed`, Clock's own reasoning applied to
-   * a second live-updating readout — the countdown's own digit count keeps
-   * changing shape ("in 2h 15m" -> "in 9m" -> "in 42s"), which is the exact
-   * "worst possible behavior" case for `fit` mode Clock's manifest already
-   * names, just one level more volatile since it ticks every minute rather
-   * than every digit rollover. Toggleable — a two-line time+countdown block
-   * can still legitimately want to hug its own height.
+   * FIT TO BOX, AND ONLY FIT TO BOX — the same rule zmanim now follows. The
+   * time block (label, time, countdown, any Shabbos-end rows) always scales so
+   * the whole thing fits the box, shrinking as far as it must so nothing is cut
+   * off (widgets/useFitFontSize.ts). Fixed and Hug are gone.
+   *
+   * The countdown's own digit count changing shape ("in 2h 15m" -> "in 9m" ->
+   * "in 42s") was the argument for `fixed` here. It re-fits on each change, and
+   * a countdown that renders one step smaller as it lengthens is far less
+   * jarring than the clipping the old fixed default produced on a busy week or
+   * a small box.
+   *
+   * `userToggleable: false`, so the panel shows no mode switch. The "Type size"
+   * field it does show is editable and resizes the BOX to that size
+   * (PropertiesPanel): enter a size and the box grows or shrinks so the content
+   * renders at it; on the board, if content later grows, the type shrinks to
+   * fit rather than overflowing.
    */
-  sizing: { mode: "fixed", userToggleable: true, minFontSize: 14, maxFontSize: 400 },
+  sizing: { mode: "fit", userToggleable: false, minFontSize: 8, maxFontSize: 400 },
 };

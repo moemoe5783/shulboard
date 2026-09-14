@@ -152,11 +152,10 @@ function parseEntryDate(value: string): string | null {
 type Phrasing =
   | { kind: "candle_lighting" }
   | { kind: "shabbos_ends" }
-  /** The second night of a two-day Yom Tov: candles are lit from an
-   *  existing flame after nightfall, not before sunset. Known and
-   *  deliberately excluded, exactly as the JSON adapter excluded its
-   *  `ShabbatEndTime`/`LightCandlesAfter` equivalent. Not an error — a
-   *  real, expected entry this reader does not yet represent. */
+  /** The second night of a two-day Yom Tov: candles are lit from an existing
+   *  flame AFTER nightfall, not before sunset. Cached as a candle lighting
+   *  (see the reader) with an "after" footnote carrying that instruction, so
+   *  the board shows it rather than dropping it. */
   | { kind: "lights-after-nightfall" };
 
 /**
@@ -280,7 +279,6 @@ export async function fetchChabadEmbed(input: {
       // does not represent; either way a human has to look.
       throw new Error(`Chabad embed: unrecognised phrasing "${split[1]}" on ${isoDate}`);
     }
-    if (phrasing.kind === "lights-after-nightfall") continue;
 
     const clock = parseZmanTime(split[2]);
     if (!clock) throw new Error(`Chabad embed: unparseable time "${split[2]}" on ${isoDate}`);
@@ -288,14 +286,26 @@ export async function fetchChabadEmbed(input: {
     const [year, month, day] = isoDate.split("-").map(Number);
     const instant = zonedTimeToUtc(year, month, day, clock.hour, clock.minute, input.timeZone);
 
+    // "lights-after-nightfall" is still a candle lighting — the second night
+    // of a two-day Yom Tov, lit from an existing flame AFTER the time rather
+    // than before it. It is cached under `candle_lighting` (so the widget
+    // shows it) with a footnote that carries the "after" instruction, which is
+    // the halachic difference the board must not drop. Once dropped entirely;
+    // now shown, per the request to surface special instructions.
+    const id = phrasing.kind === "shabbos_ends" ? "shabbos_ends" : "candle_lighting";
+    const footnote =
+      phrasing.kind === "lights-after-nightfall"
+        ? { type: "after" as const, text: "Light candles after this time" }
+        : undefined;
+
     times[isoDate] ??= {};
-    times[isoDate][phrasing.kind] = {
+    times[isoDate][id] = {
       iso: instant.toISOString(),
       // Chabad's own rendered string, verbatim — plan.md §5c's "never
-      // re-round or recompute provider output". Unlike the JSON endpoint,
-      // this surface gives us the display string directly, so there is no
-      // reason to re-render it.
+      // re-round or recompute provider output". This surface gives the display
+      // string directly, so there is no reason to re-render it.
       display: split[2].replace(/\s+/g, " ").trim(),
+      ...(footnote ? { footnote } : {}),
     };
   }
 

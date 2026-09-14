@@ -8,6 +8,7 @@ import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardWidget } from "@/lib/board-doc";
+import { widgetRect } from "@/lib/editor/geometry";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
 import { getManifest } from "@/widgets/manifests";
 import { getSettings } from "@/widgets/settings";
@@ -54,6 +55,30 @@ function Body({
   // and null for anything but a single selection, which is what makes it a
   // no-op the rest of the time.
   const overflowing = useElementOverflow(selected.length === 1 ? selected[0].id : null);
+  const applyRects = useEditor((s) => s.applyRects);
+  const canvas = useEditor((s) => s.canvas);
+
+  /*
+   * Resize a fit-mode widget's BOX so its content renders at `target` design
+   * units — docs/sizing.md's properties-panel field, now editable in fit mode
+   * rather than read-only. Because a fit widget's type scales linearly with the
+   * box on both axes (widgets/useFitFontSize.ts and widgets/zmanim/fit.ts both
+   * take the smaller of the two drivers, and scaling the box uniformly scales
+   * both), the box just multiplies by `target / fitted`. Anchored on the box's
+   * centre so the element stays put rather than drifting toward a corner as it
+   * grows or shrinks. Single selection only — the fitted size is per-widget.
+   */
+  const resizeToTypeSize = (target: number, fitted: number) => {
+    if (selected.length !== 1 || fitted <= 0) return;
+    const widget = selected[0];
+    const k = target / fitted;
+    const rect = widgetRect(widget, canvas);
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const w = rect.w * k;
+    const h = rect.h * k;
+    applyRects("Resize to type size", { [widget.id]: { x: cx - w / 2, y: cy - h / 2, w, h } });
+  };
 
   if (selected.length === 0) {
     return (
@@ -116,6 +141,15 @@ function Body({
             mode={config.sizingMode ?? manifest.sizing.mode}
             size={config.size}
             onChange={(size) => setWidgetConfig(ids, { size })}
+            // Editable-in-fit (resize the box to the typed size) only for a
+            // widget whose ONLY mode is fit — zmanim and candle lighting. A
+            // widget that also offers Fixed (userToggleable) keeps fit
+            // read-only: setting a number there means switching to Fixed, which
+            // is the whole point of having the toggle. Single selection only —
+            // the fitted size is per-widget.
+            onResizeToFit={
+              selected.length === 1 && !manifest.sizing.userToggleable ? resizeToTypeSize : undefined
+            }
           />
         )}
 
@@ -226,30 +260,53 @@ function isTextSized(manifest: WidgetManifest<never>): boolean {
 
 /**
  * An objective, visible type size — docs/sizing.md's properties-panel
- * requirement, in board design units in every sizing mode. In `fit` mode
- * it's the computed result, read live off the DOM and shown read-only,
- * because the box is what's authoritative there; the field exists so an
- * author can *read* the number, not set it. In `fixed`/`hug` it's the
- * declared value driving the render, so it's the editable field this used to
- * be per-widget (e.g. clock/Settings.tsx's old "Size" field) before every
- * mode needed the same treatment in one place.
+ * requirement, in board design units in every sizing mode.
+ *
+ * In `fit` mode it shows the computed result, read live off the DOM. It is
+ * EDITABLE when a single widget is selected (`onResizeToFit` is provided):
+ * typing a size resizes the box so the content renders at it, rather than the
+ * author dragging the box until the read-only number lands where they want.
+ * The box stays authoritative — the field drives the box, the box drives the
+ * type — so on the board a busier day still shrinks the type to fit rather than
+ * overflowing. With more than one widget selected there is no single fitted
+ * size to edit, so it falls back to read-only.
+ *
+ * In `fixed`/`hug` it's the declared value driving the render — the editable
+ * field this used to be per-widget (e.g. clock/Settings.tsx's old "Size" field)
+ * before every mode needed the same treatment in one place.
  */
 function TypeSizeField({
   widgetId,
   mode,
   size,
   onChange,
+  onResizeToFit,
 }: {
   widgetId: string;
   mode: SizingMode;
   size: number | undefined;
   onChange: (size: number) => void;
+  onResizeToFit?: (target: number, fitted: number) => void;
 }) {
   // Only meaningful in fit mode, but calling the hook unconditionally keeps
   // Rules of Hooks simple — reading it here costs nothing when unused.
   const fitted = useElementFontSize(widgetId);
 
   if (mode === "fit") {
+    if (onResizeToFit && fitted !== null) {
+      return (
+        <div className="mb-3">
+          <NumberField
+            label="Type size"
+            value={fitted}
+            onChange={(target) => onResizeToFit(target, fitted)}
+            min={8}
+            max={400}
+            title="Resizes the box so the content renders at this size. A busier day still shrinks to fit."
+          />
+        </div>
+      );
+    }
     return (
       <div className="mb-3">
         <NumberField

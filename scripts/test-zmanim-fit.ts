@@ -2,17 +2,22 @@
  * widgets/zmanim/fit.ts — what `fit` means for the Zmanim table, driven
  * directly with no DOM.
  *
- * The Renderer measures two numbers (the box's width, and the widest row's
- * width per pixel of font size) and hands them here. What decides the type
- * size is one clamp over those, which is why it is a pure function: what the
- * rules imply is exactly the kind of thing a comment can claim and a test can
- * check.
+ * The Renderer measures four numbers (the box's width and height, and the
+ * content's width and height per pixel of font size) and hands them here. What
+ * decides the type size is one closed-form min-and-clamp over those, which is
+ * why it is a pure function: what the rules imply is exactly the kind of thing
+ * a comment can claim and a test can check.
  *
  * THE RULES, restated so a failure here reads against them:
- *   1. Width drives the size. Wider box, bigger text; narrower box, smaller.
- *   2. Height is ignored entirely — it never touches the size.
- *   3. The whole row is kept visible down to minFontSize, then the label
- *      truncates (its track is built for it).
+ *   1. FIT BOTH AXES. The size is the largest at which the whole table — every
+ *      row's full text AND all the rows stacked — still fits the box. That is
+ *      the smaller of the width-driven and height-driven sizes.
+ *   2. Width binds in a tall box (the widest row would overflow first); height
+ *      binds in a short box (the stack would overflow first). Whichever binds
+ *      sets the size.
+ *   3. Shrink to fit, never clip. A busier day or a smaller box renders
+ *      smaller, down to minFontSize; only a box too small even at minFontSize
+ *      settles there and lets the shared clip take over.
  */
 
 import { fitFontSizePx } from "../widgets/zmanim/fit.ts";
@@ -24,107 +29,105 @@ function check(ok: boolean, label: string, detail: string | number | null | unde
 }
 
 /*
- * A plausible row's full width, in em per pixel of font size — the widest
- * label, the gap, and the time together. This is the one ratio the function
- * takes, and `fit` keeps all of it visible.
+ * Plausible content ratios, in px of content per px of font size.
  *
- * `11:21 AM` is eight tabular figures at ~0.563em, a sixteen-character label
- * at ~0.5em, and the 1em gap between them: about 13em of width per em of type.
+ * WIDTH: the widest row's full text — a sixteen-character label, the gap, and
+ * "11:21 AM" — at about 13em of width per em of type.
+ * HEIGHT: eleven rows stacked at roughly 1.25em line height each, about 14em of
+ * height per em of type.
  */
-const ROW_WIDTH_RATIO = 13.1;
-const BOUNDS = { minPx: 14, maxPx: 200 };
+const WIDTH_RATIO = 13.1;
+const HEIGHT_RATIO = 14;
+const BOUNDS = { minPx: 6, maxPx: 200 };
 
-const size = (boxWidthPx: number, widthRatio = ROW_WIDTH_RATIO) =>
-  fitFontSizePx({ boxWidthPx, rowWidthPerFontPx: widthRatio }, BOUNDS);
+const size = (
+  boxWidthPx: number,
+  boxHeightPx: number,
+  widthPerFontPx = WIDTH_RATIO,
+  heightPerFontPx = HEIGHT_RATIO,
+) => fitFontSizePx({ boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx }, BOUNDS);
 
-console.log("\n-- rule 1: width drives the size ----------------------------");
+console.log("\n-- rule 1: the size is the smaller of the two axes ----------");
 
 {
-  const narrow = size(300);
-  const wide = size(600);
-  check(wide > narrow, "a wider box gives bigger text", `${narrow.toFixed(1)} -> ${wide.toFixed(1)}`);
+  // A tall box: width is the binding constraint, so the size is width-driven.
+  const wide = 600;
+  const tall = 100_000;
   check(
-    Math.abs(wide / narrow - 2) < 0.001,
-    "and proportionally so — twice the width is twice the type",
-    (wide / narrow).toFixed(3),
+    Math.abs(size(wide, tall) - wide / WIDTH_RATIO) < 0.001,
+    "in a tall box the width drives the size",
+    size(wide, tall).toFixed(2),
   );
+
+  // A wide box: height is the binding constraint, so the size is height-driven.
+  const shortH = 200;
   check(
-    Math.abs(size(400) - 400 / ROW_WIDTH_RATIO) < 0.001,
-    "the size is the box width over the widest row's width per pixel of type",
-    size(400).toFixed(2),
+    Math.abs(size(100_000, shortH) - shortH / HEIGHT_RATIO) < 0.001,
+    "in a wide box the height drives the size",
+    size(100_000, shortH).toFixed(2),
+  );
+
+  // With both finite, it is always the smaller of the two.
+  const both = size(600, 200);
+  check(
+    Math.abs(both - Math.min(600 / WIDTH_RATIO, 200 / HEIGHT_RATIO)) < 0.001,
+    "with both axes finite the size is the smaller of the two",
+    both.toFixed(2),
   );
 }
 
-console.log("\n-- rule 1: the whole row is kept visible --------------------");
+console.log("\n-- rule 2: both axes shrink the type ------------------------");
 
 {
-  // At the fitted size the widest row is exactly as wide as the box — every
-  // label reads in full, which is what "fit to box" now means here.
-  const boxWidth = 500;
-  const fitted = size(boxWidth);
-  check(
-    Math.abs(fitted * ROW_WIDTH_RATIO - boxWidth) < 0.001,
-    "the widest row fills the box width exactly at the fitted size — nothing truncates",
-    `${(fitted * ROW_WIDTH_RATIO).toFixed(1)}px of row in ${boxWidth}px`,
-  );
+  const roomy = size(600, 800);
+  const narrower = size(300, 800);
+  const shorter = size(600, 400);
+  check(narrower < roomy, "a narrower box gives smaller text", `${roomy.toFixed(1)} -> ${narrower.toFixed(1)}`);
+  check(shorter < roomy, "a shorter box gives smaller text", `${roomy.toFixed(1)} -> ${shorter.toFixed(1)}`);
 }
 
-console.log("\n-- rule 2: height is ignored --------------------------------");
+console.log("\n-- rule 3: a returning row tracks the fit -------------------");
 
 {
   /*
-   * The function takes no height at all, so there is nothing a taller or
-   * shorter box could change. That is the whole of rule 2: a taller box shows
-   * MORE rows at the same size (the overflow mode carries the rest — see
-   * ./overflow.ts), it never shrinks the type to fit them.
+   * A Friday's "Candle Lighting" is a wider row AND one more line than a
+   * weekday's, so both ratios grow and the type eases down to keep the whole
+   * table visible — then back up when the row leaves.
    */
-  check(
-    size(500) === size(500),
-    "the function takes no box height, so resizing the height cannot move the size",
-    size(500).toFixed(1),
-  );
-}
-
-console.log("\n-- rule 1: a returning row tracks the width ------------------");
-
-{
-  /*
-   * The day-to-day wobble is deliberate now, and it is the cost of keeping
-   * every label visible. A Friday's "Candle Lighting" is a wider row than a
-   * weekday's widest, so in a fixed box it eases the type down a little to
-   * keep it in view — and back up when the row leaves.
-   */
-  const boxWidth = 400;
-  const weekdayRow = 12.4;
-  const fridayRow = 13.1;
-  check(
-    size(boxWidth, fridayRow) < size(boxWidth, weekdayRow),
-    "a wider Friday row gives slightly smaller type in the same box, so it stays fully visible",
-    `${size(boxWidth, weekdayRow).toFixed(1)} -> ${size(boxWidth, fridayRow).toFixed(1)}`,
-  );
+  const w = 400;
+  const h = 400;
+  const weekday = size(w, h, 12.4, 13);
+  const friday = size(w, h, 13.1, 14);
+  check(friday < weekday, "a busier week gives slightly smaller type, so it all stays visible", `${weekday.toFixed(1)} -> ${friday.toFixed(1)}`);
 }
 
 console.log("\n-- the bounds ------------------------------------------------");
 
 {
-  check(size(100_000) === BOUNDS.maxPx, "a very wide box stops at maxFontSize", size(100_000));
-  check(size(1) === BOUNDS.minPx, "a box too narrow for the row even at minFontSize settles there", size(1));
+  check(size(100_000, 100_000) === BOUNDS.maxPx, "a huge box stops at maxFontSize", size(100_000, 100_000));
+  check(size(1, 1) === BOUNDS.minPx, "a box too small for the table even at minFontSize settles there", size(1, 1));
 }
 
 console.log("\n-- degenerate measurements never produce a broken size ------");
 
 {
-  const unmeasured = fitFontSizePx({ boxWidthPx: 0, rowWidthPerFontPx: 0 }, BOUNDS);
+  const unmeasured = fitFontSizePx({ boxWidthPx: 0, boxHeightPx: 0, widthPerFontPx: 0, heightPerFontPx: 0 }, BOUNDS);
   check(
     Number.isFinite(unmeasured) && unmeasured >= BOUNDS.minPx,
     "zeroes give a real number inside the bounds, not NaN",
     unmeasured,
   );
-  const noRow = fitFontSizePx({ boxWidthPx: 500, rowWidthPerFontPx: 0 }, BOUNDS);
+  const noContent = fitFontSizePx({ boxWidthPx: 500, boxHeightPx: 500, widthPerFontPx: 0, heightPerFontPx: 0 }, BOUNDS);
   check(
-    noRow === BOUNDS.maxPx,
-    "an unmeasurable row falls through to maxFontSize rather than collapsing to zero",
-    noRow.toFixed(1),
+    noContent === BOUNDS.maxPx,
+    "unmeasurable content falls through to maxFontSize rather than collapsing to zero",
+    noContent.toFixed(1),
+  );
+  const onlyHeight = fitFontSizePx({ boxWidthPx: 500, boxHeightPx: 200, widthPerFontPx: 0, heightPerFontPx: HEIGHT_RATIO }, BOUNDS);
+  check(
+    Math.abs(onlyHeight - 200 / HEIGHT_RATIO) < 0.001,
+    "with only one axis measurable, that axis alone drives the size",
+    onlyHeight.toFixed(2),
   );
 }
 

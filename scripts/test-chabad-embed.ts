@@ -11,9 +11,10 @@
  *
  * It happens to carry the whole three-way distinction this parser exists
  * for, in consecutive entries: 9/11 "at" (candle lighting), 9/12 "after"
- * (second night of Rosh Hashanah, lit from an existing flame — NOT candle
- * lighting), 9/13 "Holiday Ends". It also carries two phrasings the brief
- * for this work did not mention, which is exactly why the fixture is real.
+ * (second night of Rosh Hashanah, lit from an existing flame — a candle
+ * lighting the widget marks with an "after" footnote rather than dropping),
+ * 9/13 "Holiday Ends". It also carries two phrasings the brief for this work
+ * did not mention, which is exactly why the fixture is real.
  *
  * Run with: npm run test:chabad-embed — not plain `node`. The module under
  * test imports `server-only`, which throws unless the `react-server`
@@ -99,17 +100,18 @@ check(
 );
 
 check(
-  result.times["2026-09-12"]?.candle_lighting === undefined,
-  "9/12 \"Light Holiday Candles after&nbsp;8:14 PM\" is NOT candle_lighting — second night, lit after nightfall",
-  JSON.stringify(result.times["2026-09-12"]),
+  result.times["2026-09-12"]?.candle_lighting?.display === "8:14 PM",
+  "9/12 \"Light Holiday Candles after&nbsp;8:14 PM\" IS candle_lighting 8:14 PM — the second night, kept so the board can show it",
+  JSON.stringify(result.times["2026-09-12"]?.candle_lighting),
 );
 check(
-  result.times["2026-09-12"] === undefined,
-  "9/12 has no entry at all — the after-nightfall case is excluded, not stored under some other id",
+  result.times["2026-09-12"]?.candle_lighting?.footnote?.type === "after",
+  "and it carries the `after` footnote — the instruction the widget shows (\"light candles after this time\")",
+  JSON.stringify(result.times["2026-09-12"]?.candle_lighting?.footnote),
 );
 check(
-  !JSON.stringify(result.times).includes("8:14"),
-  "8:14 PM appears nowhere in the parsed output",
+  JSON.stringify(result.times).includes("8:14"),
+  "8:14 PM appears in the parsed output — no longer dropped",
 );
 
 check(
@@ -144,9 +146,25 @@ const candleLightingDates = Object.keys(result.times)
   .filter((date) => result.times[date].candle_lighting)
   .sort();
 check(
-  candleLightingDates.join(",") === "2026-09-11,2026-09-18,2026-09-20,2026-09-25,2026-10-02",
-  "five candle lightings across the 13 entries, and the two `after` entries are not among them",
+  candleLightingDates.join(",") ===
+    "2026-09-11,2026-09-12,2026-09-18,2026-09-20,2026-09-25,2026-09-26,2026-10-02,2026-10-03",
+  "every candle lighting is stored — the `at` phrasings AND the after-nightfall ones",
   candleLightingDates.join(","),
+);
+
+// The after-nightfall entries are the ones carrying the `after` footnote; the
+// plain "at" ones carry none. That footnote is the only thing that tells a
+// board to light AFTER the time rather than before it.
+const afterDates = candleLightingDates.filter((date) => result.times[date].candle_lighting?.footnote?.type === "after");
+check(
+  afterDates.join(",") === "2026-09-12,2026-09-26,2026-10-03",
+  "the after-nightfall lightings are exactly the ones with an `after` footnote",
+  afterDates.join(","),
+);
+check(
+  result.times["2026-09-11"]?.candle_lighting?.footnote === undefined,
+  "and a plain \"light candles at\" lighting carries no footnote",
+  JSON.stringify(result.times["2026-09-11"]?.candle_lighting?.footnote),
 );
 
 // ---- item 3: location verification is load-bearing ---------------------
