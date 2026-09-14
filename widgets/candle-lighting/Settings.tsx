@@ -2,6 +2,7 @@
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
+import { StyleControls } from "../StyleControls";
 import type { CandleLightingConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightingConfig>) {
@@ -128,6 +129,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         the same reason: Chabad publishes candle lighting 18 minutes before
         sunset itself, so there is nothing left for it to adjust.
       */}
+
+      <StyleControls config={config} onChange={onChange} />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { splitTimeColumns } from "./display-time";
 import { fitFontSizePx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 import { overflowState } from "./overflow";
+import { widgetStyle } from "../style";
 
 /** The footnote block, relative to a row's own type size. Small — it is a
  *  sentence of prose sitting under a table of figures, and it must never
@@ -125,8 +126,17 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     signature: rows.map(labelOf).join("|"),
   });
 
+  /*
+   * The widget's own background, padding, radius, text colour and font — board
+   * content (../style.ts, design.md §1b). Applied to an outer frame that fills
+   * the widget box, so the inner `boxRef` measures the padded content area (the
+   * fit reads its clientWidth) rather than the frame. Every render branch is
+   * wrapped, so a styled box keeps its background even in an empty state.
+   */
+  const frame = (node: React.ReactNode) => <div style={widgetStyle(config, canvas.width)}>{node}</div>;
+
   if (!location) {
-    return <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — zmanim need it." />;
+    return frame(<EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — zmanim need it." />);
   }
   // A distinct gap from the one above, and checked separately for the
   // reason candle-lighting's Renderer gives: lat/long can be set while the
@@ -134,16 +144,16 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   // "no times for this date," which is a different and temporary
   // condition.
   if (chabadUnconfigured) {
-    return (
+    return frame(
       <EmptyLocation
         canvas={canvas}
         message="This shul hasn't set a ZIP or Chabad.org location yet — zmanim need it."
-      />
+      />,
     );
   }
 
   if (config.zmanim.length === 0) {
-    return <EmptyLocation canvas={canvas} message="No zmanim chosen yet — pick which times to show." />;
+    return frame(<EmptyLocation canvas={canvas} message="No zmanim chosen yet — pick which times to show." />);
   }
 
   /*
@@ -162,7 +172,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
    * failed.
    */
   if (rows.length === 0) {
-    return (
+    return frame(
       <div className="flex h-full w-full flex-col justify-center">
         <span
           className="leading-tight opacity-60"
@@ -170,7 +180,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
         >
           No zmanim for this date
         </span>
-      </div>
+      </div>,
     );
   }
 
@@ -244,7 +254,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     </div>
   );
 
-  return (
+  return frame(
     <div
       ref={boxRef}
       /*
@@ -508,7 +518,7 @@ function OverflowViewport({
   const elapsedSeconds =
     second === null || origin === null || origin.key !== cycleKey ? null : second - origin.second;
 
-  const { offset, animate, scrollSeconds } = overflowState({
+  const { offset, animate, scrollSeconds, pageHeight } = overflowState({
     mode,
     elapsedSeconds,
     boxHeight,
@@ -532,7 +542,7 @@ function OverflowViewport({
     ? { animation: `zmanim-scroll ${scrollSeconds}s linear infinite` }
     : { transform: offset === 0 ? undefined : `translateY(${-offset}px)` };
 
-  return (
+  const content = (
     <div className="w-full" style={motion}>
       {children}
       {/* The seam. A second copy of the list is what makes the wrap
@@ -546,6 +556,18 @@ function OverflowViewport({
         </div>
       )}
     </div>
+  );
+
+  /*
+   * In `page` mode, clip to whole rows rather than to the full box, so the
+   * next page's first row can't peek in at the bottom half-shown (./overflow.ts
+   * `pageHeight`). Every other mode keeps the box's own clip — `pageHeight` is
+   * zero there.
+   */
+  return pageHeight > 0 ? (
+    <div style={{ height: `${pageHeight}px`, overflow: "hidden" }}>{content}</div>
+  ) : (
+    content
   );
 }
 

@@ -119,7 +119,10 @@ async function readTable(page) {
   return page.evaluate(() => {
     const lab = document.querySelector("[data-zmanim-lab]");
     const frame = lab?.querySelector("[data-widget-id]");
-    const box = frame?.firstElementChild;
+    // The Renderer now wraps its box in an appearance frame (widgets/style.ts,
+    // transparent when unstyled), so the measured box — the one carrying the
+    // fitted font size — is one level in from the widget frame.
+    const box = frame?.firstElementChild?.firstElementChild;
     if (!box) return null;
     const grids = box.querySelectorAll(".grid");
     const grid = grids[0];
@@ -394,6 +397,41 @@ try {
       "and the size actually changed, so the switch did something",
       `${before?.visibleFontSize?.toFixed(1)}px -> ${after?.visibleFontSize?.toFixed(1)}px`,
     );
+  }
+
+  console.log("\n-- ITEM 5: fixed + page shows only whole rows ---------------");
+
+  {
+    // Fixed size, paging, a box whose height is not a whole number of rows.
+    // The page must clip to whole rows so the next page's first row can't
+    // peek in at the bottom — without resizing the text.
+    await open("sizing=fixed&overflow=page&script=english&w=45&h=40");
+    const m = await page.evaluate(() => {
+      const lab = document.querySelector("[data-zmanim-lab]");
+      const frame = lab?.querySelector("[data-widget-id]");
+      const box = frame?.firstElementChild?.firstElementChild;
+      const grid = box?.querySelector(".grid");
+      if (!box || !grid) return null;
+      const rows = grid.children.length / 4; // label + three time cells per row
+      const rowHeight = grid.getBoundingClientRect().height / rows;
+      // In page mode the box's own child is the clip div (widgets/zmanim's
+      // OverflowViewport), whose height is the whole-rows page height.
+      const clip = box.firstElementChild;
+      return { boxHeight: box.clientHeight, clipHeight: clip.getBoundingClientRect().height, rowHeight, rows };
+    });
+
+    if (!m) {
+      check(false, "fixed+page rendered a table");
+    } else {
+      check(m.rows > 1 && m.rowHeight > 0, "the table has measurable rows", `${m.rows} rows, ${m.rowHeight.toFixed(1)}px each`);
+      check(m.clipHeight < m.boxHeight, "the page is clipped tighter than the box", `${m.clipHeight.toFixed(1)} < ${m.boxHeight}`);
+      // The clip is a whole number of rows: what's left over is less than one
+      // row, so no partial row is ever shown.
+      const remainder = m.clipHeight % m.rowHeight;
+      const wholeRows = remainder < 0.5 || m.rowHeight - remainder < 0.5;
+      check(wholeRows, "and it is a whole number of rows — nothing is cut off at the bottom", `${(m.clipHeight / m.rowHeight).toFixed(2)} rows`);
+      check(m.boxHeight - m.clipHeight < m.rowHeight, "the leftover space is under one row", `${(m.boxHeight - m.clipHeight).toFixed(1)}px`);
+    }
   }
 } finally {
   await browser.close();

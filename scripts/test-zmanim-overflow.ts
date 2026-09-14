@@ -97,6 +97,12 @@ console.log("\n-- page: whole rows, a plain swap, and it comes back -------");
   // A whole cycle: back to the top, not off the end.
   const wrapped = overflowState({ mode: "page", elapsedSeconds: PAGE_SECONDS * 2, ...TWELVE });
   check(wrapped.offset === 0, "and it returns to the top rather than running past the last row", wrapped.offset);
+
+  // THE CLIP HEIGHT is whole rows, not the full box, so the next page's first
+  // row can't peek in at the bottom half-shown. 9 rows × 42px = 378, inside
+  // the 400px box.
+  check(first.pageHeight === 9 * 42, "the page is clipped to nine whole rows, not the full 400px box", first.pageHeight);
+  check(first.pageHeight <= 400, "so the clip never exceeds the box height", first.pageHeight);
 }
 
 {
@@ -117,6 +123,9 @@ console.log("\n-- page: whole rows, a plain swap, and it comes back -------");
   check(tiny.rowsPerPage === 1, "a box shorter than a single row still pages one row at a time", tiny.rowsPerPage);
   check(tiny.pages === 12, "which is twelve pages", tiny.pages);
   check(Number.isFinite(tiny.offset), "and the offset is a real number", tiny.offset);
+  // The one row is taller than the box, so the clip caps at the box height
+  // rather than a taller-than-box pageHeight that would do nothing.
+  check(tiny.pageHeight === 20, "the clip caps at the box height when a single row is taller than it", tiny.pageHeight);
 }
 
 console.log("\n-- scroll: one cycle, declared to CSS rather than stepped ---");
