@@ -79,6 +79,19 @@ export type OverflowState = {
   rowsPerPage: number;
   /** How many pages the rows divide into. 1 when nothing overflows. */
   pages: number;
+  /**
+   * The exact height, in CSS pixels, a page should be clipped to — whole rows
+   * only (`rowsPerPage × rowHeight`), which is `<= boxHeight`.
+   *
+   * WHY THIS EXISTS: the offset already advances by whole rows, but the box is
+   * taller than `rowsPerPage` rows whenever its height isn't an exact multiple
+   * of the row height — so the first row of the NEXT page peeks in at the
+   * bottom, cut off. Clipping the viewport to this height instead of the full
+   * box shows only the rows that fit completely, with no resize. Zero for every
+   * mode but `page`, and whenever nothing overflows — the caller then clips to
+   * the box as before.
+   */
+  pageHeight: number;
 };
 
 const STILL: OverflowState = {
@@ -88,6 +101,7 @@ const STILL: OverflowState = {
   scrollSeconds: 0,
   rowsPerPage: 0,
   pages: 1,
+  pageHeight: 0,
 };
 
 /**
@@ -215,6 +229,7 @@ export function overflowState(input: {
       scrollSeconds,
       rowsPerPage: rowCount,
       pages: 1,
+      pageHeight: 0,
     };
   }
 
@@ -239,5 +254,11 @@ export function overflowState(input: {
     scrollSeconds: 0,
     rowsPerPage,
     pages,
+    // Clip to exactly the rows that fit, so no partial row shows at the
+    // bottom. Capped at boxHeight for the degenerate case of a single row
+    // taller than the box (rowsPerPage floors to 1), where clipping to a
+    // taller-than-box height would do nothing and letting it exceed the box
+    // is harmless.
+    pageHeight: Math.min(boxHeight, rowsPerPage * rowHeight),
   };
 }

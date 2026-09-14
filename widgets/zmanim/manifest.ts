@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { hour12Schema } from "@/lib/hebrew/format";
+import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
 /**
@@ -140,6 +141,9 @@ export const zmanimConfigSchema = z.object({
   labelScript: z
     .preprocess((value) => (value === "hebrew" ? "transliteration" : value), z.enum(["english", "transliteration"]))
     .default("english"),
+  // Background, text colour, font, padding, radius — board content, shared
+  // with candle lighting (../style.ts).
+  ...widgetStyleFields,
   /**
    * The provider's halachic footnotes, under the table.
    *

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { hour12Schema, nekudosSchema, scriptSchema } from "@/lib/hebrew/format";
+import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
 /**
@@ -60,6 +61,9 @@ export const candleLightingConfigSchema = z.object({
    * a scaling loop.
    */
   displayMode: z.enum(["next", "all", "rotate"]).default("next"),
+  // Background, text colour, font, padding, radius — board content, shared
+  // with zmanim (../style.ts).
+  ...widgetStyleFields,
 });
 
 export type CandleLightingConfig = z.infer<typeof candleLightingConfigSchema>;

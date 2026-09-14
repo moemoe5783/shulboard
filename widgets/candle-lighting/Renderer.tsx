@@ -12,6 +12,7 @@ import { WEEK_DAYS, resolveCandleLightings } from "@/lib/zmanim/resolve";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
+import { widgetStyle } from "../style";
 import { manifest, type CandleLightingConfig } from "./manifest";
 
 const LABEL_SCALE = 0.4;
@@ -110,8 +111,16 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
     deps: [shown.map((entry) => entry.time.getTime()).join(",")],
   });
 
+  // The widget's own background, padding, radius, text colour and font — board
+  // content (../style.ts, design.md §1b), on an outer frame that fills the box
+  // and wraps every render branch so a styled box keeps its background even in
+  // an empty state.
+  const frame = (node: React.ReactNode) => <div style={widgetStyle(config, canvas.width)}>{node}</div>;
+
   if (!location) {
-    return <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — candle lighting needs it." />;
+    return frame(
+      <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — candle lighting needs it." />,
+    );
   }
   // A distinct gap from the one above: lat/long can be set while the
   // separate ZIP/Chabad-location fields this provider also needs are not —
@@ -120,11 +129,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   // read as "no time for this date," which is a different and temporary
   // condition.
   if (chabadUnconfigured) {
-    return (
+    return frame(
       <EmptyLocation
         canvas={canvas}
         message="This shul hasn't set a ZIP or Chabad.org location yet — candle lighting needs it."
-      />
+      />,
     );
   }
 
@@ -154,7 +163,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
    * instruction to anyone walking past.
    */
   if (resolution?.status === "unavailable") {
-    return (
+    return frame(
       <div className={`flex h-full w-full flex-col justify-center ${align}`}>
         <span
           className="leading-tight opacity-60"
@@ -166,13 +175,13 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         >
           No candle lighting time for this date
         </span>
-      </div>
+      </div>,
     );
   }
 
   if (!now || shown.length === 0) return null;
 
-  return (
+  return frame(
     <div ref={boxRef} className={`relative flex h-full w-full flex-col justify-center ${align}`}>
       <div
         ref={contentRef}
@@ -236,25 +245,19 @@ function Entry({
   now: Date;
 }) {
   /*
-   * The label comes from @hebcal/core's event for this DATE — which is what
-   * identified the date in the first place. The TIME is Chabad's; hebcal is
-   * the calendar, Chabad is the clock.
-   *
-   * WHAT THE EVENT ACTUALLY CONTRIBUTES IS THE LOCALISATION, not the
-   * occasion. A `CandleLightingEvent`'s `renderBrief` is "Candle lighting"
-   * on every one of them — measured: Erev Rosh Hashanah, Erev Yom Kippur
-   * and an ordinary Friday all return the same string, because the Yom Tov
-   * name lives on the event's `linkedEvent` and not on the event itself.
-   * An earlier version of this comment claimed a Yom Tov got its own name
-   * here; it does not, and nothing on a board ever showed one.
-   *
-   * So this is `formatEventLabel` rather than `formatCandleLightingLabel`
-   * only because the event is already in hand — the two produce the same
-   * string for this event type. Naming the occasion would mean reading
-   * `linkedEvent`, which is a change to what boards show and not one this
-   * work made.
+   * The label NAMES THE OCCASION, which is what tells two candle lightings in
+   * one week apart. A `CandleLightingEvent`'s own `renderBrief` is "Candle
+   * lighting" on every one of them — so a week with a Friday and an Erev Yom
+   * Tov used to show "Candle lighting" twice, indistinguishable. The Yom Tov
+   * name lives on the event's `linkedEvent` (the holiday), so this reads that
+   * when there is one and falls back to the event itself — which renders
+   * "Candle lighting" — for an ordinary Friday, where `linkedEvent` is
+   * undefined (the parsha goes to `.memo`, not here — see @hebcal/core's
+   * calendar.js). The TIME is still Chabad's; hebcal is the calendar, Chabad
+   * is the clock.
    */
-  const label = formatEventLabel(entry.event, { script: config.script, nekudos: config.nekudos });
+  const occasion = entry.event.linkedEvent ?? entry.event;
+  const label = formatEventLabel(occasion, { script: config.script, nekudos: config.nekudos });
 
   const time = formatTimeOfDay(entry.time, { hour12: config.hour12, timeZone });
   const countdown = formatCountdown(entry.time.getTime() - now.getTime());

@@ -3,6 +3,7 @@
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { CANONICAL_ZMAN_ORDER, CHABAD_SUPPLIES, ZMAN_PANEL_LABEL } from "@/lib/zmanim/zman";
 import type { WidgetSettingsProps } from "@/widgets/types";
+import { StyleControls } from "../StyleControls";
 import type { ZmanimConfig } from "./manifest";
 
 /**
@@ -225,6 +226,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           night of a Yom Tov. Off by default because of the space they take.
         </span>
       </label>
+
+      <StyleControls config={config} onChange={onChange} />
     </div>
   );
 }
