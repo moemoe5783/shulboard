@@ -1,14 +1,13 @@
 "use client";
 
 import { useMemo, useRef } from "react";
-import type { CandleLightingEvent } from "@hebcal/core";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
+import { BOARD_FONTS } from "@/lib/board-theme";
 import { formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
-import { WEEK_DAYS, resolveCandleLightings } from "@/lib/zmanim/resolve";
+import { WEEK_DAYS, resolveCandleLightings, type ResolvedCandleLighting } from "@/lib/zmanim/resolve";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
 import { useFitFontSize } from "../useFitFontSize";
@@ -44,16 +43,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   // to look the shul up by.
   const chabadUnconfigured = !zmanim.hasChabadLocation;
 
-  /*
-   * "all" is stacked and must not be fit-scaled — see manifest.ts's note on
-   * displayMode and docs/sizing.md §2. Settings.tsx switches sizingMode to
-   * hug when the mode is picked; this is the second half of that, so a
-   * config hand-edited back to `fit` degrades to the declared size instead
-   * of rescaling between a one-entry week and a three-entry one and
-   * overflowing at minFontSize.
-   */
-  const isFit = config.sizingMode === "fit" && config.displayMode !== "all";
-
   // Re-resolved every tick: the countdown has to move every minute, and once
   // a candle-lighting time passes, the very next tick has to find the
   // FOLLOWING one (test:hebrew's "advances past an event once it's passed").
@@ -73,9 +62,10 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
             location,
             chabadZmanim: zmanim.chabadZmanim,
             days: WEEK_DAYS,
+            includeShabbosEnd: config.showShabbosEnd,
           })
         : null,
-    [second, location, zmanim.chabadZmanim],
+    [second, location, zmanim.chabadZmanim, config.showShabbosEnd],
   );
 
   const entries = resolution?.status === "ok" ? resolution.entries : [];
@@ -98,17 +88,25 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         ? [entries[rotateIndex % entries.length]]
         : entries.slice(0, 1);
 
+  /*
+   * FIT TO BOX, ALWAYS — the only sizing mode (manifest.ts). The type shrinks
+   * so the whole block (labels, times, countdown, any Shabbos-end rows and the
+   * "after" note) fits the box, and no more. A busier week or a smaller box
+   * renders smaller rather than clipping.
+   *
+   * Re-fit whenever the shown entries change: the countdown ticking every
+   * minute doesn't need it, but which entries are on screen does — in `rotate`
+   * each entry's label has its own length ("Candle lighting" vs a Yom Tov's own
+   * name), and the "after" note appears on some entries and not others, so the
+   * fitted size is genuinely different per entry. The note text is folded into
+   * the signature for that reason.
+   */
   useFitFontSize(boxRef, contentRef, {
-    minFontSize: manifest.sizing.minFontSize ?? 14,
+    minFontSize: manifest.sizing.minFontSize ?? 8,
     maxFontSize: manifest.sizing.maxFontSize ?? 400,
     canvasWidth: canvas.width,
-    enabled: isFit,
-    // The countdown ticks every minute without the box needing to resize —
-    // only which entries are on screen is worth re-fitting for. In `rotate`
-    // that legitimately includes the rotation itself: each entry's label
-    // has its own length ("Candle lighting" vs a Yom Tov's own name), so
-    // the fitted size is genuinely different per entry.
-    deps: [shown.map((entry) => entry.time.getTime()).join(",")],
+    enabled: true,
+    deps: [shown.map((entry) => `${entry.time.getTime()}:${entry.kind}:${entry.note ?? ""}`).join(",")],
   });
 
   // The widget's own background, padding, radius, text colour and font — board
@@ -187,7 +185,10 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
         ref={contentRef}
         className="flex flex-col"
         style={{
-          fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width),
+          // No fontSize here — fit-to-box owns it, writing the fitted size to
+          // this element's style (useFitFontSize). Every size inside an Entry is
+          // in `em`, so the whole block scales off that one number.
+          //
           // Between stacked entries only. A single entry keeps the tighter
           // intra-block rhythm it always had.
           gap: shown.length > 1 ? "0.35em" : undefined,
@@ -195,7 +196,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
       >
         {shown.map((entry) => (
           <Entry
-            key={entry.time.getTime()}
+            key={`${entry.time.getTime()}:${entry.kind}`}
             entry={entry}
             config={config}
             timeZone={location.timeZone}
@@ -226,10 +227,16 @@ export function Renderer({ config, canvas }: WidgetRendererProps<CandleLightingC
   );
 }
 
+/** The "after" note's size, relative to a row's own type size — smaller than
+ *  the label, since it is a sentence of instruction rather than a heading. */
+const NOTE_SCALE = 0.32;
+
 /**
- * One candle lighting: its label, its time, and optionally its countdown.
+ * One entry: its label, its time, optionally its countdown, and — for the
+ * second night of a two-day Yom Tov — the "light candles after this time"
+ * instruction the embed carries.
  *
- * Extracted because `all` and `rotate` render the same block one to three
+ * Extracted because `all` and `rotate` render the same block one to several
  * times and a single entry has to look identical to how it always did —
  * one shape, so a stacked week and a lone Friday cannot drift apart.
  */
@@ -239,24 +246,33 @@ function Entry({
   timeZone,
   now,
 }: {
-  entry: { time: Date; event: CandleLightingEvent };
+  entry: ResolvedCandleLighting;
   config: CandleLightingConfig;
   timeZone: string;
   now: Date;
 }) {
   /*
-   * The label NAMES THE OCCASION, which is what tells two candle lightings in
-   * one week apart. A `CandleLightingEvent`'s own `renderBrief` is "Candle
-   * lighting" on every one of them — so a week with a Friday and an Erev Yom
-   * Tov used to show "Candle lighting" twice, indistinguishable. The Yom Tov
+   * The label NAMES THE OCCASION, which is what tells two entries in one week
+   * apart.
+   *
+   * For a candle lighting: a `CandleLightingEvent`'s own `renderBrief` is
+   * "Candle lighting" on every one of them, so a week with a Friday and an Erev
+   * Yom Tov would show "Candle lighting" twice, indistinguishable. The Yom Tov
    * name lives on the event's `linkedEvent` (the holiday), so this reads that
    * when there is one and falls back to the event itself — which renders
    * "Candle lighting" — for an ordinary Friday, where `linkedEvent` is
    * undefined (the parsha goes to `.memo`, not here — see @hebcal/core's
-   * calendar.js). The TIME is still Chabad's; hebcal is the calendar, Chabad
-   * is the clock.
+   * calendar.js).
+   *
+   * For a Shabbos/Yom-Tov end: the `HavdalahEvent` itself, whose `renderBrief`
+   * is "Havdalah" (translated per script). NOT its `linkedEvent` — that is the
+   * holiday, which would read as if this were candle lighting FOR it rather
+   * than its end.
+   *
+   * The TIME is Chabad's in either case; hebcal is the calendar, Chabad is the
+   * clock.
    */
-  const occasion = entry.event.linkedEvent ?? entry.event;
+  const occasion = entry.kind === "shabbos_ends" ? entry.event : entry.event.linkedEvent ?? entry.event;
   const label = formatEventLabel(occasion, { script: config.script, nekudos: config.nekudos });
 
   const time = formatTimeOfDay(entry.time, { hour12: config.hour12, timeZone });
@@ -287,6 +303,19 @@ function Entry({
       >
         {time}
       </span>
+
+      {/*
+        The special instruction, when the embed marked one — the second night
+        of a two-day Yom Tov, lit from an existing flame AFTER this time rather
+        than before it (lib/zmanim/chabad-embed.ts, resolve.ts). Dropping it
+        would tell a room to light at a time it must not; it prints in the
+        widget's own text face, small, under the time.
+      */}
+      {entry.note && (
+        <span className="leading-tight opacity-70" style={{ fontSize: `${NOTE_SCALE}em` }}>
+          {entry.note}
+        </span>
+      )}
 
       {config.showCountdown && (
         <span

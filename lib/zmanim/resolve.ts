@@ -1,11 +1,11 @@
-import type { CandleLightingEvent } from "@hebcal/core";
+import type { CandleLightingEvent, HavdalahEvent } from "@hebcal/core";
 import type { BoardLocation } from "@/lib/board-location";
 // Relative and extensioned, the way lib/hebrew's own modules import each
 // other (candle-times.ts's `./civil-day.ts`): this is the one non-type
 // import here, and it has to resolve under plain `node` for
 // scripts/test-zmanim-fallback.ts, which has no bundler to read tsconfig's
 // `@/` alias.
-import { upcomingCandleLighting, upcomingCandleLightings } from "../hebrew/candle-times.ts";
+import { upcomingCandleLighting, upcomingCandleLightings, upcomingShabbosEnds } from "../hebrew/candle-times.ts";
 // Extensioned for the same reason, and a VALUE import now, not a type:
 // `isClockZman` narrows `zmanim_cache.times`' union at runtime. Importing
 // it from zman.ts rather than from either Chabad reader is what keeps this
@@ -62,18 +62,22 @@ export type ResolvedCandleLighting = {
   /** Chabad's own instant for this date. Never computed. */
   time: Date;
   /**
-   * The @hebcal/core event for the DATE this falls on. Always present now,
-   * because a hebcal event is what identified the date in the first place,
-   * and it contributes nothing to `time`.
-   *
-   * The widget labels off it — but what that yields is a localised "Candle
-   * lighting", not the occasion: `renderBrief` returns the same string for
-   * Erev Yom Kippur as for an ordinary Friday, since the Yom Tov name is on
-   * `linkedEvent`. Carried anyway, because it is what says the date came
-   * from the calendar and it is where a future change would read the
-   * occasion from.
+   * The @hebcal/core event for the DATE this falls on — a `CandleLightingEvent`
+   * for a lighting, a `HavdalahEvent` for a Shabbos/Yom-Tov end. It identified
+   * the date and carries the occasion on its `linkedEvent`; it contributes
+   * nothing to `time`.
    */
-  event: CandleLightingEvent;
+  event: CandleLightingEvent | HavdalahEvent;
+  /** Which kind of entry this is — a candle lighting, or a Shabbos/Yom-Tov
+   *  end (only present when the widget asked to include ends). */
+  kind: "candle_lighting" | "shabbos_ends";
+  /**
+   * A special instruction to show alongside the time, or null. Today the only
+   * one is "Light candles after this time" — the second night of a two-day Yom
+   * Tov, lit from an existing flame AFTER the time rather than before it, which
+   * the embed marks and the board must not drop (lib/zmanim/chabad-embed.ts).
+   */
+  note: string | null;
 };
 
 /**
@@ -147,27 +151,50 @@ export function resolveCandleLightings(input: {
    *  has to be wide enough to find the next one, so the caller passes the
    *  week either way and takes the first entry. */
   days: number;
+  /** Also include Shabbos/Yom-Tov end (Havdalah) times, interleaved with the
+   *  candle lightings in time order — the widget's "show Shabbos end" option. */
+  includeShabbosEnd?: boolean;
 }): CandleLightingResolution {
-  const { now, location, chabadZmanim, days } = input;
-
-  // The CALENDAR question: which dates in this window want a candle
-  // lighting at all. @hebcal/core answers it from lat/long and the Hebrew
-  // calendar; Chabad's cache cannot, since a date with no row is
-  // indistinguishable from an ordinary Tuesday.
-  const dates = upcomingCandleLightings(now, location, days);
+  const { now, location, chabadZmanim, days, includeShabbosEnd } = input;
 
   const entries: ResolvedCandleLighting[] = [];
-  for (const event of dates) {
+
+  // The CALENDAR question: which dates in this window want a candle lighting at
+  // all. @hebcal/core answers it from lat/long and the Hebrew calendar;
+  // Chabad's cache cannot, since a date with no row is indistinguishable from
+  // an ordinary Tuesday.
+  for (const event of upcomingCandleLightings(now, location, days)) {
     // By LOCAL CALENDAR DATE, never by instant — see the note on
     // resolveCandleLighting below, which this shares.
     const cached = chabadZmanim?.[isoDateInZone(event.eventTime, location.timeZone)]?.candle_lighting;
-    // Chabad's value or nothing. A date it has not published is dropped;
-    // a resolution with nothing left comes back `unavailable`.
-    if (cached && isClockZman(cached)) entries.push({ time: new Date(cached.iso), event });
+    if (cached && isClockZman(cached)) {
+      entries.push({ time: new Date(cached.iso), event, kind: "candle_lighting", note: noteOf(cached) });
+    }
   }
+
+  // The same question for Shabbos/Yom-Tov ends, paired with the cache's own
+  // `shabbos_ends` rows (from the four-week embed, lib/zmanim/chabad-embed.ts).
+  if (includeShabbosEnd) {
+    for (const event of upcomingShabbosEnds(now, location, days)) {
+      const cached = chabadZmanim?.[isoDateInZone(event.eventTime, location.timeZone)]?.shabbos_ends;
+      if (cached && isClockZman(cached)) {
+        entries.push({ time: new Date(cached.iso), event, kind: "shabbos_ends", note: null });
+      }
+    }
+  }
+
+  // Chronological, so a candle lighting and the end of the same Shabbos read in
+  // the order they happen.
+  entries.sort((a, b) => a.time.getTime() - b.time.getTime());
 
   if (entries.length === 0) return { status: "unavailable" };
   return { status: "ok", entries };
+}
+
+/** The special instruction on a cached candle lighting, or null — today only
+ *  the embed's "after" footnote (lib/zmanim/chabad-embed.ts). */
+function noteOf(cached: { footnote?: { type: string; text: string | null } }): string | null {
+  return cached.footnote?.type === "after" ? cached.footnote.text : null;
 }
 
 /**
@@ -217,6 +244,7 @@ export function resolveCandleLighting(input: {
   // Chabad's value or nothing at all. `null` here and `null` for a missing
   // hebcal event are the same answer to the widget — no time to show —
   // which is why this returns one shape rather than distinguishing them.
-  if (cached && isClockZman(cached)) return { time: new Date(cached.iso), event: hebcalEvent };
+  if (cached && isClockZman(cached))
+    return { time: new Date(cached.iso), event: hebcalEvent, kind: "candle_lighting", note: noteOf(cached) };
   return null;
 }

@@ -77,47 +77,11 @@ export const zmanimConfigSchema = z.object({
    */
   displayMode: z.enum(["all", "next"]).default("all"),
   hour12: hour12Schema,
-  /** Design pixels — one row's type size, not the table's. Read in `fixed`
-   *  and `hug`; ignored in `fit`. */
+  /** Design pixels — used only for the empty-state message's size now. The
+   *  table itself is always fit-to-box (see `sizing`); the box is what sets
+   *  its size. Kept in the schema so stored documents keep parsing. */
   size: z.number().min(8).max(400).default(32),
-  sizingMode: z.enum(["fit", "fixed", "hug"]).default("fit"),
   provider: zmanimProviderSchema,
-  /**
-   * What to do when the chosen rows don't fit the box.
-   *
-   * A SEPARATE AXIS FROM SIZING, and that separation is what makes `fit`
-   * recommendable — see the `sizing` note below. Sizing decides how big the
-   * type is; this decides what happens to the rows that still don't fit at
-   * that size.
-   *
-   * - `"page"` (default) — a screenful at a time, holding each still for
-   *   eight seconds, then a plain swap to the next. The default because it
-   *   is inert when nothing overflows and never loses a row when something
-   *   does, so it is never the wrong choice, only sometimes an unused one.
-   * - `"scroll"` — one continuous slow creep through the list, seamless.
-   *   Right for a long list where a congregant wants any row to come round
-   *   soon rather than a still frame.
-   * - `"clip"` — the rows that don't fit are cut off, which is
-   *   docs/sizing.md §3's own rule for `fit` and `fixed`. Honest when a
-   *   gabbai wants a fixed frame and knows what is in it; the panel warns
-   *   when it is paired with a selection that can grow.
-   *
-   * Inert in `hug` (the box grows to its content, so nothing can overflow)
-   * and in `"next"` display mode (one row).
-   */
-  overflow: z.enum(["page", "scroll", "clip"]).default("page"),
-  /**
-   * How fast `overflow: "scroll"` creeps — 30, 60 or 120 board design
-   * units per second (`SCROLL_UNITS_PER_SECOND` in ./overflow.ts, which
-   * has the arithmetic behind the numbers).
-   *
-   * A setting rather than a constant because the old constant 16 was too
-   * slow to be useful and there was no way to say so from the panel. An
-   * enum rather than a number because units-per-second is not a quantity a
-   * gabbai can judge without standing in the lobby, while "slower" and
-   * "faster" are.
-   */
-  scrollSpeed: z.enum(["slow", "medium", "fast"]).default("medium"),
   /**
    * Which form the row labels take: the English name, or the Hebrew zman name
    * spelled in Latin letters (the transliteration).
@@ -179,57 +143,23 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
   settingsSchema: zmanimConfigSchema,
   dataNeeds,
   /**
-   * SIZING — docs/sizing.md §2. `fit` IS RECOMMENDED, AND THAT REVERSES AN
-   * EARLIER CONCLUSION ON PURPOSE. The reversal is worth stating because
-   * the earlier reasoning was right about the mechanism and wrong about
-   * what could be done with it.
+   * SIZING — FIT TO BOX, AND ONLY FIT TO BOX. The table always scales so the
+   * whole thing — every row's full text and all the rows stacked — fits the
+   * box, shrinking as far as it must so nothing is ever cut off or scrolled
+   * (widgets/zmanim/fit.ts). Fixed size, Hug height and the old
+   * scroll/page/clip overflow modes are gone: a busier day or a smaller box
+   * renders smaller rather than clipping or paging.
    *
-   * THE OLD ARGUMENT: `fit` was refused for `all` because the fitted type
-   * size depends on the row count, and two of the canonical zmanim
-   * (`candle_lighting`, `shabbos_ends`) appear on some dates and not
-   * others — so the whole table would rescale on Friday and rescale back
-   * on Sunday. That is Clock's "worst possible behavior for the
-   * most-watched element" applied to a table, and it is still true of a
-   * `fit` that re-measures on every row-count change.
+   * `userToggleable: false`, so the panel shows no mode switch. The "Type
+   * size" field it does show is editable and resizes the BOX to that size
+   * (PropertiesPanel) — enter a size and the box grows or shrinks so the
+   * content renders at it; on the board, if content later grows, the type
+   * shrinks to fit rather than overflowing.
    *
-   * WHAT CHANGED: the size no longer depends on the row count OR on the box
-   * height. `fit` here means WIDTH FITS, HEIGHT SCROLLS — the type is as
-   * large as it can be while the widest row's full text (label, gap and
-   * time) still fits the box's width, and nothing more. ./fit.ts is the
-   * whole argument; in short the size is
-   * `clamp(boxWidth / widest-row-width, min, max)`.
-   *
-   * Because height plays no part, a selection taller than the box overflows
-   * by design and the overflow mode below (scroll or page) handles it —
-   * dragging the box taller shows more rows at the same size rather than
-   * shrinking the type to cram them in. That is the point: a taller box is
-   * more of the luach, not smaller type.
-   *
-   * THE WHOLE ROW IS KEPT VISIBLE, deliberately. An earlier version fitted
-   * only the time column and let long labels truncate; this fits the full
-   * width so every label reads in full. The direct cost is a little
-   * day-to-day wobble — a returning "Candle Lighting" row on Friday is
-   * wider, so the type eases down to keep it in view and back up on Sunday —
-   * which is simply what "the whole text is always visible" means. Below the
-   * min font size the label truncates (`1fr min-w-0 overflow-hidden`), the
-   * one case the width cannot be honoured.
-   *
-   * WHERE `fit` IS STILL NOT RECOMMENDED: `"next"` display mode. One row,
-   * and the row's own label changes through the day ("Sunrise", then
-   * "Latest Shacharit", then "Midnight"), so a width-constrained single
-   * row rescales with its label's length several times a day. `next` keeps
-   * `fixed` as the sensible pick; Settings.tsx says so rather than
-   * switching the mode, because all three are legible there and only one
-   * is jumpy.
-   *
-   * `all` + `fixed` and `all` + `hug` both stay fully honest and offered —
-   * §2 names zmanim tables as its own `fixed` example, and `hug` is the one
-   * mode where overflow is structurally impossible.
-   *
-   * `recommended` is what puts "Fit to box is recommended for this
-   * element" under the panel's toggle.
+   * `minFontSize` is low so "shrink to fit" almost never bottoms out — the
+   * priority is never cutting content off, even small.
    */
-  sizing: { mode: "fit", userToggleable: true, recommended: "fit", minFontSize: 14, maxFontSize: 200 },
+  sizing: { mode: "fit", userToggleable: false, minFontSize: 6, maxFontSize: 200 },
   instanceLabel: (config) =>
     config.displayMode === "next"
       ? "Zmanim — next only"

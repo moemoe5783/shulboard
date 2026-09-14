@@ -173,6 +173,25 @@ export function upcomingCandleLightings(
     .sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime());
 }
 
+/**
+ * Every Shabbos/Yom-Tov end (Havdalah) in the next `days`, in order — the
+ * companion to `upcomingCandleLightings` for the Candle Lighting widget's
+ * "show Shabbos end" option.
+ *
+ * Like candle lighting, @hebcal/core is used only to know WHICH dates end a
+ * Shabbos or Yom Tov; the TIME shown comes from Chabad's cache (the resolver
+ * pairs these events with the cache's `shabbos_ends` rows). The offset here
+ * therefore only decides which nightfall hebcal computes for its own event
+ * time, which the widget never displays — the default 8.5° tzeis is fine.
+ */
+export function upcomingShabbosEnds(now: Date, location: BoardLocation, days: number): HavdalahEvent[] {
+  const horizon = now.getTime() + Math.min(days, SEARCH_WINDOW_DAYS) * 24 * 60 * 60 * 1000;
+  return upcomingEvents(now, location, havdalahOffsetFor("tzeis_3_stars", 50))
+    .filter(isHavdalah)
+    .filter((ev) => ev.eventTime.getTime() > now.getTime() && ev.eventTime.getTime() <= horizon)
+    .sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime());
+}
+
 // Unused today — see the NOT WIRED TO ANY WIDGET note above
 // havdalahShitahSchema. Defaults match that schema's and
 // havdalahCustomMinutesSchema's own `.default()`s, so a future caller that

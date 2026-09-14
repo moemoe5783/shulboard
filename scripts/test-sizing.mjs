@@ -8,10 +8,13 @@
  * what a test of the real properties panel needs and editor-lab cannot give.
  *
  * Covers: a real, visible type size in every mode (docs/sizing.md's
- * properties-panel requirement) — read-only and computed in `fit`, editable
- * in `fixed` and the new `hug` mode — and hug's own mechanism: the box's
- * height tracks the declared size instead of the stored percentage, so
- * overflow is structurally impossible rather than something to warn about.
+ * properties-panel requirement) — editable in `fixed` and `hug`; in `fit` it
+ * is read-only for a widget that also offers Fixed (setting a number there
+ * means switching to Fixed), but EDITABLE for a fit-only widget (Title,
+ * Zmanim, Candle lighting), where typing a size resizes the box to it. Plus
+ * hug's own mechanism: the box's height tracks the declared size instead of
+ * the stored percentage, so overflow is structurally impossible rather than
+ * something to warn about.
  *
  * Run with: npm run test:sizing
  */
@@ -123,16 +126,27 @@ try {
   const fontSizeOf = (locator) =>
     locator.evaluate((el) => parseFloat(getComputedStyle(el.querySelector("span")).fontSize));
 
-  // ---- fit mode: read-only, and a real computed number -------------------
+  // ---- fit-only widget: editable, and typing a size resizes the box ------
 
   await widget(TITLE_ID).click();
   await settle();
-  check(await typeSizeInput().isDisabled(), "title's type size is read-only in fit mode");
+  check(!(await typeSizeInput().isDisabled()), "a fit-only widget's type size is editable — it drives the box");
   const titleSize = Number(await typeSizeInput().inputValue());
   check(titleSize > 0, "title's type size shows a real computed number, not zero", `${titleSize}`);
   check(
     (await page.locator("span", { hasText: "Sizing" }).count()) === 0,
     "no Sizing toggle appears for a widget with only one mode",
+  );
+
+  const beforeTitle = await fontSizeOf(widget(TITLE_ID));
+  await typeSizeInput().fill(String(titleSize * 2));
+  await typeSizeInput().blur();
+  await settle();
+  const afterTitle = await fontSizeOf(widget(TITLE_ID));
+  check(
+    afterTitle > beforeTitle,
+    "typing a bigger type size resizes the box, so the fit renders bigger text",
+    `${beforeTitle.toFixed(1)}px -> ${afterTitle.toFixed(1)}px`,
   );
 
   // ---- fixed mode: editable, wired to config.size -------------------------
