@@ -21,16 +21,20 @@ Environment variables: @docs/environment.md
   rather than a second copy of the build logic. `warm-zmanim` is the Chabad
   cache-warming cron (plan.md §5c) — once daily, not the 5-minute cadence
   `build-bundles` runs at, because zmanim don't change from one hour to the
-  next. The source is now the **published RSS feed**
-  (`lib/zmanim/chabad-rss.ts`), which is **US-only and returns today only** —
-  one day per request, no date range. It carries the transliterated Hebrew
-  zman names the widget needs and needs no undocumented parameters. Because
-  it is one day, the daily run is load-bearing for coverage, not only
-  freshness: a day the cron doesn't run is a day with no zmanim once every
-  screen's bundle rolls past it. The 92-day `Get_Zmanim` reader
-  (`lib/zmanim/chabad-adapter.ts`) is kept **unwired** — like
-  `chabad-embed.ts` and `hebcal-zmanim.ts` — for the day range or non-US
-  city ids matter again. `warm-zmanim`
+  next. It reads **two published sources** and merges them into
+  `zmanim_cache`: the **RSS feed** (`lib/zmanim/chabad-rss.ts`) for the daily
+  zmanim table — **US-only, today only**, but it carries the transliterated
+  Hebrew names the widget needs — and the **candle-lighting embed**
+  (`lib/zmanim/chabad-embed.ts`) for candle lighting and Shabbos ends, **four
+  weeks** per run (chabad.org caps it at 4). Because the RSS half is one day,
+  the daily run is load-bearing for coverage: a day the cron doesn't run is a
+  day with no zmanim table once every screen's bundle rolls past it; the embed
+  half slides a four-week candle-lighting window forward so that widget's
+  "upcoming" view keeps working. The embed leg is best-effort — if it fails,
+  today's zmanim still cache and the outcome flags `embedFailed`. The 92-day
+  `Get_Zmanim` reader (`lib/zmanim/chabad-adapter.ts`) is kept **unwired** —
+  like `hebcal-zmanim.ts` — for the day the whole span has to come from one
+  request again. `warm-zmanim`
   earns the key for a reason separate from the warming itself: it sweeps
   every org and screen to discover which locations are referenced at all,
   a cross-tenant read no RLS policy can express.

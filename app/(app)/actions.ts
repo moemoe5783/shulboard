@@ -563,10 +563,19 @@ export async function saveShulAddress(query: string): Promise<SaveShulAddressSta
       ? ` ${warm.screensQueued} ${warm.screensQueued === 1 ? "screen" : "screens"} will pick it up within about five minutes.`
       : " No screen is waiting on it yet.";
 
+  // The candle-lighting coverage is what the four-week embed reached. If that
+  // leg failed, today's zmanim are cached but candle lighting isn't yet — say
+  // so rather than reporting a clean success.
+  const zmanim = warm.embedFailed
+    ? "Fetched today's zmanim, but couldn't reach the candle-lighting list — the daily fetch will try again."
+    : `Fetched today's zmanim and candle lighting for the next ${warm.candleLightingDates} ${
+        warm.candleLightingDates === 1 ? "date" : "dates"
+      }.`;
+
   return {
     status: "done",
     label,
-    message: `Saved ${label}.${lighting} Fetched today's zmanim.${screens}`,
+    message: `Saved ${label}.${lighting} ${zmanim}${screens}`,
   };
 }
 

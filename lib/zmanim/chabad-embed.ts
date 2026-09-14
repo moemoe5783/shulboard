@@ -5,25 +5,24 @@ import type { ChabadClockZman } from "./zman.ts";
 /*
  * Chabad.org's PUBLISHED candle-lighting embed.
  *
- * NOT WIRED TO ANYTHING ANY MORE, AND DELIBERATELY KEPT. Nothing calls
- * `fetchChabadEmbed` outside its own test and probe scripts.
+ * THE LIVE CANDLE-LIGHTING SOURCE. `lib/zmanim/warm.ts` reads this for candle
+ * lighting and Shabbos-end times, four weeks per run, alongside the RSS feed
+ * (chabad-rss.ts) that supplies the daily zmanim table. The two are merged
+ * into `zmanim_cache.times`: the RSS feed carries only today, so without this
+ * embed the candle-lighting widget's "upcoming" view would be blank until each
+ * erev-Shabbos actually arrived.
  *
- * WHY IT IS NO LONGER THE READER: the Get_Zmanim endpoint
- * (chabad-adapter.ts) turned out to answer the whole question in one
- * request — 92 days, all thirteen daily zmanim AND candle lighting —
- * once four missing trailing parameters were added to it. This surface
- * gives four weeks of candle lighting and nothing else, so it is
- * strictly a subset. `lib/zmanim/warm.ts` reads the adapter.
+ * WHY THIS AND NOT Get_Zmanim: the 92-day Get_Zmanim endpoint
+ * (chabad-adapter.ts) could carry the whole span in one request, but it is
+ * undocumented and needs four case-sensitive parameters that fail silently.
+ * The RSS feed replaced it for the daily table because it carries the
+ * transliterated Hebrew names; this embed is the published, documented-by-
+ * existence companion for candle lighting's four-week lookahead. Get_Zmanim
+ * is kept unwired for the day range has to come from one request again.
  *
- * WHY IT IS NOT DELETED: it is Chabad's own sanctioned, public,
- * documented-by-existence embed, and the endpoint that replaced it is
- * neither of those things. If Get_Zmanim changes shape, moves, or starts
- * refusing a 92-day span, this module is a working candle-lighting
- * source that can be wired back into `warm.ts` by changing one import —
- * which is worth more than the fifty lines it costs to keep. Everything
- * below is still true of the response it reads, and
- * scripts/test-chabad-embed.ts still exercises it against the real
- * capture so it cannot rot silently.
+ * Everything below is still true of the response it reads, and
+ * scripts/test-chabad-embed.ts exercises it against the real capture so it
+ * cannot rot silently.
  *
  * WHAT THE RESPONSE ACTUALLY IS — confirmed against a real capture, not a
  * description. test/fixtures/chabad-embed-33701-4w.js is the verbatim body
@@ -213,9 +212,9 @@ function embedUrl(locationId: string, weeks: number): URL {
  * This is the case-sensitivity control above, so it is not optional and
  * not a warning: a wrong-location response is byte-for-byte normal apart
  * from this one string, so there is no second signal to fall back on. A
- * refusal sends the widget down §5c's Hebcal fallback, which computes the
- * right city's times from the org's own coordinates — strictly better than
- * caching another city's.
+ * refusal caches nothing for this location, so the candle-lighting widget
+ * shows its unavailable state — the honest answer, and better than another
+ * city's times.
  */
 function verifyLocation(inner: string, locationId: string): string {
   const heading = /class="CLheading"[\s\S]*?<a\b[^>]*>([\s\S]*?)<\/a>/i.exec(inner);
