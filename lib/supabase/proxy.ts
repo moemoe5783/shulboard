@@ -32,6 +32,7 @@ const PUBLIC_PREFIXES = [
   "/editor-lab",
   "/font-parity",
   "/zmanim-lab",
+  "/collage-lab",
 ];
 
 function isPublic(pathname: string): boolean {
