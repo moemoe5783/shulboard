@@ -3,13 +3,14 @@
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
-import { AlbumField } from "../media/AlbumField";
-import type { GalleryConfig } from "./manifest";
+import { AlbumsField } from "../media/AlbumField";
+import { readGalleryConfig, type GalleryConfig } from "./manifest";
 
-export function Settings({ config, onChange }: WidgetSettingsProps<GalleryConfig>) {
+export function Settings({ config: raw, onChange }: WidgetSettingsProps<GalleryConfig>) {
+  const config = readGalleryConfig(raw);
   return (
     <div className="flex flex-col gap-4">
-      <AlbumField value={config.albumId} onChange={(albumId) => onChange({ albumId })} />
+      <AlbumsField value={config} onChange={onChange} />
 
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Fit</span>

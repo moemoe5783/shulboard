@@ -72,6 +72,9 @@ export type PlayerInputs = {
   boxPx: CollageBox;
   dpr: number;
   config: CollageConfig;
+  /** Which albums, as a stable string (widgets/media/albums.ts) — part of the
+   *  layout key and the shuffle seed. */
+  albumKey: string;
 };
 
 /** How long a transition runs, by mode, in ms — the Renderer's CSS matches. */
@@ -185,7 +188,7 @@ export class CollagePlayer {
     const version = albumVersion(photos);
     const { config, box } = inputs;
     const layoutKey = [
-      config.albumId,
+      inputs.albumKey,
       config.gutter,
       config.density,
       config.exactCount,
@@ -245,7 +248,7 @@ export class CollagePlayer {
     if (!inputs || this.photos.length === 0) return null;
     const { config, box, boxPx, dpr } = inputs;
 
-    const ordered = orderPhotos(this.photos, config.order, hashSeed(config.albumId, "cycle", cycle));
+    const ordered = orderPhotos(this.photos, config.order, hashSeed(inputs.albumKey, "cycle", cycle));
     const remaining = ordered.filter((photo) => !shown.has(photo.id));
     if (remaining.length === 0) return null;
 

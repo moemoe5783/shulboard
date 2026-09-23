@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
-import { useBoardAlbum } from "@/lib/board-assets";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import type { WidgetRendererProps } from "../types";
+import { albumSelectionKey, hasAlbumSelection, useSelectedPhotos } from "../media/albums";
 import { PhotoEmpty } from "../media/PhotoEmpty";
 import { resolveDesignUnits } from "../useFitFontSize";
 import { readCollageConfig, type CollageConfig } from "./manifest";
@@ -81,7 +81,7 @@ function useCollageBox(ref: RefObject<HTMLDivElement | null>, canvasWidth: numbe
 
 export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageConfig>) {
   const config = readCollageConfig(raw);
-  const album = useBoardAlbum(config.albumId);
+  const album = useSelectedPhotos(config);
   const second = useSecond();
   const rootRef = useRef<HTMLDivElement>(null);
   const measured = useCollageBox(rootRef, canvas.width);
@@ -99,6 +99,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
       boxPx: measured.px,
       dpr: typeof window === "undefined" ? 1 : window.devicePixelRatio || 1,
       config,
+      albumKey: albumSelectionKey(config),
     });
     // `config` is re-read from `raw` each render; key the effect on what it is
     // made of so a render with the same settings doesn't re-feed the player.
@@ -152,10 +153,10 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
 
 function hintFor(
   config: CollageConfig,
-  album: ReturnType<typeof useBoardAlbum>,
+  album: ReturnType<typeof useSelectedPhotos>,
   snapshot: PlayerSnapshot,
 ): string | null {
-  if (!config.albumId) return "Pick an album in this collage’s settings.";
+  if (!hasAlbumSelection(config)) return "Pick albums in this collage’s settings.";
   if (album === undefined) return "Loading photos…";
   if (album.length === 0) return "Album is empty";
   if (snapshot.unsized) return "These photos are still being measured. Open the album in Media once to finish.";

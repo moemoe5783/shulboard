@@ -20,6 +20,11 @@ export function BoardAssetsProvider({ albums, children }: { albums: BoardAlbums 
   return <BoardAssetsContext.Provider value={albums}>{children}</BoardAssetsContext.Provider>;
 }
 
+/** Every resolved album, or null when none are resolved yet. */
+export function useBoardAlbums(): BoardAlbums | null {
+  return useContext(BoardAssetsContext);
+}
+
 /** The resolved photos for one album, `undefined` when not resolved. */
 export function useBoardAlbum(albumId: string | null | undefined): BoardPhoto[] | undefined {
   const albums = useContext(BoardAssetsContext);

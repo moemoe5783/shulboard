@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
 import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
 /*
- * Gallery — one album, one photo at a time, in a designated area of the board,
+ * Gallery — photos from one or more albums, one at a time, in a designated area of the board,
  * cycling on a timer (plan.md §6: "widgets bind to an album, and auto-fill
  * widgets re-roll their selection on a timer so a board shows fresh photos for
  * weeks untouched"). The Collage widget is the same album, several photos at
@@ -11,8 +12,8 @@ import type { DataNeed, WidgetManifest } from "../types";
  */
 
 export const galleryConfigSchema = z.object({
-  /** The album this gallery shows. Empty until one is picked. */
-  albumId: z.string().max(64).default(""),
+  // Which albums: several chosen, or all except some (../media/albums.ts).
+  ...albumSelectionFields,
   /** cover fills the box (cropping); contain fits the whole photo (letterboxed). */
   fit: z.enum(["cover", "contain"]).default("cover"),
   /** Seconds each photo holds before the next. */
@@ -31,13 +32,29 @@ export type GalleryConfig = z.infer<typeof galleryConfigSchema>;
 /** Needs its album's photos resolved into the bundle (and the editor preview) —
  *  see lib/media/album-photos.ts. Nothing to fetch until an album is picked. */
 function dataNeeds(config: GalleryConfig): readonly DataNeed[] {
-  return config.albumId ? [{ kind: "album", albumId: config.albumId }] : [];
+  return albumSelectionNeeds(readGalleryConfig(config));
+}
+
+/** Stored config -> a complete GalleryConfig. A board document stores config
+ *  as a plain record, so a gallery saved before multi-album selection has no
+ *  albumIds; defaults fill it and the legacy albumId is still honoured. */
+export function readGalleryConfig(raw: unknown): GalleryConfig {
+  const record = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const parsed = galleryConfigSchema.safeParse(record);
+  if (parsed.success) return parsed.data;
+  const own = Object.fromEntries(Object.entries(record).filter(([key]) => !(key in widgetStyleFields)));
+  const retry = galleryConfigSchema.safeParse(own);
+  return retry.success ? retry.data : galleryConfigSchema.parse({ ...albumPart(record) });
+}
+
+function albumPart(record: Record<string, unknown>) {
+  return typeof record.albumId === "string" ? { albumId: record.albumId } : {};
 }
 
 export const manifest: WidgetManifest<GalleryConfig> = {
   id: "gallery",
   name: "Gallery",
-  description: "Photos from an album, one at a time in a frame you place.",
+  description: "Photos from your albums, one at a time in a frame you place.",
   category: "media",
   defaultSize: { w: 640, h: 480 },
   isPro: false,

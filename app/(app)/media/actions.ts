@@ -202,3 +202,54 @@ export async function backfillPhotoSizes(albumId: string): Promise<{ ok: true; u
   if (updated > 0) revalidatePath(`/media/${albumId}`);
   return { ok: true, updated };
 }
+
+const MAX_BATCH = 500;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Delete several photos at once — the album page's multi-select. The same
+ *  soft delete as `deleteAsset`: the photo leaves every album and board. */
+export async function deleteAssets(albumId: string, assetIds: string[]): Promise<ActionResult> {
+  if (assetIds.length === 0) return { ok: true };
+  if (assetIds.length > MAX_BATCH) return { ok: false, error: `Delete at most ${MAX_BATCH} photos at a time.` };
+  const { org, error: roleError } = await editorOrg();
+  if (!org) return { ok: false, error: roleError };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("assets")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", assetIds)
+    .eq("org_id", org.orgId);
+
+  if (error) return { ok: false, error: `Couldn't delete the photos: ${error.message}` };
+  revalidatePath(`/media/${albumId}`);
+  revalidatePath("/media");
+  return { ok: true };
+}
+
+/**
+ * Set (or clear, with null) the last date these photos are shown by boards
+ * bound to this album. They stay in the album either way; boards skip them
+ * once the date has passed in the shul's own time (widgets/media/albums.ts).
+ */
+export async function setDisplayUntil(albumId: string, assetIds: string[], date: string | null): Promise<ActionResult> {
+  if (assetIds.length === 0) return { ok: true };
+  if (assetIds.length > MAX_BATCH) return { ok: false, error: `Change at most ${MAX_BATCH} photos at a time.` };
+  if (date !== null && (!ISO_DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)))) {
+    return { ok: false, error: "Pick a date to stop showing them." };
+  }
+  const { org, error: roleError } = await editorOrg();
+  if (!org) return { ok: false, error: roleError };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("album_items")
+    .update({ display_until: date })
+    .eq("album_id", albumId)
+    .in("asset_id", assetIds)
+    .eq("org_id", org.orgId);
+
+  if (error) return { ok: false, error: `Couldn't save the date: ${error.message}` };
+  revalidatePath(`/media/${albumId}`);
+  return { ok: true };
+}

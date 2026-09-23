@@ -47,12 +47,13 @@ function album(seed: number, count: number, mix: string): BoardPhoto[] {
       height,
       caption: null,
       addedAt: new Date(Date.UTC(2026, 0, 1 + i)).toISOString(),
+      displayUntil: null,
       variants: [{ name: "display", src, width, height, contentType: "image/svg+xml", bytes: src.length }],
     };
   });
 }
 
-function doc(albumId: string, interval: number, transition: string) {
+function doc(albums: { albumId?: string; albumIds?: string[] }, interval: number, transition: string) {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
@@ -65,7 +66,7 @@ function doc(albumId: string, interval: number, transition: string) {
         w: 90,
         h: 90,
         z: 0,
-        config: { albumId, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
+        config: { ...albums, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
       },
     ],
   });
@@ -79,9 +80,14 @@ function Inner() {
   const interval = Number(params.get("interval") ?? 3);
   const transition = params.get("transition") ?? "crossfade";
 
-  const albums: BoardAlbums = { lab: album(seed, count, mix), empty: [] };
-  const full = doc("lab", interval, transition);
-  const empty = doc("empty", interval, transition);
+  const lab = album(seed, count, mix);
+  // Two overlapping albums for the multi-album board: photos 4 and 5 are in
+  // both, and one photo in the second ended long ago.
+  const ended = { ...lab[10], assetId: "lab-ended", displayUntil: "2000-01-01" };
+  const albums: BoardAlbums = { lab, empty: [], first: lab.slice(0, 6), second: [...lab.slice(4, 10), ended] };
+  const full = doc({ albumId: "lab" }, interval, transition);
+  const empty = doc({ albumId: "empty" }, interval, transition);
+  const multi = doc({ albumIds: ["first", "second"] }, interval, transition);
   const widgetProps = (widget: { id: string }) => ({ "data-widget-id": widget.id });
 
   return (
@@ -91,6 +97,9 @@ function Inner() {
       </div>
       <div data-lab-board="small" style={{ width: 480, height: 270, position: "relative" }}>
         <BoardRenderer doc={full} canvas={CANVAS} albums={albums} widgetProps={widgetProps} style={{ width: 480, height: 270 }} />
+      </div>
+      <div data-lab-board="multi" style={{ width: 480, height: 270, position: "relative" }}>
+        <BoardRenderer doc={multi} canvas={CANVAS} albums={albums} widgetProps={widgetProps} style={{ width: 480, height: 270 }} />
       </div>
       <div className="flex gap-4">
         <div data-lab-board="empty-display" style={{ width: 320, height: 180, position: "relative" }}>

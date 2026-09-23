@@ -6,7 +6,7 @@ import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { SliderField } from "@/components/editor/SliderField";
 import type { WidgetSettingsProps } from "@/widgets/types";
-import { AlbumField } from "../media/AlbumField";
+import { AlbumsField } from "../media/AlbumField";
 import { readCollageConfig, type CollageConfig } from "./manifest";
 
 const DEFAULT_LEFTOVER = "#1b2a2e";
@@ -71,7 +71,7 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
 
   return (
     <div className="flex flex-col gap-4">
-      <AlbumField value={config.albumId} onChange={(albumId) => onChange({ albumId })} />
+      <AlbumsField value={config} onChange={onChange} />
 
       {widgetId && status && (
         <div className="flex flex-col gap-2">

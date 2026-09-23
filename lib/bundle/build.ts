@@ -332,6 +332,18 @@ async function assemblePayloadFor(
   // Resolve the albums the Gallery/Collage widgets bind to, and fold every
   // photo's asset into `referenced` so its display variant is fetched and
   // cached alongside the Image widgets' assets below.
+  // A Gallery or Collage set to "every album except…" declares the album "*"
+  // (widgets/media/albums.ts) — resolve that to every album this org has, so
+  // one made after the board was published shows up on the next build.
+  if (referencedAlbums.delete("*")) {
+    const { data: allAlbums } = await db
+      .from("albums")
+      .select("id")
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true });
+    for (const album of allAlbums ?? []) referencedAlbums.add(album.id);
+  }
   const albums = await fetchAlbumPhotos(db, [...referencedAlbums], orgId);
   for (const photos of Object.values(albums)) {
     for (const photo of photos) referenced.add(photo.assetId);

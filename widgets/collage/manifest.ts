@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
 import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
@@ -19,7 +20,8 @@ import type { DataNeed, WidgetManifest } from "../types";
  */
 
 export const collageConfigSchema = z.object({
-  albumId: z.string().max(64).default("").catch(""),
+  // Which albums: several chosen, or all except some (../media/albums.ts).
+  ...albumSelectionFields,
   /** Space between photos, in board design units. Kept as `gutter` so collages
    *  saved before the spec's "gap" wording keep their value. */
   gutter: z.number().min(0).max(60).default(8).catch(8),
@@ -63,13 +65,13 @@ export function readCollageConfig(raw: unknown): CollageConfig {
 }
 
 function dataNeeds(config: CollageConfig): readonly DataNeed[] {
-  return config.albumId ? [{ kind: "album", albumId: config.albumId }] : [];
+  return albumSelectionNeeds(config);
 }
 
 export const manifest: WidgetManifest<CollageConfig> = {
   id: "collage",
   name: "Collage",
-  description: "Photos from an album, arranged to fit their own shapes — nothing cropped.",
+  description: "Photos from your albums, arranged to fit their own shapes — nothing cropped.",
   category: "media",
   defaultSize: { w: 960, h: 540 },
   isPro: false,

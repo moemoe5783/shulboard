@@ -32,6 +32,11 @@ import {
 
 export type UploadResult = { ok: true; assetId: string; deduped: boolean } | { ok: false; error: string };
 
+/** Where one photo's upload has got to, for the album page's progress tiles.
+ *  `fraction` runs 0..1 across the whole upload of this photo. */
+export type UploadStage = "reading" | "resizing" | "uploading" | "saving";
+export type UploadProgress = (stage: UploadStage, fraction: number) => void;
+
 type VariantEntry = {
   storage_path: string;
   content_hash: string;
@@ -70,8 +75,11 @@ export async function uploadPhoto(input: {
   albumId: string;
   /** Sort position within the album — the caller spaces uploads out. */
   position: number;
+  /** Called as the upload moves through its stages. */
+  onProgress?: UploadProgress;
 }): Promise<UploadResult> {
   const { file, orgId, albumId, position } = input;
+  const progress: UploadProgress = input.onProgress ?? (() => {});
 
   if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
     const heic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
@@ -88,6 +96,7 @@ export async function uploadPhoto(input: {
   const uploadedBy = userData.user?.id ?? null;
 
   // Dedup: if this exact file is already an asset in this org, just link it.
+  progress("reading", 0.02);
   const original = await file.arrayBuffer();
   const checksum = await sha256Hex(original);
   const { data: existing } = await supabase
@@ -99,6 +108,7 @@ export async function uploadPhoto(input: {
     .maybeSingle();
 
   if (existing) {
+    progress("saving", 0.95);
     const linked = await linkToAlbum(supabase, { orgId, albumId, assetId: existing.id, position });
     return linked ?? { ok: true, assetId: existing.id, deduped: true };
   }
@@ -118,9 +128,14 @@ export async function uploadPhoto(input: {
   const variants: Record<string, VariantEntry> = {};
   let canonical: VariantEntry | null = null;
   try {
-    for (const spec of VARIANT_SPECS) {
+    // Reading is the first ~10%, each size is an equal share of the next 80%
+    // (half resizing, half uploading), and saving the row is the last 10%.
+    const share = 0.8 / VARIANT_SPECS.length;
+    for (const [i, spec] of VARIANT_SPECS.entries()) {
       const { width, height } = scaledSize(naturalWidth, naturalHeight, spec.maxEdge);
+      progress("resizing", 0.1 + share * i);
       const blob = await encodeVariant(source, width, height);
+      progress("uploading", 0.1 + share * (i + 0.5));
       const hash = (await sha256Hex(await blob.arrayBuffer())).slice(0, 16);
       const storagePath = `${orgId}/${assetId}/${spec.name}-${hash}.${VARIANT_EXTENSION}`;
 
@@ -153,6 +168,7 @@ export async function uploadPhoto(input: {
     return { ok: false, error: `Couldn't generate the board image for ${file.name}.` };
   }
 
+  progress("saving", 0.92);
   const { error: insertError } = await supabase.from("assets").insert({
     id: assetId,
     org_id: orgId,

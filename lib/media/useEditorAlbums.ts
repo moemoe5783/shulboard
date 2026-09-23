@@ -54,7 +54,19 @@ export function useEditorAlbums(widgets: BoardWidget[]): BoardAlbums | null {
   useEffect(() => {
     if (key === "") return;
     let cancelled = false;
-    fetchAlbumPhotos(createClient(), key.split(",")).then((albums) => {
+    const supabase = createClient();
+    // "*" is "every album" (widgets/media/albums.ts) — expand it the same way
+    // the bundle build does, so the editor previews exactly what screens get.
+    const expand = async (ids: string[]) => {
+      if (!ids.includes("*")) return ids;
+      const { data } = await supabase
+        .from("albums")
+        .select("id")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+      return [...new Set([...ids.filter((id) => id !== "*"), ...(data ?? []).map((album) => album.id)])];
+    };
+    expand(key.split(",")).then((ids) => fetchAlbumPhotos(supabase, ids)).then((albums) => {
       if (cancelled) return;
       // Keep the same object when nothing changed, so a refresh that finds the
       // album as it was doesn't ripple a new value through every widget.
