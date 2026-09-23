@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
+import { albumSelectionFields, albumSelectionNeeds } from "@/lib/media/selection";
 import { widgetStyleFields } from "../style";
 import { COLLAGE_TRANSITIONS, TRANSITION_ORDERS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "./transitions";
 import type { DataNeed, WidgetManifest } from "../types";
