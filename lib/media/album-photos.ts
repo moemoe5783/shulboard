@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { mediaProxyPath, readAssetVariant } from "@/lib/bundle/media";
+import { scaledSize, VARIANT_SPECS } from "./variants";
 
 /*
  * Resolving an album to the photos a board actually shows — the one place that
@@ -16,12 +17,30 @@ import { mediaProxyPath, readAssetVariant } from "@/lib/bundle/media";
 /** The board face embedded for photos — same variant Image uses. */
 const DISPLAY_VARIANT = "display";
 
+/** One stored size of a photo. A board picks the smallest that is still sharp
+ *  at the size it renders (widgets/collage/Renderer.tsx). */
+export type BoardPhotoVariant = {
+  name: string;
+  src: string;
+  width: number;
+  height: number;
+  contentType: string;
+  bytes: number;
+};
+
 export type BoardPhoto = {
   assetId: string;
+  /** The `display` derivative — what a single-photo widget shows. */
   src: string;
+  /** The photo's size after EXIF rotation, as recorded at upload. */
   width: number | null;
   height: number | null;
   caption: string | null;
+  /** When it was added to the album — what "newest first" sorts by. */
+  addedAt: string | null;
+  /** Every stored size, smallest first. Empty if the photo has no size on
+   *  record (the album page backfills those — app/(app)/media/actions.ts). */
+  variants: BoardPhotoVariant[];
 };
 
 /** Albums resolved to their ordered, ready photos, keyed by album id. */
@@ -30,6 +49,7 @@ export type BoardAlbums = Record<string, BoardPhoto[]>;
 type ItemRow = {
   album_id: string;
   caption: string | null;
+  created_at: string | null;
   assets: {
     id: string;
     variants: unknown;
@@ -60,7 +80,7 @@ export async function fetchAlbumPhotos(
 
   let query = supabase
     .from("album_items")
-    .select("album_id, caption, assets(id, variants, width, height, deleted_at)")
+    .select("album_id, caption, created_at, assets(id, variants, width, height, deleted_at)")
     .in("album_id", albumIds)
     .order("position", { ascending: true });
   if (orgId) query = query.eq("org_id", orgId);
@@ -84,8 +104,40 @@ export async function fetchAlbumPhotos(
       width: asset.width,
       height: asset.height,
       caption: item.caption,
+      addedAt: item.created_at,
+      variants: photoVariants(asset),
     });
   }
 
   return albums;
+}
+
+/**
+ * Every stored size of an asset, smallest first. A derivative's own recorded
+ * size wins; an older one is sized from the asset's dimensions the same way
+ * the pipeline scaled it (lib/media/variants.ts). Without either there is no
+ * honest size to give, and the photo is left with none.
+ */
+function photoVariants(asset: { id: string; variants: unknown; width: number | null; height: number | null }): BoardPhotoVariant[] {
+  const out: BoardPhotoVariant[] = [];
+  for (const spec of VARIANT_SPECS) {
+    const variant = readAssetVariant(asset.variants, spec.name);
+    if (!variant) continue;
+    const size =
+      variant.width && variant.height
+        ? { width: variant.width, height: variant.height }
+        : asset.width && asset.height
+          ? scaledSize(asset.width, asset.height, spec.maxEdge)
+          : null;
+    if (!size) continue;
+    out.push({
+      name: spec.name,
+      src: mediaProxyPath({ id: asset.id, variant: spec.name, content_hash: variant.contentHash, extension: variant.extension }),
+      width: size.width,
+      height: size.height,
+      contentType: variant.contentType,
+      bytes: variant.bytes,
+    });
+  }
+  return out.sort((a, b) => a.width - b.width);
 }

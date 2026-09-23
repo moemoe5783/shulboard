@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { readAssetVariant } from "@/lib/bundle/media";
+import { readImageSize } from "@/lib/media/image-size";
 import { hasRoleAtLeast, requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 
@@ -136,4 +138,67 @@ export async function setCaption(albumId: string, assetId: string, caption: stri
   if (error) return { ok: false, error: `Couldn't save the caption: ${error.message}` };
   revalidatePath(`/media/${albumId}`);
   return { ok: true };
+}
+
+/**
+ * Record the pixel size of any photo in this album that doesn't have one yet —
+ * the backfill for photos stored before sizes were captured at upload.
+ *
+ * The collage engine lays photos out by aspect ratio, so a photo with no size
+ * can't be placed without guessing (and a guessed shape would be cropped or
+ * letterboxed). This reads the size from the photo's own stored derivative's
+ * header (lib/media/image-size.ts) — already EXIF-rotated at upload, so a
+ * phone portrait reads as portrait — through the editor's own session, so
+ * Storage and table RLS are the boundary; no service key is involved.
+ *
+ * The size recorded is the derivative's, which carries the same aspect ratio as
+ * the original (the pipeline scales, never crops). Idempotent: only rows still
+ * missing a size are touched, so the album page can call this whenever it sees
+ * a gap.
+ */
+export async function backfillPhotoSizes(albumId: string): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  const { org, error: roleError } = await editorOrg();
+  if (!org) return { ok: false, error: roleError };
+
+  const supabase = await createClient();
+  const { data: items, error } = await supabase
+    .from("album_items")
+    .select("assets(id, variants, width, height, deleted_at)")
+    .eq("album_id", albumId)
+    .eq("org_id", org.orgId);
+  if (error) return { ok: false, error: `Couldn't read the album: ${error.message}` };
+
+  let updated = 0;
+  for (const item of items ?? []) {
+    const asset = item.assets as unknown as {
+      id: string;
+      variants: unknown;
+      width: number | null;
+      height: number | null;
+      deleted_at: string | null;
+    } | null;
+    if (!asset || asset.deleted_at || (asset.width && asset.height)) continue;
+
+    // The smallest derivative that exists — its header is all that's needed.
+    const variant = ["thumb", "display", "large"]
+      .map((name) => readAssetVariant(asset.variants, name))
+      .find((v) => v !== null);
+    if (!variant) continue;
+
+    const { data: blob } = await supabase.storage.from("assets").download(variant.storagePath);
+    if (!blob) continue;
+    const size = readImageSize(new Uint8Array(await blob.arrayBuffer()));
+    if (!size) continue;
+
+    const { error: updateError } = await supabase
+      .from("assets")
+      .update({ width: size.width, height: size.height })
+      .eq("id", asset.id)
+      .eq("org_id", org.orgId)
+      .is("width", null);
+    if (!updateError) updated += 1;
+  }
+
+  if (updated > 0) revalidatePath(`/media/${albumId}`);
+  return { ok: true, updated };
 }

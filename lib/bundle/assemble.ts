@@ -177,6 +177,28 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
       bytes: asset.bytes,
     }));
 
+  // Every stored size of every album photo, too: a collage picks the smallest
+  // variant that's sharp at the size it renders, which depends on the screen,
+  // so all of them have to be cached for that choice to work offline. Sorted
+  // after the display variants so the list stays stable build to build.
+  const seenUrls = new Set(assets.map((asset) => asset.url));
+  const albumVariants: BundleAsset[] = [];
+  for (const photo of Object.values(input.content.albums).flat()) {
+    for (const variant of photo.variants ?? []) {
+      if (seenUrls.has(variant.src)) continue;
+      seenUrls.add(variant.src);
+      albumVariants.push({
+        id: photo.assetId,
+        url: variant.src,
+        variant: variant.name,
+        contentType: variant.contentType,
+        bytes: variant.bytes,
+      });
+    }
+  }
+  albumVariants.sort((a, b) => a.url.localeCompare(b.url));
+  assets.push(...albumVariants);
+
   return {
     screen: {
       id: input.screen.id,

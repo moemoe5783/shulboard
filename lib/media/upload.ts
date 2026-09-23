@@ -38,6 +38,10 @@ type VariantEntry = {
   extension: string;
   content_type: string;
   bytes: number;
+  /** The derivative's pixel size, so a board can pick the smallest one that is
+   *  still sharp at the size it renders (lib/media/album-photos.ts). */
+  width: number;
+  height: number;
 };
 
 async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
@@ -132,6 +136,8 @@ export async function uploadPhoto(input: {
         extension: VARIANT_EXTENSION,
         content_type: VARIANT_CONTENT_TYPE,
         bytes: blob.size,
+        width,
+        height,
       };
       variants[spec.name] = entry;
       // The largest generated variant stands in as the row's canonical
