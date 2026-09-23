@@ -8,7 +8,8 @@ import { albumSelectionKey, hasAlbumSelection, useSelectedPhotos } from "../medi
 import { PhotoEmpty } from "../media/PhotoEmpty";
 import { resolveDesignUnits } from "../useFitFontSize";
 import { readCollageConfig, type CollageConfig } from "./manifest";
-import { CollagePlayer, TRANSITION_MS, type PlannedPage, type PlayerSnapshot } from "./player";
+import { CollagePlayer, type PlannedPage, type PlayerSnapshot } from "./player";
+import { cellAnimation, readingOrder, type CollageTransition } from "./transitions";
 
 /*
  * The collage on the board. The layout comes from lib/collage — the same
@@ -79,8 +80,24 @@ function useCollageBox(ref: RefObject<HTMLDivElement | null>, canvasWidth: numbe
   return measured;
 }
 
+/** Whether the viewer has asked for less motion. Pages still change — that is
+ *  the content — but instantly. */
+function useReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
+  );
+}
+
 export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageConfig>) {
-  const config = readCollageConfig(raw);
+  const reducedMotion = useReducedMotion();
+  const stored = readCollageConfig(raw);
+  const config: CollageConfig = reducedMotion ? { ...stored, transition: "none" } : stored;
   const album = useSelectedPhotos(config);
   const second = useSecond();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -143,8 +160,19 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
         <PhotoEmpty canvas={canvas} message={hint} editorOnly />
       ) : (
         <>
-          {snapshot.previous && <Layer key={snapshot.previous.key} page={snapshot.previous} config={config} canvas={canvas} role="leaving" />}
-          {snapshot.current && <Layer key={snapshot.current.key} page={snapshot.current} config={config} canvas={canvas} role="entering" />}
+          {snapshot.previous && (
+            <Layer key={snapshot.previous.key} page={snapshot.previous} config={config} canvas={canvas} role="leaving" offset={0} />
+          )}
+          {snapshot.current && (
+            <Layer
+              key={snapshot.current.key}
+              page={snapshot.current}
+              config={config}
+              canvas={canvas}
+              role="entering"
+              offset={snapshot.currentOffset}
+            />
+          )}
         </>
       )}
     </div>
@@ -163,25 +191,25 @@ function hintFor(
   return null;
 }
 
-/** One page of photos. Entering pages fade in; in a fade-through transition the
- *  leaving page fades out first, and in a crossfade it holds underneath. */
+/** One page of photos. Each photo animates on its own (./transitions.ts): in
+ *  reading order for the one-by-one modes, all together for the whole-page
+ *  ones. A leaving page animates away too, so nothing is left to pop. */
 function Layer({
   page,
   config,
   canvas,
   role,
+  offset,
 }: {
   page: PlannedPage;
   config: CollageConfig;
   canvas: { width: number };
   role: "entering" | "leaving";
+  /** For an entering page: when it starts, after the old page has made room. */
+  offset: number;
 }) {
-  const ms = TRANSITION_MS[config.transition];
-  let animation: string | undefined;
-  if (config.transition === "crossfade" && role === "entering") animation = `collage-in ${ms}ms ease both`;
-  if (config.transition === "fade") {
-    animation = role === "leaving" ? `collage-out ${ms / 2}ms ease both` : `collage-in ${ms / 2}ms ease ${ms / 2}ms both`;
-  }
+  const mode = config.transition as CollageTransition;
+  const order = readingOrder(page.cells);
 
   const radius = config.photoRadius > 0 ? boardLength(config.photoRadius, canvas.width) : undefined;
   const photoStyle: CSSProperties = {
@@ -198,13 +226,20 @@ function Layer({
   if (config.photoFrame === "shadow") photoStyle.boxShadow = "0 0.3cqw 1.2cqw rgba(0, 0, 0, 0.3)";
 
   return (
-    <div data-collage-layer={role} className="absolute inset-0" style={{ animation, zIndex: role === "entering" ? 1 : 0 }}>
-      {page.cells.map((cell) => (
+    <div data-collage-layer={role} className="absolute inset-0" style={{ zIndex: role === "entering" ? 1 : 0 }}>
+      {page.cells.map((cell, i) => (
         <div
           key={cell.id}
           data-photo-id={cell.id}
           className="absolute"
-          style={{ left: `${cell.left}%`, top: `${cell.top}%`, width: `${cell.width}%`, height: `${cell.height}%` }}
+          style={{
+            left: `${cell.left}%`,
+            top: `${cell.top}%`,
+            width: `${cell.width}%`,
+            height: `${cell.height}%`,
+            animation: cellAnimation(mode, role, order[i], page.cells.length, offset),
+            willChange: mode === "none" ? undefined : "opacity, transform",
+          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a media-proxy
               path, preloaded by the player, the same <img> Image and Gallery use. */}

@@ -219,6 +219,59 @@ try {
   check(visibility.editor === "visible", "the editor shows “Album is empty”", visibility.editor);
   check(visibility.display === "hidden", "a screen shows nothing for an empty album", visibility.display);
 
+  for (const transition of ["cascade", "rise", "crossfade"]) {
+    console.log(`\n-- 7: the ${transition} transition ------------------------------------`);
+    await page.goto(`${BASE}/collage-lab/widget?count=20&interval=3&transition=${transition}`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-lab-board="large"] [data-collage-layer="entering"] img');
+
+    // Sample fast through one swap: the leaving page's photos, their animations,
+    // and how visible the leaving page still is on the last sample before it's
+    // removed. If the old page were removed while still showing, the frame's
+    // background would pop into the new page's gaps.
+    let swap = null;
+    let lastLeavingOpacity = null;
+    const end = Date.now() + 15_000;
+    while (Date.now() < end) {
+      const sample = await page.evaluate(() => {
+        const root = document.querySelector('[data-lab-board="large"] [data-collage]');
+        const leaving = root.querySelector('[data-collage-layer="leaving"]');
+        const entering = root.querySelector('[data-collage-layer="entering"]');
+        const cells = (layer) =>
+          layer
+            ? [...layer.children].map((cell) => {
+                const cs = getComputedStyle(cell);
+                return {
+                  top: parseFloat(cell.style.top),
+                  left: parseFloat(cell.style.left),
+                  name: cs.animationName,
+                  delay: parseFloat(cs.animationDelay) || 0,
+                  opacity: parseFloat(cs.opacity),
+                };
+              })
+            : null;
+        return { leaving: cells(leaving), entering: cells(entering) };
+      });
+      if (sample.leaving) {
+        swap ??= sample;
+        lastLeavingOpacity = Math.max(...sample.leaving.map((c) => c.opacity));
+      } else if (swap) {
+        break;
+      }
+      await sleep(30);
+    }
+    check(swap !== null, `${transition}: a swap happened`);
+    if (!swap) continue;
+    check(swap.leaving.every((c) => /out/.test(c.name)), `${transition}: the old page animates out, not just covered`, swap.leaving[0]?.name);
+    check(lastLeavingOpacity !== null && lastLeavingOpacity < 0.2, `${transition}: the old page is gone before it's removed — nothing pops`, `last seen at ${lastLeavingOpacity?.toFixed(2)} opacity`);
+    if (transition !== "crossfade") {
+      const byReading = [...swap.entering].sort((a, b) => (Math.abs(a.top - b.top) > 2 ? a.top - b.top : a.left - b.left));
+      const increasing = byReading.every((c, i) => i === 0 || c.delay > byReading[i - 1].delay);
+      const leavingFirst = Math.min(...swap.entering.map((c) => c.delay)) > 0;
+      check(increasing, `${transition}: new photos arrive one after another, in reading order`, byReading.map((c) => c.delay.toFixed(2)).join(" "));
+      check(leavingFirst, `${transition}: and only once the old ones have started to go`);
+    }
+  }
+
   check(errors.length === 0, "no page errors", errors.join(" | "));
 } finally {
   await browser.close();
