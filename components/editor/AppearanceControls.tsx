@@ -73,10 +73,12 @@ export function AppearanceControls({
         {config.title !== "" && (
           <SliderField
             label="Header size"
-            value={config.titleSize}
-            min={12}
-            max={200}
-            onChange={(titleSize) => onChange({ titleSize })}
+            value={Math.round(config.titleSize * 100)}
+            min={50}
+            max={300}
+            step={5}
+            onChange={(pct) => onChange({ titleSize: pct / 100 })}
+            format={(v) => `${v}%`}
           />
         )}
       </div>
@@ -116,7 +118,7 @@ export function AppearanceControls({
         )}
       </div>
 
-      {/* Corner radius + padding — the two a slider serves best. */}
+      {/* Corner radius (absolute) + padding (relative to the text size). */}
       <SliderField
         label="Corner radius"
         value={config.radius}
@@ -124,7 +126,15 @@ export function AppearanceControls({
         max={160}
         onChange={(radius) => onChange({ radius })}
       />
-      <SliderField label="Padding" value={config.padding} min={0} max={160} onChange={(padding) => onChange({ padding })} />
+      <SliderField
+        label="Padding"
+        value={Math.round(config.padding * 100)}
+        min={0}
+        max={200}
+        step={5}
+        onChange={(pct) => onChange({ padding: pct / 100 })}
+        format={(v) => `${v}%`}
+      />
 
       {/* Border. */}
       <div className="flex flex-col gap-2">

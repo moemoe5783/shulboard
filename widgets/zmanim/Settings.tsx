@@ -45,8 +45,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           <option value="next">Next one only</option>
         </select>
         <span className={PANEL_LABEL}>
-          The table always fits its box — the type shrinks so every row stays visible, never cut off. Set a type size
-          on the Size tab to resize the box to it.
+          Set the type size on the Size tab. If more rows are chosen than fit, the table pages through them a screenful
+          at a time rather than shrinking the text.
         </span>
       </label>
 

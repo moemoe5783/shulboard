@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
@@ -8,9 +8,9 @@ import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
-import { resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
+import { resolveDesignPx } from "../useFitFontSize";
 import { splitTimeColumns } from "./display-time";
-import { fitFontSizePx } from "./fit";
+import { pageCount, rowsPerPage, zmanimFontPx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 
 /** The footnote block, relative to a row's own type size. Small — it is a
@@ -18,14 +18,22 @@ import { manifest, type ZmanimConfig } from "./manifest";
  *  compete with the times. */
 const FOOTNOTE_SCALE = 0.5;
 
+/** The "Zmanim from Chabad.org" credit line, relative to a row's type size.
+ *  Deliberately small — it names the source without competing with the times. */
+const ATTRIBUTION_SCALE = 0.32;
+
+/** Seconds each page holds before the table cycles to the next — only when the
+ *  rows don't all fit at once. Eight, the same legibility number the candle
+ *  widget rotates on: long enough to read a page, slow enough not to flicker. */
+const PAGE_SECONDS = 8;
+
 /**
  * The gap between the label column and the time column.
  *
  * NOT `column-gap`: the times are three tracks (hours, ":MM", meridiem — see
  * `Row`) that must sit flush against each other, which one grid `column-gap`
  * cannot express. So the gap is padding on the time cell adjacent to the label,
- * and the grid's own gap is zero. In `em`, so it scales with the type and the
- * fit measurement reads it as part of the row width it fits.
+ * and the grid's own gap is zero. In `em`, so it scales with the type.
  */
 const LABEL_GAP = "1em";
 
@@ -36,16 +44,21 @@ const LABEL_GAP = "1em";
  */
 const GRID_COLUMNS = "1fr max-content max-content max-content";
 
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) {
   const location = useBoardLocation();
   const zmanim = useBoardZmanim();
   const second = useSecond();
   const boxRef = useRef<HTMLDivElement>(null);
-  /** The whole table (grid + footnotes) — the fit reads its natural height. */
-  const contentRef = useRef<HTMLDivElement>(null);
-  /** The row grid alone — the fit reads the widest row's natural width off it
-   *  at `max-content`, which is what keeps a long label from truncating. */
+  /** The clip region that shows one page of whole rows. */
+  const viewportRef = useRef<HTMLDivElement>(null);
+  /** The row grid — always holds ALL rows, so its width and per-row height are
+   *  measurable and paging is a translate rather than a second copy. */
   const gridRef = useRef<HTMLDivElement>(null);
+  /** Footnotes + the attribution line, so their height can be reserved out of
+   *  the space the rows page through. */
+  const chromeRef = useRef<HTMLDivElement>(null);
 
   // Chabad.org is the only source (lib/zmanim/provider.ts), so there is no
   // provider to resolve. What still matters is whether Chabad has a location
@@ -84,25 +97,28 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   const footnotes = config.showFootnotes ? distinctFootnotes(rows) : [];
 
   /*
-   * FIT TO BOX, ALWAYS. The type shrinks so the whole table — every row's full
-   * text and all the rows stacked — fits the box, and no more (./fit.ts). It is
-   * the only sizing mode: a busier day or a smaller box renders smaller rather
-   * than clipping or scrolling. The signature re-measures whenever the rows or
-   * the footnotes change, since both change the content's size.
+   * WIDTH-CAPPED TYPE, VERTICAL PAGING — ./fit.ts. The type renders at the
+   * configured size, shrunk only if the widest row would overflow the width;
+   * the box's height never rescales it. When the rows don't all fit the height,
+   * the table pages through whole rows instead of shrinking. The signature
+   * re-measures whenever the rows, the footnotes or the type size change.
    */
-  useZmanimFit({
+  const layout = useZmanimLayout({
     boxRef,
     gridRef,
-    contentRef,
+    chromeRef,
     canvasWidth: canvas.width,
-    signature: `${rows.map(labelOf).join("|")}::${footnotes.join("|")}`,
+    configSize: config.size,
+    rowCount: rows.length,
+    signature: `${config.size}::${rows.map(labelOf).join("|")}::${footnotes.join("|")}`,
   });
+
+  const pages = pageCount(rows.length, layout.rowsPerPage);
+  const page = second === null ? 0 : Math.floor(second / PAGE_SECONDS) % pages;
 
   // The widget's appearance — background, padding, radius, border, colour, font
   // and an optional header — is applied by BoardRenderer.WidgetFrame around this
-  // Renderer (widgets/style.ts), for every widget in one place. This Renderer
-  // returns only the table itself, and `boxRef` measures the padded, header-less
-  // content area WidgetFrame gives it, which is exactly what the fit needs.
+  // Renderer (widgets/style.ts), for every widget in one place.
 
   if (!location) {
     return <EmptyLocation canvas={canvas} message="This shul hasn't set a location yet — zmanim need it." />;
@@ -125,11 +141,8 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
 
   /*
    * Chabad has nothing for any of the selected zmanim on this date — a COMMON
-   * state (everything past the warmed window, and every date a warm missed),
-   * deliberately not an offline message: the display boots from its
-   * last-known-good bundle and keeps rendering with no network, so a screen
-   * showing this is almost certainly online and simply has no value for the
-   * date.
+   * state, deliberately not an offline message: the display boots from its
+   * last-known-good bundle and keeps rendering with no network.
    */
   if (rows.length === 0) {
     return (
@@ -142,31 +155,40 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   return (
-    <div
-      ref={boxRef}
-      // overflow-hidden is the last-resort clip if the content doesn't fit even
-      // at the minimum size (rare — fit shrinks to fit first). The fitted type
-      // size is written straight to this element by `useZmanimFit`.
-      className="relative flex h-full w-full flex-col justify-start overflow-hidden"
-    >
-      <div ref={contentRef} className="flex w-full flex-col">
-        {/*
-          A FOUR-COLUMN GRID, which is the whole reason the times form a clean
-          edge: the hour, the ":MM" and the meridiem each get their own
-          `max-content` track shared by every row, so the hours right-align
-          against a common colon and the outer edge is straight whatever the
-          hour's width. The `1fr` label track takes the slack.
-        */}
-        <div ref={gridRef} className="grid w-full" style={{ gridTemplateColumns: GRID_COLUMNS, columnGap: 0 }}>
-          {rows.map((row) => (
-            <Row key={row.id} row={row} label={labelOf(row)} />
-          ))}
+    <div ref={boxRef} className="relative flex h-full w-full flex-col overflow-hidden">
+      {/*
+        The viewport clips to a whole number of rows; the grid inside holds ALL
+        rows and translates up a page at a time. Height is set by the measured
+        layout so a partial row never peeks in at the bottom.
+      */}
+      <div
+        ref={viewportRef}
+        data-zmanim-viewport
+        className="w-full overflow-hidden"
+        style={{ height: layout.pageHeightPx === null ? undefined : `${layout.pageHeightPx}px` }}
+      >
+        <div style={{ transform: `translateY(${-page * (layout.pageHeightPx ?? 0)}px)`, transition: "transform 400ms ease" }}>
+          {/*
+            A FOUR-COLUMN GRID — the hour, the ":MM" and the meridiem each get
+            their own `max-content` track shared by every row, so the hours
+            right-align against a common colon and the outer edge is straight.
+            The `1fr` label track takes the slack.
+          */}
+          <div ref={gridRef} className="grid w-full" style={{ gridTemplateColumns: GRID_COLUMNS, columnGap: 0 }}>
+            {rows.map((row) => (
+              <Row key={row.id} row={row} label={labelOf(row)} />
+            ))}
+          </div>
         </div>
+      </div>
 
+      {/* Footnotes (opt-in) and the source credit, held out of the paging area
+          and pinned to the bottom. */}
+      <div ref={chromeRef} className="mt-auto flex shrink-0 flex-col">
         {footnotes.length > 0 && (
           <div
             className="flex flex-col opacity-60"
-            style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.8em", gap: "0.2em" }}
+            style={{ fontSize: `${FOOTNOTE_SCALE}em`, marginTop: "0.6em", gap: "0.2em" }}
           >
             {footnotes.map((text) => (
               <span key={text} className="leading-tight">
@@ -175,82 +197,91 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
             ))}
           </div>
         )}
+        <span
+          data-zmanim-attribution
+          className="leading-tight opacity-50"
+          style={{ fontSize: `${ATTRIBUTION_SCALE}em`, marginTop: "0.6em" }}
+        >
+          Zmanim from Chabad.org
+        </span>
       </div>
     </div>
   );
 }
 
+type ZmanimLayout = { fontPx: number; rowsPerPage: number; pageHeightPx: number | null };
+
 /**
- * The Zmanim table's fit — ./fit.ts has the rules. Fits BOTH axes so the whole
- * table is visible and shrinks to fit, never clipped or scrolled.
+ * Measures the box and computes the width-capped type size and the whole-rows
+ * page height — ./fit.ts has the arithmetic; this is only the DOM measurement.
  *
- * NOT `useFitFontSize`, deliberately. That hook measures `scrollWidth` against
- * the box, which a `1fr`-stretched grid always reports as the box's own width —
- * so a long label would silently truncate instead of driving the size down.
- * This measures the grid's `max-content` width instead (the widest row's real
- * width), and the content's natural height, and takes the closed-form min: for
- * rows that do not wrap both scale linearly with font size, so one measurement
- * gives the exact answer and no binary search is needed.
- *
- * The result is written straight to the box's style rather than through state,
- * so the ResizeObserver can re-measure on every frame of a resize drag without
- * a re-render, and it is safe because nothing else React owns touches that
- * property.
+ * The font size is written straight to the box's style (imperative, so a resize
+ * drag re-measures every frame without a re-render); the page height and rows
+ * per page come back as state because they change what the render clips.
  */
-function useZmanimFit(options: {
+function useZmanimLayout(options: {
   boxRef: RefObject<HTMLElement | null>;
   gridRef: RefObject<HTMLElement | null>;
-  contentRef: RefObject<HTMLElement | null>;
+  chromeRef: RefObject<HTMLElement | null>;
   canvasWidth: number;
+  configSize: number;
+  rowCount: number;
   signature: string;
-}) {
-  const { boxRef, gridRef, contentRef, canvasWidth, signature } = options;
+}): ZmanimLayout {
+  const { boxRef, gridRef, chromeRef, canvasWidth, configSize, rowCount, signature } = options;
+  const [layout, setLayout] = useState<ZmanimLayout>({ fontPx: 0, rowsPerPage: rowCount || 1, pageHeightPx: null });
   const pendingFrame = useRef<number | null>(null);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const box = boxRef.current;
     const grid = gridRef.current;
-    const content = contentRef.current;
-    if (!box || !grid || !content) return;
+    if (!box || !grid || rowCount === 0) return;
 
     const measure = () => {
       const boxWidthPx = box.clientWidth;
       const boxHeightPx = box.clientHeight;
       if (boxWidthPx === 0 || boxHeightPx === 0) return;
 
-      // A known size to measure at — any size works, the ratios below are
-      // size-independent — resolved to real pixels in this box's own `cqw`
-      // context at whatever zoom the editor happens to be at.
-      const reference = resolveDesignPx(100, canvasWidth, box);
-      if (reference <= 0) return;
-      box.style.fontSize = `${reference}px`;
+      // A known size to measure the size-independent ratios at, in this box's
+      // own cqw context at whatever zoom the editor is at.
+      const ref = resolveDesignPx(100, canvasWidth, box);
+      if (ref <= 0) return;
+      box.style.fontSize = `${ref}px`;
 
-      // The whole content's natural height (grid rows plus any footnote block).
-      // Rows don't wrap, so this doesn't depend on the width and can be read at
-      // the normal layout.
-      const heightPerFontPx = content.getBoundingClientRect().height / reference;
-
-      // The widest row's full width, at `max-content` so a long label is
-      // measured at its true length rather than truncated by the `1fr` track.
+      // Widest row's full width, at max-content so a long label is measured at
+      // its true length rather than truncated by the 1fr track.
       const previousWidth = grid.style.width;
       grid.style.width = "max-content";
-      const widthPerFontPx = grid.getBoundingClientRect().width / reference;
+      const widthPerFontPx = grid.getBoundingClientRect().width / ref;
       grid.style.width = previousWidth;
 
-      const fitted = fitFontSizePx(
-        { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx },
+      // Per-row height (rows don't wrap, so every row is the same height), and
+      // the footnote+attribution chrome height — both as ratios of the font.
+      const rowHeightPerFontPx = grid.getBoundingClientRect().height / rowCount / ref;
+      const chromePerFontPx = chromeRef.current ? chromeRef.current.getBoundingClientRect().height / ref : 0;
+
+      const fontPx = zmanimFontPx(
+        { configPx: resolveDesignPx(configSize, canvasWidth, box), boxWidthPx, widthPerFontPx },
         {
           minPx: resolveDesignPx(manifest.sizing.minFontSize ?? 6, canvasWidth, box),
-          maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 200, canvasWidth, box),
+          maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 400, canvasWidth, box),
         },
       );
+      box.style.fontSize = `${fontPx}px`;
 
-      box.style.fontSize = `${fitted}px`;
+      const rowHeightPx = rowHeightPerFontPx * fontPx;
+      const availableHeightPx = Math.max(0, boxHeightPx - chromePerFontPx * fontPx);
+      const perPage = rowsPerPage(availableHeightPx, rowHeightPx);
+      const pageHeightPx = Math.min(perPage, rowCount) * rowHeightPx;
 
-      // The properties panel reads this to show and drive the type size — plain
-      // DOM state rather than a prop back through the shared renderer contract
-      // (components/editor/useElementFontSize.ts).
-      box.dataset.fittedSize = String(Math.round(resolveDesignUnits(fitted, canvasWidth, box)));
+      setLayout((previous) =>
+        previous.rowsPerPage === perPage &&
+        previous.pageHeightPx !== null &&
+        Math.abs(previous.pageHeightPx - pageHeightPx) < 0.5 &&
+        Math.abs(previous.fontPx - fontPx) < 0.5
+          ? previous
+          : { fontPx, rowsPerPage: perPage, pageHeightPx },
+      );
     };
 
     measure();
@@ -265,7 +296,9 @@ function useZmanimFit(options: {
       observer.disconnect();
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
     };
-  }, [boxRef, gridRef, contentRef, canvasWidth, signature]);
+  }, [boxRef, gridRef, chromeRef, canvasWidth, configSize, rowCount, signature]);
+
+  return layout;
 }
 
 /**
@@ -276,26 +309,17 @@ function useZmanimFit(options: {
  * minutes and meridiem each share one column: the hour has its own
  * `max-content` track and right-aligns inside it, so a "7" and an "11" put
  * their colons at the same x and the column's outer edge is straight.
- * ./display-time.ts does the split and the pieces rejoin to the exact string.
  *
  * NEITHER CELL WRAPS — a wrapping label would make one row taller than the
- * others and the fit's per-row height would be wrong. The label truncates
- * instead (`min-w-0 overflow-hidden`), which only bites in a box too small for
- * the content even at the minimum size. Everything is LTR.
+ * others and the per-row height would be wrong. The label truncates instead
+ * (`min-w-0 overflow-hidden`), which only bites in a box too small for the
+ * content even at the minimum size. Everything is LTR.
  */
 function Row({ row, label }: { row: ResolvedZman; label: string }) {
   const parts = splitTimeColumns(row.display);
 
   const gap: CSSProperties = { paddingLeft: LABEL_GAP };
   const time: CSSProperties = { fontFamily: BOARD_FONTS.sefarim };
-  /*
-   * Frank Ruhl Libre with `numeric`. The face is measured, not assumed:
-   * scripts/test-font-parity.mjs reads `11111` against `00000` in the real
-   * board and finds the sefarim face closes a 6.97px spread to 0.00px under
-   * `tabular-nums` while the UI face is unchanged at 3.08px either way. So the
-   * figures within a track line up because of this face; the tracks line the
-   * hours up with each other.
-   */
   const timeClass = "numeric font-semibold leading-snug whitespace-nowrap";
 
   const labelCell = (
@@ -305,8 +329,7 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
   );
 
   // A shape ./display-time.ts doesn't recognise still gets printed, whole,
-  // across the three time tracks. Unaligned beats absent on a board somebody is
-  // standing in front of.
+  // across the three time tracks. Unaligned beats absent on a board.
   if (!parts) {
     return (
       <>

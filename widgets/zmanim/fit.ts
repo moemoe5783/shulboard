@@ -1,65 +1,54 @@
 /*
- * `fit` mode for the Zmanim table — the ONLY sizing mode this widget has.
+ * How the Zmanim table sizes itself — WIDTH-CAPPED TYPE, VERTICAL PAGING.
  *
- * FIT BOTH AXES, SHRINK TO FIT, NEVER CLIP. The type is as large as it can be
- * while the whole table — every row's full text, and all the rows stacked —
- * fits the box, and it comes down as far as it must so nothing is cut off or
- * scrolled. A busier day (a returning candle-lighting row) or a smaller box
- * simply renders smaller. There is no page/scroll overflow any more: fit
- * always shows everything.
+ * The rules, after a lot of back-and-forth, are now:
  *
- * CLOSED FORM, no binary search. Rows do not wrap (the Renderer's `Row`
- * enforces it), so both the content's width and its height scale LINEARLY with
- * font size. One measurement at a known size therefore gives the exact size at
- * which each axis is full, and the answer is the smaller of the two, clamped:
+ *  1. The type renders at the CONFIGURED size (config.size), full stop — the
+ *     height of the box never shrinks it. A shorter box, or more zmanim rows,
+ *     does NOT make the text smaller. That was the recurring complaint: a box
+ *     resize or an added row must not rescale the type.
+ *  2. WIDTH is the one thing that can shrink it: if the widest row would not
+ *     fit the box's width at the configured size, the type comes down just
+ *     enough that the whole row is visible (plan.md §5c / the original brief:
+ *     "the width of the text should be completely visible"). It never grows
+ *     above the configured size.
+ *  3. VERTICAL overflow is handled by PAGING, not shrinking: as many WHOLE rows
+ *     as fit the height form a page, and the widget cycles through the pages.
+ *     "Only display what it could fully at a time."
  *
- *   size = min(boxWidth / widthPerFont, boxHeight / heightPerFont)
- *
- * The width term keeps the widest row's full text visible (measured at the
- * grid's `max-content` width, so a long label is not truncated); the height
- * term keeps every row on screen at once. Whichever binds is the one that was
- * going to overflow, so taking the min is exactly "fit both axes."
+ * These are pure functions so the arithmetic is testable with no DOM
+ * (scripts/test-zmanim-fit.ts); the Renderer measures the pixels and calls in.
  */
 
-export type FitMeasurement = {
-  /** The clipping box, in CSS pixels. */
-  boxWidthPx: number;
-  boxHeightPx: number;
-  /**
-   * The content's natural WIDTH per 1px of font size — the widest row's full
-   * text (label, gap and time), measured at the grid's `max-content` width so
-   * nothing is truncated. Zero means nothing measurable; the width term is
-   * then skipped.
-   */
-  widthPerFontPx: number;
-  /**
-   * The content's natural HEIGHT per 1px of font size — every row stacked (plus
-   * the footnote block when shown). Zero means nothing measurable; the height
-   * term is skipped.
-   */
-  heightPerFontPx: number;
-};
-
-/**
- * The font size, in CSS pixels, this box should render at.
- *
- * `minPx`/`maxPx` are the manifest's own bounds, already resolved to pixels by
- * the caller. The clamp is last — a box too small to show the content even at
- * `minPx` settles there and the shared clip takes over (rare, and the one case
- * "never clip" cannot be honoured because nothing smaller is legible).
- */
-export function fitFontSizePx(measurement: FitMeasurement, bounds: { minPx: number; maxPx: number }): number {
-  const { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx } = measurement;
+/** The type size, in CSS pixels, the table should render at — the configured
+ *  size, brought down only if the widest row would overflow the width. */
+export function zmanimFontPx(
+  input: { configPx: number; boxWidthPx: number; widthPerFontPx: number },
+  bounds: { minPx: number; maxPx: number },
+): number {
+  const { configPx, boxWidthPx, widthPerFontPx } = input;
   const { minPx, maxPx } = bounds;
 
-  // `Infinity` when an axis has nothing to measure, so the `min` below falls
-  // through to the other axis rather than collapsing to zero.
+  // The largest size at which the widest row still fits the box width. Infinity
+  // when nothing has been measured yet (widthPerFontPx 0), so the config size
+  // stands unshrunk.
   const widthDriven = widthPerFontPx > 0 ? boxWidthPx / widthPerFontPx : Number.POSITIVE_INFINITY;
-  const heightDriven = heightPerFontPx > 0 ? boxHeightPx / heightPerFontPx : Number.POSITIVE_INFINITY;
 
-  const fit = Math.min(widthDriven, heightDriven);
-  // Both axes empty (nothing measured yet): sit at max rather than at Infinity.
-  if (!Number.isFinite(fit)) return maxPx;
+  // Never above the configured size (width only shrinks, never grows), then
+  // clamped to the manifest's own floor/ceiling.
+  const capped = Math.min(configPx, widthDriven);
+  return Math.max(minPx, Math.min(maxPx, capped));
+}
 
-  return Math.max(minPx, Math.min(maxPx, fit));
+/** How many whole rows fit the available height at a given row height — at
+ *  least one, and never a partial row (the point of paging). */
+export function rowsPerPage(availableHeightPx: number, rowHeightPx: number): number {
+  if (rowHeightPx <= 0) return 1;
+  return Math.max(1, Math.floor(availableHeightPx / rowHeightPx));
+}
+
+/** How many pages `total` rows take at `perPage` rows each. */
+export function pageCount(total: number, perPage: number): number {
+  if (perPage <= 0) return 1;
+  return Math.max(1, Math.ceil(total / perPage));
 }

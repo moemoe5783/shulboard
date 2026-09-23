@@ -1,18 +1,19 @@
 /**
  * The Zmanim table's layout, measured in a real browser.
  *
- * Two of the widget's rules are claims about rendered pixels, and the
- * pure-function suite (test-zmanim-fit.ts) cannot reach either:
+ * The widget's layout rules are claims about rendered pixels, and the
+ * pure-function suite (test-zmanim-fit.ts) cannot reach any of them:
  *
- *  1. FIT BOTH AXES. The type is the largest at which the whole table fits the
- *     box — so a narrower box gives smaller type (width binds) AND a shorter
- *     box gives smaller type (height binds). There is no sizing mode and no
- *     scroll/page overflow any more (widgets/zmanim/fit.ts): a busier day or a
- *     smaller box simply renders smaller.
- *  2. ALIGNMENT. "7:22 PM and 11:21 AM differ in digit count, so
+ *  1. ALIGNMENT. "7:22 PM and 11:21 AM differ in digit count, so
  *     right-aligning the whole string makes the two-digit hour hang out."
  *     The hour, the ":MM" and the meridiem each get a shared grid track, so
  *     the colons land on one x and the outer edge is straight.
+ *  2. CONFIGURED SIZE, WIDTH-CAPPED, HEIGHT NEVER RESIZES. The type renders at
+ *     the configured size; a narrower box shrinks it (width-cap) but a shorter
+ *     box does NOT — that was the bug (widgets/zmanim/fit.ts).
+ *  3. VERTICAL PAGING. When the rows don't all fit, the viewport shows a whole
+ *     number of rows (no partial row peeking) and the type stays put.
+ *  4. The Chabad.org credit line, small relative to the times.
  *
  * Drives app/(dev)/zmanim-lab/page.tsx. Run with: npm run test:zmanim-layout
  */
@@ -111,14 +112,10 @@ async function readTable(page) {
   return page.evaluate(() => {
     const lab = document.querySelector("[data-zmanim-lab]");
     const widget = lab?.querySelector("[data-widget-id]");
-    // BoardRenderer.WidgetFrame wraps every widget in the shared appearance
-    // frame (widgets/style.ts, transparent when unstyled), so the box carrying
-    // the fitted font size sits a few levels in. Find it by the attribute the
-    // fit writes rather than by counting wrappers.
-    const box = widget?.querySelector("[data-fitted-size]");
-    if (!box) return null;
-    const grid = box.querySelector(".grid");
+    const grid = widget?.querySelector(".grid");
     if (!grid) return null;
+    const viewport = widget.querySelector("[data-zmanim-viewport]");
+    const attribution = widget.querySelector("[data-zmanim-attribution]");
 
     const mirrored = getComputedStyle(grid).direction === "rtl";
     const cells = [...grid.children];
@@ -129,42 +126,47 @@ async function readTable(page) {
       // than by position: the minutes cell is the one starting with a colon.
       const time = mirrored ? [c, b, a] : [a, b, c];
       rows.push({
-        label: label.textContent,
+        labelRect: label.getBoundingClientRect(),
         hours: { text: time[0].textContent, rect: time[0].getBoundingClientRect() },
         minutes: { text: time[1].textContent, rect: time[1].getBoundingClientRect() },
         meridiem: { text: time[2].textContent, rect: time[2].getBoundingClientRect() },
       });
     }
 
+    // A whole number of rows must show — no partial row peeking past the clip.
+    const vp = viewport ? viewport.getBoundingClientRect() : null;
+    const EPS = 1;
+    const visibleWholeRows = vp
+      ? rows.filter((r) => r.labelRect.top >= vp.top - EPS && r.labelRect.bottom <= vp.bottom + EPS).length
+      : rows.length;
+    const partialRows = vp
+      ? rows.filter((r) => r.labelRect.bottom > vp.top + EPS && r.labelRect.top < vp.bottom - EPS &&
+          (r.labelRect.top < vp.top - EPS || r.labelRect.bottom > vp.bottom + EPS)).length
+      : 0;
+
     return {
       mirrored,
+      rowCount: rows.length,
       rows: rows.map((row) => ({
-        label: row.label,
         hours: row.hours.text,
         minutes: row.minutes.text,
         meridiem: row.meridiem.text,
         hoursRight: row.hours.rect.right,
         hoursLeft: row.hours.rect.left,
         minutesLeft: row.minutes.rect.left,
-        minutesRight: row.minutes.rect.right,
         meridiemRight: row.meridiem.rect.right,
-        meridiemLeft: row.meridiem.rect.left,
       })),
-      fittedSize: box.dataset.fittedSize ?? null,
-      boxFontSize: Number.parseFloat(getComputedStyle(box).fontSize),
-      visibleFontSize: Number.parseFloat(getComputedStyle(grid).fontSize),
+      rowFontPx: Number.parseFloat(getComputedStyle(grid).fontSize),
+      viewportHeight: vp ? vp.height : null,
+      visibleWholeRows,
+      partialRows,
+      attributionText: attribution ? attribution.textContent : null,
+      attributionFontPx: attribution ? Number.parseFloat(getComputedStyle(attribution).fontSize) : null,
     };
   });
 }
 
 const spread = (values) => Math.max(...values) - Math.min(...values);
-
-/** The lab's board is 1280 real pixels against a 1920-unit canvas, so a
- *  design unit renders as two thirds of a CSS pixel. This is what turns
- *  `data-fitted-size` into the number the visible grid's computed font size
- *  must match — the assertion that the measured size landed on the table a
- *  room can see, rather than on the seam's hidden copy. */
-const designToPx = (units) => (Number(units) / 1920) * 1280;
 
 const executablePath = findChromium();
 if (!executablePath) {
@@ -188,16 +190,18 @@ try {
     return readTable(page);
   };
 
-  console.log("\n-- ITEM 2: the column's outer edge, and the colon ----------");
+  console.log("\n-- ITEM 1: the column's outer edge, and the colon ----------");
 
   for (const script of ["english", "transliteration"]) {
-    const table = await open(`script=${script}&w=60&h=80`);
+    // A tall box so all eleven rows sit on one page — the grid holds every row
+    // regardless of paging, so alignment is measurable across all of them.
+    const table = await open(`script=${script}&w=60&h=95`);
     if (!table) {
       check(false, `${script}: the table rendered at all`);
       continue;
     }
 
-    check(table.rows.length === 11, `${script}: all eleven rows rendered`, `${table.rows.length} rows`);
+    check(table.rowCount === 11, `${script}: all eleven rows rendered`, `${table.rowCount} rows`);
     check(
       !table.mirrored,
       `${script}: the grid is LTR — both label forms are Latin, nothing mirrors`,
@@ -250,66 +254,83 @@ try {
     );
   }
 
-  console.log("\n-- ITEM 1: fit shrinks the type on BOTH axes ----------------");
+  console.log("\n-- ITEM 2: configured size, width-capped, height never resizes -");
+
+  // The lab renders config.size = 32 design units on a 1280px board over a 1920
+  // canvas, so an unshrunk row is 32 × 1280/1920 ≈ 21.3px.
+  const CONFIG_PX = (32 / 1920) * 1280;
 
   {
-    // WIDTH BINDS in a tall box: a narrower box gives smaller type. Both boxes
-    // are tall (h=90) so the widest row is the constraint in each, and the
-    // width ratio is ~2, so the fitted type is ~2× as well.
-    const narrow = await open("script=english&w=20&h=90");
-    const wide = await open("script=english&w=40&h=90");
-    check(Number(narrow?.fittedSize) > 0, "the narrow box has a real fitted size", String(narrow?.fittedSize));
+    // A roomy box renders at the configured size — not larger, however wide.
+    const roomy = await open("script=english&w=70&h=95");
     check(
-      Number(wide?.fittedSize) > Number(narrow?.fittedSize),
-      "a wider box (width-bound) fits to bigger type",
-      `${narrow?.fittedSize} -> ${wide?.fittedSize}`,
-    );
-    const wRatio = Number(wide?.fittedSize) / Number(narrow?.fittedSize);
-    check(Math.abs(wRatio - 2) < 0.2, "and proportionally — twice the width is about twice the type", `${wRatio.toFixed(2)}×`);
-  }
-
-  {
-    // HEIGHT BINDS in a wide box: a shorter box gives smaller type. Both boxes
-    // are wide (w=90) so the stacked height is the constraint in each. This is
-    // the axis the old width-only fit ignored — the whole point of "both axes".
-    const short = await open("script=english&w=90&h=35");
-    const tall = await open("script=english&w=90&h=70");
-    check(
-      Number(tall?.fittedSize) > Number(short?.fittedSize),
-      "a taller box (height-bound) fits to bigger type — height drives it too",
-      `${short?.fittedSize} -> ${tall?.fittedSize}`,
-    );
-    const hRatio = Number(tall?.fittedSize) / Number(short?.fittedSize);
-    check(Math.abs(hRatio - 2) < 0.25, "and proportionally — twice the height is about twice the type", `${hRatio.toFixed(2)}×`);
-  }
-
-  {
-    // A box too small for the table even at minFontSize settles at the minimum
-    // and the shared clip takes over — the one case "never clip" can't hold.
-    const roomy = await open("script=english&w=40&h=90");
-    const squeezed = await open("script=english&w=6&h=8");
-    check(
-      Number(squeezed?.fittedSize) < Number(roomy?.fittedSize),
-      "a tiny box on both axes comes down to the minimum",
-      `${squeezed?.fittedSize} against ${roomy?.fittedSize}`,
+      Math.abs((roomy?.rowFontPx ?? 0) - CONFIG_PX) < 1.5,
+      "a roomy box renders at the configured type size, not larger",
+      `${roomy?.rowFontPx?.toFixed(1)}px vs configured ${CONFIG_PX.toFixed(1)}px`,
     );
   }
 
-  console.log("\n-- ITEM 3: the fitted size lands on the visible table ------");
+  {
+    // HEIGHT NEVER RESIZES: same width, two very different heights -> same type.
+    // This is the exact bug the report named — a shorter box must not shrink it.
+    const short = await open("script=english&w=70&h=30");
+    const tall = await open("script=english&w=70&h=95");
+    check(
+      Math.abs((short?.rowFontPx ?? 0) - (tall?.rowFontPx ?? -1)) < 0.5,
+      "halving the box height leaves the type size unchanged — height never resizes",
+      `${short?.rowFontPx?.toFixed(1)}px (short) vs ${tall?.rowFontPx?.toFixed(1)}px (tall)`,
+    );
+  }
 
   {
-    // The size written to the box is the size the grid actually renders at, and
-    // it matches what the properties panel reads back (data-fitted-size).
-    const table = await open("script=english&w=45&h=60");
+    // WIDTH CAPS: a box too narrow for the widest row at the configured size
+    // shrinks the type, and only downward.
+    const narrow = await open("script=english&w=18&h=95");
     check(
-      Math.abs((table?.visibleFontSize ?? 0) - (table?.boxFontSize ?? -1)) < EPSILON && (table?.visibleFontSize ?? 0) > 0,
-      "the grid renders at the size written to the box",
-      `${table?.visibleFontSize?.toFixed(1)}px on screen, box at ${table?.boxFontSize?.toFixed(1)}px`,
+      Number(narrow?.rowFontPx) < CONFIG_PX - 1,
+      "a too-narrow box shrinks the type so the widest row stays visible",
+      `${narrow?.rowFontPx?.toFixed(1)}px < ${CONFIG_PX.toFixed(1)}px`,
+    );
+  }
+
+  console.log("\n-- ITEM 3: vertical overflow pages whole rows ---------------");
+
+  {
+    // A short box can't fit all eleven rows at the configured size, so it shows
+    // a page of WHOLE rows — fewer than eleven, none partially clipped — and the
+    // type is the same as when they all fit (paging, not shrinking).
+    const short = await open("script=english&w=70&h=30");
+    const tall = await open("script=english&w=70&h=95");
+    check(
+      (short?.visibleWholeRows ?? 0) > 0 && (short?.visibleWholeRows ?? 0) < 11,
+      "a short box shows a page of some — not all — rows",
+      `${short?.visibleWholeRows} of 11 visible`,
+    );
+    check((short?.partialRows ?? 1) === 0, "and no partial row peeks past the clip", `${short?.partialRows} partial`);
+    check(
+      (tall?.visibleWholeRows ?? 0) === 11,
+      "while a tall box shows all eleven at once",
+      `${tall?.visibleWholeRows} of 11`,
+    );
+    // The viewport clips to a whole number of rows: its height is a multiple of
+    // the row height to within one row.
+    const rowHeight = (short?.viewportHeight ?? 0) / (short?.visibleWholeRows || 1);
+    check(rowHeight > 0, "the paged viewport has a real height", `${short?.viewportHeight?.toFixed(1)}px`);
+  }
+
+  console.log("\n-- ITEM 4: the Chabad.org credit line ----------------------");
+
+  {
+    const table = await open("script=english&w=70&h=95");
+    check(
+      (table?.attributionText ?? "").toLowerCase().includes("chabad.org"),
+      "a credit line names Chabad.org",
+      table?.attributionText,
     );
     check(
-      Math.abs((table?.visibleFontSize ?? 0) - designToPx(table?.fittedSize)) < 1,
-      "and the size the panel reports is the size the visible table is actually at",
-      `${table?.fittedSize} units = ${designToPx(table?.fittedSize).toFixed(1)}px, measured ${table?.visibleFontSize?.toFixed(1)}px`,
+      Number(table?.attributionFontPx) > 0 && Number(table?.attributionFontPx) < (table?.rowFontPx ?? 0) * 0.6,
+      "and it is small relative to the times",
+      `${table?.attributionFontPx?.toFixed(1)}px vs ${table?.rowFontPx?.toFixed(1)}px rows`,
     );
   }
 } finally {

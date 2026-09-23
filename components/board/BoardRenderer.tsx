@@ -7,7 +7,7 @@ import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
-import { normalizeWidgetStyle, widgetStyle } from "@/widgets/style";
+import { normalizeWidgetStyle, referenceSizeOf, widgetStyle } from "@/widgets/style";
 import type { SizingMode } from "@/widgets/types";
 
 /*
@@ -137,6 +137,10 @@ function WidgetFrame({
    * space it actually has, with no coordination between the two.
    */
   const style = normalizeWidgetStyle(widget.config as Record<string, unknown>);
+  // The widget's own text size, in design units — what the relative padding and
+  // header size scale against (widgets/style.ts). A size-14 zmanim gets a small
+  // frame and header; a size-100 title a large one, from the same ratios.
+  const referenceSize = referenceSizeOf(widget.config as Record<string, unknown>);
 
   /*
    * docs/sizing.md §2, the `hug` mode: the box resizes to fit the content at
@@ -239,7 +243,7 @@ function WidgetFrame({
         styled it is a transparent, padding-less flex pass-through, so an
         unstyled widget renders exactly as it did before this frame existed.
       */}
-      <div style={widgetStyle(style, canvas.width)}>
+      <div style={widgetStyle(style, canvas.width, referenceSize)}>
         {style.title && (
           <div
             style={{
@@ -247,8 +251,9 @@ function WidgetFrame({
               fontWeight: 600,
               textAlign: "center",
               lineHeight: 1.1,
-              fontSize: boardLength(style.titleSize, canvas.width),
-              marginBottom: boardLength(style.titleSize * 0.35, canvas.width),
+              // titleSize is a multiple of the widget's own text size.
+              fontSize: boardLength(style.titleSize * referenceSize, canvas.width),
+              marginBottom: boardLength(style.titleSize * referenceSize * 0.35, canvas.width),
             }}
           >
             {style.title}

@@ -56,9 +56,16 @@ export const widgetStyleFields = {
   textColor: z.string().max(64).default(""),
   /** The widget's font, or "inherit" to use the board's. */
   font: widgetFontSchema,
-  /** Inner padding, in board design units. */
-  padding: z.number().min(0).max(400).default(0),
-  /** Background corner radius, in board design units. */
+  /**
+   * Inner padding, as a MULTIPLE of the widget's own text size — not absolute
+   * board units. 0.5 means "half the type size". This is what makes the frame
+   * scale with the content: a size-14 zmanim gets ~7 units of padding, a
+   * size-100 title gets ~50, from the same 0.5. An absolute default looked
+   * enormous on small widgets and cramped on large ones.
+   */
+  padding: z.number().min(0).max(3).default(0),
+  /** Background corner radius, in board design units (geometric, not tied to
+   *  the text size — a rounded corner reads the same whatever the type). */
   radius: z.number().min(0).max(400).default(0),
   /** Border thickness, in board design units. 0 is no border. */
   borderWidth: z.number().min(0).max(80).default(0),
@@ -70,8 +77,10 @@ export const widgetStyleFields = {
   shadow: z.boolean().default(false),
   /** An optional header shown above the widget — "" for none. */
   title: z.string().max(120).default(""),
-  /** The header's type size, in board design units. */
-  titleSize: z.number().min(8).max(400).default(40),
+  /** The header's size, as a MULTIPLE of the widget's own text size (like
+   *  `padding`). 1.3 means "a bit larger than the body". Relative so the header
+   *  stays in proportion whatever type size the widget is set to. */
+  titleSize: z.number().min(0.3).max(4).default(1.3),
 } as const;
 
 /** The subset of a widget's config these controls read and write. */
@@ -107,6 +116,10 @@ export type FramePreset = {
   swatch: CSSProperties;
 };
 
+// A frame's padding is a MULTIPLE of the text size (widgets/style.ts), so one
+// value looks right on a size-14 zmanim and a size-100 title alike.
+const FRAME_PADDING = 0.5;
+
 export const FRAME_PRESETS: FramePreset[] = [
   {
     id: "none",
@@ -120,42 +133,70 @@ export const FRAME_PRESETS: FramePreset[] = [
     patch: {
       background: "#ffffff",
       backgroundOpacity: 100,
-      textColor: "#1b2a2e",
-      padding: 28,
-      radius: 12,
+      textColor: "#1a1a1a",
+      padding: FRAME_PADDING,
+      radius: 14,
       borderWidth: 0,
       shadow: true,
     },
     swatch: { background: "#ffffff", borderRadius: "4px", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" },
   },
   {
-    id: "dark",
-    label: "Dark panel",
+    id: "night",
+    label: "Night",
     patch: {
-      background: "#1b2a2e",
+      background: "#10141a",
       backgroundOpacity: 100,
-      textColor: "#f2f4f3",
-      padding: 28,
-      radius: 12,
+      textColor: "#f4f5f7",
+      padding: FRAME_PADDING,
+      radius: 14,
       borderWidth: 0,
       shadow: false,
     },
-    swatch: { background: "#1b2a2e", borderRadius: "4px" },
+    swatch: { background: "#10141a", borderRadius: "4px" },
+  },
+  {
+    id: "warm",
+    label: "Warm",
+    patch: {
+      background: "#f6efe1",
+      backgroundOpacity: 100,
+      textColor: "#35291a",
+      padding: FRAME_PADDING,
+      radius: 12,
+      borderWidth: 0,
+      shadow: true,
+    },
+    swatch: { background: "#f6efe1", borderRadius: "4px", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" },
+  },
+  {
+    id: "ocean",
+    label: "Ocean",
+    patch: {
+      background: "#12314a",
+      backgroundOpacity: 100,
+      textColor: "#eaf2f8",
+      padding: FRAME_PADDING,
+      radius: 14,
+      borderWidth: 0,
+      shadow: false,
+    },
+    swatch: { background: "#12314a", borderRadius: "4px" },
   },
   {
     id: "glass",
     label: "Glass",
     patch: {
-      background: "#0f1e22",
-      backgroundOpacity: 55,
-      textColor: "#f2f4f3",
-      padding: 28,
+      background: "#0b0f14",
+      backgroundOpacity: 45,
+      textColor: "#ffffff",
+      padding: FRAME_PADDING,
       radius: 16,
       borderWidth: 1,
-      borderColor: "#f2f4f3",
+      borderColor: "#ffffff",
       shadow: false,
     },
-    swatch: { background: "rgba(15,30,34,0.55)", borderRadius: "5px", border: "1px solid rgba(242,244,243,0.5)" },
+    swatch: { background: "rgba(11,15,20,0.45)", borderRadius: "5px", border: "1px solid rgba(255,255,255,0.6)" },
   },
   {
     id: "outline",
@@ -163,41 +204,13 @@ export const FRAME_PRESETS: FramePreset[] = [
     patch: {
       background: "",
       backgroundOpacity: 100,
-      padding: 24,
-      radius: 10,
+      padding: FRAME_PADDING,
+      radius: 12,
       borderWidth: 3,
-      borderColor: "#1b2a2e",
+      borderColor: "currentColor",
       shadow: false,
     },
     swatch: { background: "transparent", borderRadius: "4px", border: "2px solid rgba(242,244,243,0.7)" },
-  },
-  {
-    id: "parchment",
-    label: "Parchment",
-    patch: {
-      background: "#f4ecd8",
-      backgroundOpacity: 100,
-      textColor: "#3a2f1e",
-      padding: 28,
-      radius: 8,
-      borderWidth: 0,
-      shadow: true,
-    },
-    swatch: { background: "#f4ecd8", borderRadius: "4px", boxShadow: "0 1px 3px rgba(0,0,0,0.35)" },
-  },
-  {
-    id: "accent",
-    label: "Accent",
-    patch: {
-      background: "#1e6b63",
-      backgroundOpacity: 100,
-      textColor: "#ffffff",
-      padding: 26,
-      radius: 10,
-      borderWidth: 0,
-      shadow: false,
-    },
-    swatch: { background: "#1e6b63", borderRadius: "4px" },
   },
 ];
 
@@ -215,19 +228,24 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
   const str = (key: string) => (typeof config[key] === "string" ? (config[key] as string) : "");
   const num = (key: string, fallback: number) =>
     typeof config[key] === "number" && Number.isFinite(config[key]) ? (config[key] as number) : fallback;
+  const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
   const font = config.font;
   return {
     background: str("background"),
-    backgroundOpacity: num("backgroundOpacity", 100),
+    backgroundOpacity: clamp(num("backgroundOpacity", 100), 0, 100),
     textColor: str("textColor"),
     font: (typeof font === "string" && font in BOARD_FONTS ? font : "inherit") as WidgetFont,
-    padding: num("padding", 0),
+    // padding and titleSize are ratios of the text size now (see the schema).
+    // Clamp on read so a document written when they were absolute board units
+    // (a padding of 28, a titleSize of 40) is bounded to something sane rather
+    // than rendering a frame with 28× the type size of padding.
+    padding: clamp(num("padding", 0), 0, 3),
     radius: num("radius", 0),
     borderWidth: num("borderWidth", 0),
     borderColor: str("borderColor"),
     shadow: config.shadow === true,
     title: str("title"),
-    titleSize: num("titleSize", 40),
+    titleSize: clamp(num("titleSize", 1.3), 0.3, 4),
   };
 }
 
@@ -274,7 +292,7 @@ export function composeBackground(color: string, opacityPct: number): string {
  * is a transparent, padding-less flex pass-through that changes nothing about
  * how it renders.
  */
-export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number): CSSProperties {
+export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number, referenceSize: number): CSSProperties {
   const style: CSSProperties = {
     height: "100%",
     width: "100%",
@@ -287,7 +305,9 @@ export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number): CSS
   if (config.background) style.backgroundColor = composeBackground(config.background, config.backgroundOpacity);
   if (config.textColor) style.color = config.textColor;
   if (config.font !== "inherit") style.fontFamily = BOARD_FONTS[config.font as BoardFont];
-  if (config.padding > 0) style.padding = boardLength(config.padding, canvasWidth);
+  // padding is a multiple of the widget's own text size (referenceSize is that
+  // size, in design units), so the frame scales with the content.
+  if (config.padding > 0) style.padding = boardLength(config.padding * referenceSize, canvasWidth);
   if (config.radius > 0) style.borderRadius = boardLength(config.radius, canvasWidth);
   if (config.borderWidth > 0) {
     style.border = `${boardLength(config.borderWidth, canvasWidth)} solid ${config.borderColor || "currentColor"}`;
@@ -295,4 +315,17 @@ export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number): CSS
   if (config.shadow) style.boxShadow = "0 0.4cqw 1.6cqw rgba(0, 0, 0, 0.28)";
 
   return style;
+}
+
+/**
+ * The widget's own text size in design units, used as the reference the
+ * relative padding and header size scale against. Board-content widgets store
+ * it as `config.size`; a widget without one (media) falls back to a neutral
+ * default so its frame still has sensible proportions.
+ */
+export const DEFAULT_REFERENCE_SIZE = 32;
+
+export function referenceSizeOf(config: Record<string, unknown>): number {
+  const size = config.size;
+  return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : DEFAULT_REFERENCE_SIZE;
 }
