@@ -272,6 +272,19 @@ try {
     }
   }
 
+  console.log("\n-- 8: the editor with collages saved by an older version ----------");
+  {
+    const editorErrors = [];
+    const onError = (e) => editorErrors.push(e.message);
+    page.on("pageerror", onError);
+    await page.goto(`${BASE}/collage-lab/legacy-editor`, { waitUntil: "networkidle" });
+    await sleep(1500);
+    const loaded = await page.locator("[data-widget-id]").count();
+    const failed = await page.getByText("This page didn’t load").or(page.getByText("This page didn't load")).count();
+    page.off("pageerror", onError);
+    check(failed === 0 && loaded === 2, "the editor opens a board holding a pre-multi-album collage and gallery", `${loaded} widgets, ${failed ? "error page" : "no error page"} ${editorErrors.join(" | ")}`);
+  }
+
   check(errors.length === 0, "no page errors", errors.join(" | "));
 } finally {
   await browser.close();

@@ -30,12 +30,18 @@ import { albumIdsFor } from "@/lib/bundle/assemble";
 const REFRESH_MS = 20_000;
 
 export function useEditorAlbums(widgets: BoardWidget[]): BoardAlbums | null {
-  const key = useMemo(() => [...new Set(albumIdsFor(widgets))].sort().join(","), [widgets]);
+  const key = useMemo(
+    () => [...new Set(albumIdsFor(widgets))].sort().join(","),
+    [widgets],
+  );
   // Stored WITH the key it was fetched for, so a stale result for a previous set
   // of albums is treated as "not resolved yet" rather than shown. setState is
   // only ever called from async callbacks, never synchronously in an effect body
   // (react-hooks/set-state-in-effect).
-  const [resolved, setResolved] = useState<{ key: string; albums: BoardAlbums } | null>(null);
+  const [resolved, setResolved] = useState<{
+    key: string;
+    albums: BoardAlbums;
+  } | null>(null);
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
@@ -54,7 +60,21 @@ export function useEditorAlbums(widgets: BoardWidget[]): BoardAlbums | null {
   useEffect(() => {
     if (key === "") return;
     let cancelled = false;
-    const supabase = createClient();
+    // createClient throws when Supabase isn't configured. Album photos are a
+    // preview nicety, not worth taking the whole editor down for — resolve
+    // every album to empty instead, and the widgets show their own empty state.
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      const empty = Object.fromEntries(key.split(",").map((id) => [id, []]));
+      Promise.resolve().then(() => {
+        if (!cancelled) setResolved({ key, albums: empty });
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     // "*" is "every album" (widgets/media/albums.ts) — expand it the same way
     // the bundle build does, so the editor previews exactly what screens get.
     const expand = async (ids: string[]) => {
@@ -64,18 +84,33 @@ export function useEditorAlbums(widgets: BoardWidget[]): BoardAlbums | null {
         .select("id")
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
-      return [...new Set([...ids.filter((id) => id !== "*"), ...(data ?? []).map((album) => album.id)])];
+      return [
+        ...new Set([
+          ...ids.filter((id) => id !== "*"),
+          ...(data ?? []).map((album) => album.id),
+        ]),
+      ];
     };
-    expand(key.split(",")).then((ids) => fetchAlbumPhotos(supabase, ids)).then((albums) => {
-      if (cancelled) return;
-      // Keep the same object when nothing changed, so a refresh that finds the
-      // album as it was doesn't ripple a new value through every widget.
-      setResolved((previous) =>
-        previous && previous.key === key && JSON.stringify(previous.albums) === JSON.stringify(albums)
-          ? previous
-          : { key, albums },
-      );
-    });
+    expand(key.split(","))
+      .then((ids) => fetchAlbumPhotos(supabase, ids))
+      .catch(
+        () =>
+          Object.fromEntries(
+            key.split(",").map((id) => [id, []]),
+          ) as BoardAlbums,
+      )
+      .then((albums) => {
+        if (cancelled) return;
+        // Keep the same object when nothing changed, so a refresh that finds the
+        // album as it was doesn't ripple a new value through every widget.
+        setResolved((previous) =>
+          previous &&
+          previous.key === key &&
+          JSON.stringify(previous.albums) === JSON.stringify(albums)
+            ? previous
+            : { key, albums },
+        );
+      });
     return () => {
       cancelled = true;
     };

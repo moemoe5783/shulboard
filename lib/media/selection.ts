@@ -43,10 +43,16 @@ export type AlbumSelection = {
   excludedAlbumIds: string[];
 };
 
-/** The chosen album ids, folding in the legacy single `albumId`. */
+/** The chosen album ids, folding in the legacy single `albumId`. Tolerates a
+ *  config with the fields missing, since stored config isn't re-validated. */
 export function chosenAlbumIds(selection: AlbumSelection): string[] {
-  const ids = selection.albumIds.length > 0 ? selection.albumIds : selection.albumId ? [selection.albumId] : [];
-  return [...new Set(ids)];
+  const listed = Array.isArray(selection.albumIds) ? selection.albumIds.filter((id) => typeof id === "string" && id) : [];
+  const legacy = typeof selection.albumId === "string" && selection.albumId ? [selection.albumId] : [];
+  return [...new Set(listed.length > 0 ? listed : legacy)];
+}
+
+function excludedIds(selection: AlbumSelection): string[] {
+  return Array.isArray(selection.excludedAlbumIds) ? selection.excludedAlbumIds.filter((id) => typeof id === "string") : [];
 }
 
 /** Whether anything has been chosen at all — an unconfigured widget shows its
@@ -64,7 +70,7 @@ export function albumSelectionNeeds(selection: AlbumSelection): readonly DataNee
 /** A stable string for "which albums", for keys and shuffle seeds. */
 export function albumSelectionKey(selection: AlbumSelection): string {
   return selection.albumMode === "all"
-    ? `all-except:${[...new Set(selection.excludedAlbumIds)].sort().join(",")}`
+    ? `all-except:${[...new Set(excludedIds(selection))].sort().join(",")}`
     : `albums:${chosenAlbumIds(selection).join(",")}`;
 }
 
@@ -82,7 +88,7 @@ export function selectPhotos(
   if (!albums) return undefined;
   let ids: string[];
   if (selection.albumMode === "all") {
-    const excluded = new Set(selection.excludedAlbumIds);
+    const excluded = new Set(excludedIds(selection));
     // Sorted, because the editor and the bundle build their maps in different
     // insertion orders, and the order feeds the layout seed — both sides have
     // to walk the albums identically for a screen to match the preview.
