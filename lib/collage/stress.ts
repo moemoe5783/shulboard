@@ -62,6 +62,9 @@ export type StressResult = {
   averageCoverage: number;
   worstCoverage: number;
   slowestPageMs: number;
+  /** 99th-percentile page build — steadier than the single slowest, which a
+   *  garbage-collection pause on a shared machine can spike on its own. */
+  p99PageMs: number;
   averagePageMs: number;
   /** Photos that failed to appear exactly once in their cycle, summed. */
   cycleErrors: number;
@@ -87,6 +90,7 @@ export function runStress(input: {
   let worstCase: StressResult["worstCase"] = null;
   let slowest = 0;
   let timeSum = 0;
+  const times: number[] = [];
   let cycleErrors = 0;
 
   for (let c = 0; c < input.cases; c += 1) {
@@ -104,6 +108,7 @@ export function runStress(input: {
       const page = step.value;
       pages += 1;
       timeSum += elapsed;
+      times.push(elapsed);
       slowest = Math.max(slowest, elapsed);
       coverageSum += page.layout.coverage;
       for (const photo of page.photos) seen.set(photo.id, (seen.get(photo.id) ?? 0) + 1);
@@ -121,6 +126,7 @@ export function runStress(input: {
     averageCoverage: pages ? coverageSum / pages : 0,
     worstCoverage: pages ? worst : 0,
     slowestPageMs: slowest,
+    p99PageMs: times.length ? times.sort((a, b) => a - b)[Math.min(times.length - 1, Math.floor(times.length * 0.99))] : 0,
     averagePageMs: pages ? timeSum / pages : 0,
     cycleErrors,
     worstCase,

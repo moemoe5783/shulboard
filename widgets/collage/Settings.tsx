@@ -3,13 +3,12 @@
 import { useSyncExternalStore } from "react";
 import { CHROME_BUTTON } from "@/app/(dev)/editor-lab/chrome";
 import { NumberField } from "@/components/editor/NumberField";
-import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
+import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { SliderField } from "@/components/editor/SliderField";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import { AlbumsField } from "../media/AlbumField";
 import { readCollageConfig, type CollageConfig } from "./manifest";
-
-const DEFAULT_LEFTOVER = "#1b2a2e";
+import { COLLAGE_TRANSITIONS, TRANSITION_LABELS } from "./transitions";
 
 /** The collage element on the canvas for this widget — where the preview
  *  controls send their events and read the cycle's state back from. */
@@ -141,9 +140,11 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
           onChange={(event) => onChange({ transition: event.target.value as CollageConfig["transition"] })}
           className={PANEL_CONTROL}
         >
-          <option value="crossfade">Crossfade</option>
-          <option value="fade">Fade through the background</option>
-          <option value="none">None</option>
+          {COLLAGE_TRANSITIONS.map((transition) => (
+            <option key={transition} value={transition}>
+              {TRANSITION_LABELS[transition]}
+            </option>
+          ))}
         </select>
       </label>
 
@@ -169,29 +170,31 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
         </select>
       </label>
 
-      <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={config.leftoverColor !== ""}
-            onChange={(event) => onChange({ leftoverColor: event.target.checked ? DEFAULT_LEFTOVER : "" })}
-            className={PANEL_CHECKBOX}
-          />
-          <span className="text-cell text-paper">Colour behind the photos</span>
-        </label>
-        {config.leftoverColor !== "" && (
-          <label className="flex items-center gap-2 pl-6">
-            <input
-              type="color"
-              value={config.leftoverColor}
-              onChange={(event) => onChange({ leftoverColor: event.target.value })}
-              className="border-paper/20 h-8 w-12 rounded-[5px] border bg-transparent"
-              aria-label="Colour behind the photos"
-            />
-            <span className={PANEL_LABEL}>Fills any space the photos don’t</span>
-          </label>
-        )}
-      </div>
+      {/* ONE background: the widget's own, on the Appearance tab — it shows in
+          the gaps and in any space the photos don't fill. A collage saved with
+          the old separate inner colour can move it there in one click. */}
+      {config.leftoverColor ? (
+        <div className="flex flex-col gap-2">
+          <span className={PANEL_LABEL}>
+            This collage has its own background colour from an earlier version. Backgrounds now live on the
+            Appearance tab, with the rest of the frame.
+          </span>
+          <button
+            type="button"
+            className={`${CHROME_BUTTON} border-paper/20 border`}
+            onClick={() =>
+              onChange({ background: config.background || config.leftoverColor, backgroundOpacity: config.background ? config.backgroundOpacity : 100, leftoverColor: "" })
+            }
+          >
+            Move it to Appearance
+          </button>
+        </div>
+      ) : (
+        <span className={PANEL_LABEL}>
+          The background behind the photos is set on the Appearance tab. It shows in the gaps and anywhere the
+          photos don&rsquo;t reach.
+        </span>
+      )}
     </div>
   );
 }

@@ -29,12 +29,26 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
 
   if (!album) notFound();
 
-  const { data: items, error } = await supabase
-    .from("album_items")
-    .select("asset_id, caption, position, display_until, assets(id, variants, width, height, deleted_at)")
-    .eq("album_id", albumId)
-    .eq("org_id", org.orgId)
-    .order("position", { ascending: true });
+  const read = (columns: string) =>
+    supabase
+      .from("album_items")
+      .select(columns)
+      .eq("album_id", albumId)
+      .eq("org_id", org.orgId)
+      .order("position", { ascending: true });
+  const withEndDate = "asset_id, caption, position, display_until, assets(id, variants, width, height, deleted_at)";
+  let { data: rawItems, error } = await read(withEndDate);
+  // Before the end-date migration is applied, load the album without it
+  // rather than failing the page (lib/media/album-photos.ts does the same).
+  const endDates = !(error && (error.code === "42703" || /display_until/.test(error.message)));
+  if (!endDates) ({ data: rawItems, error } = await read(withEndDate.replace(" display_until,", "")));
+  const items = (rawItems ?? []) as unknown as {
+    asset_id: string;
+    caption: string | null;
+    position: number;
+    display_until?: string | null;
+    assets: unknown;
+  }[];
 
   if (error) throw new Error(`Couldn't load the album: ${error.message}`);
 
@@ -68,6 +82,7 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
       albumName={album.name}
       orgId={org.orgId}
       timeZone={org.timezone}
+      endDatesAvailable={endDates}
       photos={photos}
       nextPosition={maxPosition + 1}
     />

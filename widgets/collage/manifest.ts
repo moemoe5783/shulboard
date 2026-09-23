@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
 import { widgetStyleFields } from "../style";
+import { COLLAGE_TRANSITIONS } from "./transitions";
 import type { DataNeed, WidgetManifest } from "../types";
 
 /*
@@ -27,8 +28,13 @@ export const collageConfigSchema = z.object({
   gutter: z.number().min(0).max(60).default(8).catch(8),
   /** Corner radius on each photo, in board design units. */
   photoRadius: z.number().min(0).max(80).default(6).catch(6),
-  /** The colour of any space the layout can't fill, or "" for transparent (the
-   *  widget's own frame shows through). Board content: any colour. */
+  /**
+   * LEGACY — an inner background from before the collage used the widget's
+   * own Appearance background. There is ONE background now: the frame's,
+   * which shows through the gaps and any space the photos don't fill. A
+   * collage saved with this set still renders it, and its Settings offer to
+   * move it to Appearance (widgets/collage/Settings.tsx); nothing new writes it.
+   */
   leftoverColor: z.string().max(64).default("").catch(""),
   /** How many photos per page: auto (as many as stay readable), a range, or exact. */
   density: z.enum(["auto", "few", "medium", "many", "exact"]).default("auto").catch("auto"),
@@ -41,7 +47,9 @@ export const collageConfigSchema = z.object({
     .preprocess((value) => (typeof value === "number" ? Math.min(120, Math.max(3, value)) : value), z.number())
     .default(10)
     .catch(10),
-  transition: z.enum(["crossfade", "fade", "none"]).default("crossfade").catch("crossfade"),
+  /** How pages change — one by one (four styles), the whole page at once, or
+   *  instantly (./transitions.ts). */
+  transition: z.enum(COLLAGE_TRANSITIONS).default("cascade").catch("cascade"),
   /** An optional thin border or soft shadow on each photo. */
   photoFrame: z.enum(["none", "border", "shadow"]).default("none").catch("none"),
   // Background, colour, font, padding, border, shadow, header — shared

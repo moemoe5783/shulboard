@@ -9,6 +9,7 @@ import {
 } from "@/lib/collage";
 import type { BoardPhoto, BoardPhotoVariant } from "@/lib/media/album-photos";
 import type { CollageConfig } from "./manifest";
+import { enterOffset, transitionTotal } from "./transitions";
 
 /*
  * The collage's cycle — which page is on screen, which is next, and when to
@@ -61,6 +62,9 @@ export type PlayerSnapshot = {
   playing: boolean;
   /** The album has photos but none the engine can place yet (no sizes). */
   unsized: boolean;
+  /** How long after the swap the current page starts arriving — fixed when it
+   *  is shown, so removing the old page later can't restart its animation. */
+  currentOffset: number;
 };
 
 export type PlayerInputs = {
@@ -77,8 +81,6 @@ export type PlayerInputs = {
   albumKey: string;
 };
 
-/** How long a transition runs, by mode, in ms — the Renderer's CSS matches. */
-export const TRANSITION_MS: Record<CollageConfig["transition"], number> = { crossfade: 1000, fade: 1000, none: 0 };
 
 function usable(photos: readonly BoardPhoto[]): EnginePhoto[] {
   const out: EnginePhoto[] = [];
@@ -136,7 +138,7 @@ type Upcoming = {
 
 export class CollagePlayer {
   private listeners = new Set<() => void>();
-  private snapshot: PlayerSnapshot = { current: null, previous: null, playing: true, unsized: false };
+  private snapshot: PlayerSnapshot = { current: null, previous: null, playing: true, unsized: false, currentOffset: 0 };
   private inputs: PlayerInputs | null = null;
   private layoutKey = "";
   private version = 0;
@@ -319,18 +321,25 @@ export class CollagePlayer {
     this.advanceWhenReady = false;
 
     const mode = this.inputs?.config.transition ?? "none";
-    const keepPrevious = transition && mode !== "none" && this.snapshot.current !== null;
-    this.emit({ current: next.page, previous: keepPrevious ? this.snapshot.current : null });
+    const leaving = this.snapshot.current;
+    const keepPrevious = transition && mode !== "none" && leaving !== null;
+    const total = keepPrevious ? transitionTotal(mode, leaving.cells.length, next.page.cells.length) : 0;
+    this.emit({
+      current: next.page,
+      previous: keepPrevious ? leaving : null,
+      currentOffset: keepPrevious ? enterOffset(mode, leaving.cells.length) : 0,
+    });
 
     if (keepPrevious) {
+      // Removed only once its last photo has finished leaving (./transitions.ts).
       const shownKey = next.page.key;
       this.later(() => {
         if (this.snapshot.current?.key === shownKey) this.emit({ previous: null });
-      }, TRANSITION_MS[mode] + 50);
+      }, total + 50);
     }
     // Plan the next page once the transition has settled, so the search never
     // competes with the animation for a TV's single slow core.
-    this.later(() => this.planUpcoming(), (keepPrevious ? TRANSITION_MS[mode] : 0) + 100);
+    this.later(() => this.planUpcoming(), total + 100);
   }
 
   private advance() {

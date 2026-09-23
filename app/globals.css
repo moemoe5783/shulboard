@@ -77,29 +77,58 @@
 }
 
 /*
- * The collage's page transitions (widgets/collage/Renderer.tsx). A crossfade
- * fades the new page in over the old; "fade" takes the old one out first.
- * Under reduced motion the swap is instant — the page still changes, which is
- * the content; the fade is only decoration.
+ * The collage's page transitions (widgets/collage/transitions.ts decides which
+ * keyframes, how long and in what order; these are the motions themselves).
+ * Every "in" has a matching "out", because the old page animates away too —
+ * that is what keeps the frame's background from popping into the new gaps.
+ * Transforms are small (a few percent of the photo), so the arrangement reads
+ * as settling into place rather than flying about.
  */
 @keyframes collage-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes collage-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
+@keyframes collage-cascade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes collage-cascade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes collage-rise-in {
+  from { opacity: 0; transform: translateY(8%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes collage-rise-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-6%); }
+}
+@keyframes collage-zoom-in {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes collage-zoom-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.9); }
+}
+@keyframes collage-slide-in {
+  from { opacity: 0; transform: translateX(-10%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes collage-slide-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(10%); }
+}
+/* The Renderer already switches to "none" under reduced motion; this is the
+ * belt to that brace for anything that slips through. */
 @media (prefers-reduced-motion: reduce) {
-  [data-collage-layer] {
+  [data-collage-layer],
+  [data-collage-layer] > * {
     animation: none !important;
   }
 }
