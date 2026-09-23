@@ -3,10 +3,10 @@
  * DOM.
  *
  * THE RULES, restated so a failure here reads against them:
- *   1. The type renders at the CONFIGURED size. Height never shrinks it.
- *   2. WIDTH can only shrink it — enough that the widest row fits — never grow
- *      it above the configured size.
- *   3. Vertical overflow is PAGING: whole rows only, at least one per page.
+ *   1. WIDTH sets the type size — as large as fits the widest row across the
+ *      box. Wider box, bigger type; narrower box, smaller. Height never enters.
+ *   2. Vertical overflow is handled by paging (or scrolling), not shrinking:
+ *      whole rows only, at least one per page.
  */
 
 import { pageCount, rowsPerPage, zmanimFontPx } from "../widgets/zmanim/fit.ts";
@@ -20,44 +20,32 @@ function check(ok: boolean, label: string, detail: string | number | null | unde
 const WIDTH_RATIO = 13.1; // px of widest-row width per px of font
 const BOUNDS = { minPx: 6, maxPx: 400 };
 
-console.log("\n-- rule 1: the type renders at the configured size ----------");
+console.log("\n-- rule 1: width sets the size -------------------------------");
 
 {
-  // A box wide enough for the row at the configured size renders AT that size —
-  // not larger, however wide the box.
-  const size = zmanimFontPx({ configPx: 32, boxWidthPx: 100_000, widthPerFontPx: WIDTH_RATIO }, BOUNDS);
-  check(size === 32, "a roomy box renders at exactly the configured size, never larger", size);
-}
-
-console.log("\n-- rule 2: width shrinks it, and only width -----------------");
-
-{
-  // config 60, but a box only wide enough for ~30 at this row width -> shrinks.
+  // The widest row fills the box width exactly at the resulting size.
   const boxWidth = 30 * WIDTH_RATIO;
-  const size = zmanimFontPx({ configPx: 60, boxWidthPx: boxWidth, widthPerFontPx: WIDTH_RATIO }, BOUNDS);
-  check(Math.abs(size - 30) < 0.001, "a too-narrow box shrinks the type so the widest row fits", size.toFixed(2));
-  check(size < 60, "and only downward — never above the configured size", `${size.toFixed(1)} < 60`);
+  const size = zmanimFontPx({ boxWidthPx: boxWidth, widthPerFontPx: WIDTH_RATIO }, BOUNDS);
+  check(Math.abs(size - 30) < 0.001, "the size makes the widest row fill the box width", size.toFixed(2));
 
-  // The widest row exactly fills the box width at the fitted size.
-  check(Math.abs(size * WIDTH_RATIO - boxWidth) < 0.001, "the widest row fills the width exactly at the fitted size");
-}
-
-{
-  // No width measured yet (0) -> the configured size stands.
-  const size = zmanimFontPx({ configPx: 40, boxWidthPx: 500, widthPerFontPx: 0 }, BOUNDS);
-  check(size === 40, "before the row is measured, the configured size stands unshrunk", size);
+  // Twice the width is twice the type — the panel readout and box-resize rely on
+  // this linearity.
+  const wide = zmanimFontPx({ boxWidthPx: boxWidth * 2, widthPerFontPx: WIDTH_RATIO }, BOUNDS);
+  check(Math.abs(wide / size - 2) < 0.001, "twice the box width is twice the type", (wide / size).toFixed(3));
 }
 
 console.log("\n-- the bounds ------------------------------------------------");
 
 {
-  check(zmanimFontPx({ configPx: 999, boxWidthPx: 100_000, widthPerFontPx: WIDTH_RATIO }, BOUNDS) === BOUNDS.maxPx,
-    "a configured size past the ceiling clamps to maxFontSize");
-  check(zmanimFontPx({ configPx: 40, boxWidthPx: 1, widthPerFontPx: WIDTH_RATIO }, BOUNDS) === BOUNDS.minPx,
+  check(zmanimFontPx({ boxWidthPx: 100_000, widthPerFontPx: WIDTH_RATIO }, BOUNDS) === BOUNDS.maxPx,
+    "a very wide box stops at maxFontSize");
+  check(zmanimFontPx({ boxWidthPx: 1, widthPerFontPx: WIDTH_RATIO }, BOUNDS) === BOUNDS.minPx,
     "a box too narrow even at minFontSize settles at the floor");
+  check(zmanimFontPx({ boxWidthPx: 500, widthPerFontPx: 0 }, BOUNDS) === BOUNDS.maxPx,
+    "before the row is measured, it sits at the ceiling rather than collapsing to zero");
 }
 
-console.log("\n-- rule 3: vertical paging, whole rows ----------------------");
+console.log("\n-- rule 2: vertical paging, whole rows ----------------------");
 
 {
   // 100px of room, 24px rows -> 4 whole rows per page (not 4.16).

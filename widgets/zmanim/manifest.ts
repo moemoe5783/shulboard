@@ -77,12 +77,19 @@ export const zmanimConfigSchema = z.object({
    */
   displayMode: z.enum(["all", "next"]).default("all"),
   hour12: hour12Schema,
-  /** The table's type size, in board design units — authoritative (see
-   *  `sizing`). The rows render at this size; the box's height never rescales
-   *  it (a shorter box or more rows PAGES rather than shrinks), and the width
-   *  only ever shrinks it so the widest row stays fully visible. The relative
-   *  padding and header size scale off this too (widgets/style.ts). */
+  /** The table's type size, in board design units. NOT authoritative for
+   *  rendering — the width of the box drives the actual size (see `sizing`) — but
+   *  kept in step with it by the properties panel's type field (which resizes the
+   *  box to a typed size), so it persists the intended size and is what the
+   *  relative padding and header scale against (widgets/style.ts). */
   size: z.number().min(8).max(400).default(32),
+  /**
+   * What happens when more rows are chosen than fit the box height. Never
+   * shrinks the type (the width sets that) — instead:
+   *  - `page`: show a screenful of whole rows, then cycle to the next.
+   *  - `scroll`: scroll the rows continuously, like a departures board.
+   */
+  overflow: z.enum(["page", "scroll"]).default("page"),
   provider: zmanimProviderSchema,
   /**
    * Which form the row labels take: the English name, or the Hebrew zman name
@@ -145,21 +152,18 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
   settingsSchema: zmanimConfigSchema,
   dataNeeds,
   /**
-   * SIZING — CONFIGURED TYPE SIZE, WIDTH-CAPPED, VERTICAL PAGING
-   * (widgets/zmanim/fit.ts and Renderer.tsx). The rows render at `config.size`.
-   * The box's HEIGHT never rescales the type — a shorter box, or more zmanim
-   * rows, pages through whole rows rather than shrinking them. The box's WIDTH
-   * only ever shrinks the type, and only enough that the widest row stays fully
-   * visible; it never grows above the configured size.
+   * SIZING — WIDTH-DRIVEN TYPE, VERTICAL SCROLL/PAGE (widgets/zmanim/fit.ts and
+   * Renderer.tsx). The box's WIDTH sets the type size (as large as fits the
+   * widest row across it); the box's HEIGHT never rescales the type — extra rows
+   * scroll or page (config.overflow), never shrink.
    *
-   * So `mode: "fixed"` — the declared type size is authoritative, which is what
-   * makes the "Type size" field in the panel a plain editable number
-   * (PropertiesPanel), not a box-driven readout. `userToggleable: false`: there
-   * is one right behaviour for a luach and no toggle to offer. `minFontSize` is
-   * the floor the width-shrink stops at; the paging is what prevents vertical
-   * clipping, so nothing is cut off at any height.
+   * `mode: "fit"` so the panel's "Type size" field is a LIVE readout of the
+   * rendered size and resizes the BOX to a typed size (PropertiesPanel) — which
+   * is what "the number should match the text and typing one should resize the
+   * box" means. `userToggleable: false`: a luach has one right behaviour, no
+   * mode toggle. `minFontSize`/`maxFontSize` bound the width-driven size.
    */
-  sizing: { mode: "fixed", userToggleable: false, minFontSize: 6, maxFontSize: 400 },
+  sizing: { mode: "fit", userToggleable: false, minFontSize: 6, maxFontSize: 400 },
   instanceLabel: (config) =>
     config.displayMode === "next"
       ? "Zmanim — next only"

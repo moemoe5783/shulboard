@@ -88,6 +88,12 @@ function Body({
     const w = rect.w * k;
     const h = rect.h * k;
     applyRects("Resize to type size", { [widget.id]: { x: cx - w / 2, y: cy - h / 2, w, h } });
+    // Keep a `size` field, where the widget has one, in step with the size the
+    // box now renders at — it's what the relative padding and header scale
+    // against (widgets/style.ts) and what persists the intended size.
+    if (typeof (widget.config as { size?: unknown }).size === "number") {
+      setWidgetConfig([widget.id], { size: Math.round(target) });
+    }
   };
 
   if (selected.length === 0) {

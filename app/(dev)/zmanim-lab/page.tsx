@@ -170,7 +170,7 @@ function buildCache(script: "english" | "transliteration"): ChabadZmanimByDate {
   return { [date]: day1 };
 }
 
-function buildDoc(options: { script: string; w: number; h: number }): BoardDoc {
+function buildDoc(options: { script: string; w: number; h: number; overflow: string }): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
@@ -188,6 +188,7 @@ function buildDoc(options: { script: string; w: number; h: number }): BoardDoc {
           displayMode: "all",
           labelScript: options.script,
           size: 32,
+          overflow: options.overflow,
         },
       },
     ],
@@ -197,6 +198,7 @@ function buildDoc(options: { script: string; w: number; h: number }): BoardDoc {
 function ZmanimLabInner() {
   const params = useSearchParams();
   const script = params.get("script") === "transliteration" ? "transliteration" : "english";
+  const overflow = params.get("overflow") === "scroll" ? "scroll" : "page";
   const w = Number(params.get("w") ?? 60);
   const h = Number(params.get("h") ?? 60);
 
@@ -205,13 +207,13 @@ function ZmanimLabInner() {
     hasChabadLocation: true,
     chabadZmanim: buildCache(script),
   };
-  const doc = buildDoc({ script, w, h });
+  const doc = buildDoc({ script, w, h, overflow });
 
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center gap-3">
         <span className="text-ink-soft text-[13px]" data-lab-state>
-          {`fit · ${script} · ${w}×${h}%`}
+          {`${overflow} · ${script} · ${w}×${h}%`}
         </span>
       </div>
       <div data-zmanim-lab style={{ position: "relative", ...BOARD_PX }}>

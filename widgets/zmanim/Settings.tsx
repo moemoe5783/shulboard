@@ -45,8 +45,23 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
           <option value="next">Next one only</option>
         </select>
         <span className={PANEL_LABEL}>
-          Set the type size on the Size tab. If more rows are chosen than fit, the table pages through them a screenful
-          at a time rather than shrinking the text.
+          The box&rsquo;s width sets the type size (bigger box, bigger text — set it exactly on the Size tab). The
+          height never shrinks the text.
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>When it doesn&rsquo;t fit</span>
+        <select
+          value={config.overflow}
+          onChange={(event) => onChange({ overflow: event.target.value as ZmanimConfig["overflow"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="page">Page through them</option>
+          <option value="scroll">Scroll continuously</option>
+        </select>
+        <span className={PANEL_LABEL}>
+          When more rows are chosen than fit the height — page a screenful at a time, or scroll like a departures board.
         </span>
       </label>
 

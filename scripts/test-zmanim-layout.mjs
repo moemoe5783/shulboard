@@ -160,6 +160,9 @@ async function readTable(page) {
       viewportHeight: vp ? vp.height : null,
       visibleWholeRows,
       partialRows,
+      gridCount: widget.querySelectorAll(".grid").length,
+      // The scrolling track is the viewport's own child in scroll mode.
+      animation: viewport?.firstElementChild ? getComputedStyle(viewport.firstElementChild).animationName : "none",
       attributionText: attribution ? attribution.textContent : null,
       attributionFontPx: attribution ? Number.parseFloat(getComputedStyle(attribution).fontSize) : null,
     };
@@ -254,53 +257,42 @@ try {
     );
   }
 
-  console.log("\n-- ITEM 2: configured size, width-capped, height never resizes -");
-
-  // The lab renders config.size = 32 design units on a 1280px board over a 1920
-  // canvas, so an unshrunk row is 32 × 1280/1920 ≈ 21.3px.
-  const CONFIG_PX = (32 / 1920) * 1280;
+  console.log("\n-- ITEM 2: the box WIDTH sets the size, height never does ----");
 
   {
-    // A roomy box renders at the configured size — not larger, however wide.
-    const roomy = await open("script=english&w=70&h=95");
+    // Wider box, bigger type — the width drives it, ~proportionally.
+    const narrow = await open("script=english&w=30&h=95");
+    const wide = await open("script=english&w=60&h=95");
     check(
-      Math.abs((roomy?.rowFontPx ?? 0) - CONFIG_PX) < 1.5,
-      "a roomy box renders at the configured type size, not larger",
-      `${roomy?.rowFontPx?.toFixed(1)}px vs configured ${CONFIG_PX.toFixed(1)}px`,
+      Number(wide?.rowFontPx) > Number(narrow?.rowFontPx),
+      "a wider box renders bigger type",
+      `${narrow?.rowFontPx?.toFixed(1)}px -> ${wide?.rowFontPx?.toFixed(1)}px`,
     );
+    const ratio = Number(wide?.rowFontPx) / Number(narrow?.rowFontPx);
+    check(Math.abs(ratio - 2) < 0.25, "and about proportionally — twice the width, about twice the type", `${ratio.toFixed(2)}×`);
   }
 
   {
     // HEIGHT NEVER RESIZES: same width, two very different heights -> same type.
     // This is the exact bug the report named — a shorter box must not shrink it.
-    const short = await open("script=english&w=70&h=30");
-    const tall = await open("script=english&w=70&h=95");
+    const short = await open("script=english&w=60&h=30");
+    const tall = await open("script=english&w=60&h=95");
     check(
       Math.abs((short?.rowFontPx ?? 0) - (tall?.rowFontPx ?? -1)) < 0.5,
-      "halving the box height leaves the type size unchanged — height never resizes",
+      "a third the box height leaves the type size unchanged — height never resizes",
       `${short?.rowFontPx?.toFixed(1)}px (short) vs ${tall?.rowFontPx?.toFixed(1)}px (tall)`,
-    );
-  }
-
-  {
-    // WIDTH CAPS: a box too narrow for the widest row at the configured size
-    // shrinks the type, and only downward.
-    const narrow = await open("script=english&w=18&h=95");
-    check(
-      Number(narrow?.rowFontPx) < CONFIG_PX - 1,
-      "a too-narrow box shrinks the type so the widest row stays visible",
-      `${narrow?.rowFontPx?.toFixed(1)}px < ${CONFIG_PX.toFixed(1)}px`,
     );
   }
 
   console.log("\n-- ITEM 3: vertical overflow pages whole rows ---------------");
 
   {
-    // A short box can't fit all eleven rows at the configured size, so it shows
-    // a page of WHOLE rows — fewer than eleven, none partially clipped — and the
-    // type is the same as when they all fit (paging, not shrinking).
-    const short = await open("script=english&w=70&h=30");
-    const tall = await open("script=english&w=70&h=95");
+    // Narrow width (so the type is small) and vary only the height: a short box
+    // can't fit all eleven rows, so `page` shows a page of WHOLE rows — fewer
+    // than eleven, none clipped — and the type is unchanged from the tall box
+    // that fits them all (paging, not shrinking).
+    const short = await open("overflow=page&script=english&w=20&h=25");
+    const tall = await open("overflow=page&script=english&w=20&h=95");
     check(
       (short?.visibleWholeRows ?? 0) > 0 && (short?.visibleWholeRows ?? 0) < 11,
       "a short box shows a page of some — not all — rows",
@@ -312,10 +304,23 @@ try {
       "while a tall box shows all eleven at once",
       `${tall?.visibleWholeRows} of 11`,
     );
-    // The viewport clips to a whole number of rows: its height is a multiple of
-    // the row height to within one row.
-    const rowHeight = (short?.viewportHeight ?? 0) / (short?.visibleWholeRows || 1);
-    check(rowHeight > 0, "the paged viewport has a real height", `${short?.viewportHeight?.toFixed(1)}px`);
+    check(
+      Math.abs((short?.rowFontPx ?? 0) - (tall?.rowFontPx ?? -1)) < 0.5,
+      "and paging did not change the type size",
+      `${short?.rowFontPx?.toFixed(1)}px vs ${tall?.rowFontPx?.toFixed(1)}px`,
+    );
+  }
+
+  console.log("\n-- ITEM 3b: scroll is available and runs when it overflows --");
+
+  {
+    // A short box in `scroll` mode mounts a second copy and runs the keyframe
+    // animation; the same table in a tall box (no overflow) does neither.
+    const scrolling = await open("overflow=scroll&script=english&w=20&h=25");
+    const still = await open("overflow=scroll&script=english&w=20&h=95");
+    check(scrolling?.animation === "zmanim-scroll", "an overflowing scroll box runs the scroll animation", String(scrolling?.animation));
+    check((scrolling?.gridCount ?? 0) === 2, "with two copies of the rows for a seamless loop", `${scrolling?.gridCount} grids`);
+    check(still?.animation === "none" && (still?.gridCount ?? 0) === 1, "a table that fits does not scroll", `${still?.animation}, ${still?.gridCount} grid`);
   }
 
   console.log("\n-- ITEM 4: the Chabad.org credit line ----------------------");
