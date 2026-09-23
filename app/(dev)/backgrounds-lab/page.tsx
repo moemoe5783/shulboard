@@ -18,7 +18,7 @@ const CANVAS = { width: 1920, height: 1080 };
 const BOARD_PX = { width: 480, height: 270 };
 const SAMPLE_PHOTO = "/demo/test-card.svg";
 
-function sampleDoc(background: BoardBackground, widgetBackground = "") {
+function sampleDoc(background: BoardBackground, widgetBackground = "", frame: Record<string, unknown> = {}) {
   return parseBoardDoc({
     schemaVersion: 1,
     background,
@@ -32,18 +32,30 @@ function sampleDoc(background: BoardBackground, widgetBackground = "") {
         w: 80,
         h: 30,
         z: 0,
-        config: { text: "Shabbat shalom", background: widgetBackground },
+        config: { text: "Shabbat shalom", background: widgetBackground, ...frame },
       },
     ],
   });
 }
 
-function Sample({ id, label, background, widgetBackground }: { id: string; label: string; background: BoardBackground; widgetBackground?: string }) {
+function Sample({
+  id,
+  label,
+  background,
+  widgetBackground,
+  frame,
+}: {
+  id: string;
+  label: string;
+  background: BoardBackground;
+  widgetBackground?: string;
+  frame?: Record<string, unknown>;
+}) {
   return (
     <figure className="flex flex-col gap-1">
       <div data-sample={id} style={BOARD_PX}>
         <BoardRenderer
-          doc={sampleDoc(background, widgetBackground)}
+          doc={sampleDoc(background, widgetBackground, frame)}
           canvas={CANVAS}
           style={BOARD_PX}
           widgetProps={(widget) => ({ "data-widget-id": widget.id })}
@@ -82,6 +94,19 @@ export default function BackgroundsLabPage() {
             widgetBackground="linear-gradient(90deg, #d4af37 0%, #8a6d1f 100%)"
           />
           <Sample id="legacy-preset" label="A removed drawn preset" background={{ value: "preset:midnight" }} />
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-heading text-ink mb-3 font-semibold">Widget frames</h2>
+        <div className="flex flex-wrap gap-4">
+          <Sample
+            id="rounded-shadow"
+            label="Rounded corners with a shadow"
+            background={{ value: "#e8e4dc" }}
+            widgetBackground="#ffffff"
+            frame={{ radius: 120, shadow: true }}
+          />
         </div>
       </section>
 

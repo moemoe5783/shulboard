@@ -345,8 +345,23 @@ export function widgetStyle(
   if (config.borderWidth > 0) {
     style.border = `${boardLength(config.borderWidth, canvasWidth)} solid ${config.borderColor || "currentColor"}`;
   }
-  if (config.shadow) style.boxShadow = "0 0.4cqw 1.6cqw rgba(0, 0, 0, 0.28)";
 
+  return style;
+}
+
+/**
+ * What the widget's POSITIONED BOX carries, outside the frame above: the drop
+ * shadow, and the same corner radius. The box clips its content
+ * (overflow: hidden); a shadow on the frame inside it was clipped to the box's
+ * square edges, so it vanished outside the widget and showed as dark wedges in
+ * the rounded corners instead. An element's own shadow isn't clipped by its own
+ * overflow, and a radius on the clipping box rounds the clip, so the shadow
+ * follows the corners and nothing spills past them.
+ */
+export function widgetBoxStyle(config: WidgetStyleConfig, canvasWidth: number): CSSProperties {
+  const style: CSSProperties = {};
+  if (config.radius > 0) style.borderRadius = boardLength(config.radius, canvasWidth);
+  if (config.shadow) style.boxShadow = "0 0.4cqw 1.6cqw rgba(0, 0, 0, 0.28)";
   return style;
 }
 
