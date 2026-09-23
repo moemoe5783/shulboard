@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
+import { albumSelectionFields, albumSelectionNeeds } from "@/lib/media/selection";
 import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
