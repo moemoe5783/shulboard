@@ -272,6 +272,45 @@ try {
     }
   }
 
+  console.log("\n-- 7b: photo order and speed ------------------------------------");
+  {
+    /** The entering page's per-photo delays (seconds) at the first swap. */
+    const delaysAt = async (query) => {
+      await page.goto(`${BASE}/collage-lab/widget?count=20&interval=3&${query}`, { waitUntil: "networkidle" });
+      await page.waitForSelector('[data-lab-board="large"] [data-collage-layer="entering"] img');
+      const end = Date.now() + 15_000;
+      while (Date.now() < end) {
+        const cells = await page.evaluate(() => {
+          const root = document.querySelector('[data-lab-board="large"] [data-collage]');
+          if (!root.querySelector('[data-collage-layer="leaving"]')) return null;
+          return [...root.querySelector('[data-collage-layer="entering"]').children].map((cell) => ({
+            top: parseFloat(cell.style.top),
+            left: parseFloat(cell.style.left),
+            delay: parseFloat(getComputedStyle(cell).animationDelay) || 0,
+          }));
+        });
+        if (cells) return cells;
+        await sleep(30);
+      }
+      return null;
+    };
+    const reading = (cells) => [...cells].sort((a, b) => (Math.abs(a.top - b.top) > 2 ? a.top - b.top : a.left - b.left));
+    const increasing = (list) => list.every((c, i) => i === 0 || c.delay > list[i - 1].delay);
+
+    const random = await delaysAt("transition=cascade&order=random");
+    check(
+      random && new Set(random.map((c) => c.delay.toFixed(3))).size === random.length && !increasing(reading(random)),
+      "random order: every photo gets its own turn, but not top to bottom",
+      random ? reading(random).map((c) => c.delay.toFixed(2)).join(" ") : "no swap",
+    );
+
+    const normal = await delaysAt("transition=cascade&order=reading&speed=1");
+    const fast = await delaysAt("transition=cascade&order=reading&speed=2");
+    const last = (cells) => Math.max(...cells.map((c) => c.delay));
+    const ratio = normal && fast ? last(fast) / last(normal) : null;
+    check(ratio !== null && Math.abs(ratio - 0.5) < 0.08, "speed 2× runs the same sequence in half the time", ratio === null ? "no swap" : `${ratio.toFixed(2)}× the delay`);
+  }
+
   console.log("\n-- 8: the editor with collages saved by an older version ----------");
   {
     const editorErrors = [];

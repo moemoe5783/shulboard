@@ -9,7 +9,7 @@ import { PhotoEmpty } from "../media/PhotoEmpty";
 import { resolveDesignUnits } from "../useFitFontSize";
 import { readCollageConfig, type CollageConfig } from "./manifest";
 import { CollagePlayer, type PlannedPage, type PlayerSnapshot } from "./player";
-import { cellAnimation, readingOrder, type CollageTransition } from "./transitions";
+import { cellAnimation, sequenceOrder, type CollageTransition } from "./transitions";
 
 /*
  * The collage on the board. The layout comes from lib/collage — the same
@@ -192,8 +192,8 @@ function hintFor(
 }
 
 /** One page of photos. Each photo animates on its own (./transitions.ts): in
- *  reading order for the one-by-one modes, all together for the whole-page
- *  ones. A leaving page animates away too, so nothing is left to pop. */
+ *  the chosen order for the photo-by-photo effects, all together for the
+ *  whole-page ones. A leaving page animates away too, so nothing is left to pop. */
 function Layer({
   page,
   config,
@@ -209,7 +209,8 @@ function Layer({
   offset: number;
 }) {
   const mode = config.transition as CollageTransition;
-  const order = readingOrder(page.cells);
+  // Seeded by the page, so "random" plays the same order on every screen.
+  const order = sequenceOrder(page.cells, config.transitionOrder, page.key);
 
   const radius = config.photoRadius > 0 ? boardLength(config.photoRadius, canvas.width) : undefined;
   const photoStyle: CSSProperties = {
@@ -237,7 +238,7 @@ function Layer({
             top: `${cell.top}%`,
             width: `${cell.width}%`,
             height: `${cell.height}%`,
-            animation: cellAnimation(mode, role, order[i], page.cells.length, offset),
+            animation: cellAnimation(mode, role, order[i], page.cells.length, offset, config.transitionSpeed),
             willChange: mode === "none" ? undefined : "opacity, transform",
           }}
         >

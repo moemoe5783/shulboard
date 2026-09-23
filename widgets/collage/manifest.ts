@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { albumSelectionFields, albumSelectionNeeds } from "../media/albums";
 import { widgetStyleFields } from "../style";
-import { COLLAGE_TRANSITIONS } from "./transitions";
+import { COLLAGE_TRANSITIONS, TRANSITION_ORDERS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "./transitions";
 import type { DataNeed, WidgetManifest } from "../types";
 
 /*
@@ -47,9 +47,19 @@ export const collageConfigSchema = z.object({
     .preprocess((value) => (typeof value === "number" ? Math.min(120, Math.max(3, value)) : value), z.number())
     .default(10)
     .catch(10),
-  /** How pages change — one by one (four styles), the whole page at once, or
-   *  instantly (./transitions.ts). */
+  /** How pages change — photo by photo (four effects), the whole page at
+   *  once, or instantly (./transitions.ts). */
   transition: z.enum(COLLAGE_TRANSITIONS).default("cascade").catch("cascade"),
+  /** The order photos move in, for the photo-by-photo effects. */
+  transitionOrder: z.enum(TRANSITION_ORDERS).default("reading").catch("reading"),
+  /** A multiplier on every duration: 2 is twice as fast, 0.5 half as fast. */
+  transitionSpeed: z
+    .preprocess(
+      (value) => (typeof value === "number" ? Math.min(TRANSITION_SPEED_MAX, Math.max(TRANSITION_SPEED_MIN, value)) : value),
+      z.number(),
+    )
+    .default(1)
+    .catch(1),
   /** An optional thin border or soft shadow on each photo. */
   photoFrame: z.enum(["none", "border", "shadow"]).default("none").catch("none"),
   // Background, colour, font, padding, border, shadow, header — shared
