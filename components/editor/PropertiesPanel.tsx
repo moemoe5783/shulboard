@@ -4,6 +4,7 @@ import { createElement, useState } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
 import { AppearanceControls } from "@/components/editor/AppearanceControls";
+import { BackgroundField } from "@/components/editor/BackgroundField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
@@ -97,15 +98,7 @@ function Body({
   };
 
   if (selected.length === 0) {
-    return (
-      <div className="p-3">
-        <h2 className={`${CHROME_META} mb-1`}>Properties</h2>
-        <p className="text-body text-paper">Nothing selected</p>
-        <p className={`${CHROME_META} mt-1`}>
-          Pick an element on the board or in the layers list to edit it here.
-        </p>
-      </div>
-    );
+    return <BoardSettings />;
   }
 
   const types = new Set(selected.map((widget) => widget.type));
@@ -222,6 +215,71 @@ function Body({
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * With nothing selected, the panel edits the BOARD: its background (a colour,
+ * gradient or library preset — lib/board-background.ts) and whether its text is
+ * dark or light. Choosing a background switches the text to whichever reads on
+ * it, so a dark library background never leaves dark text on it; the choice
+ * can still be flipped by hand, and both are undoable like any edit.
+ */
+function BoardSettings() {
+  const doc = useEditor((s) => s.doc);
+  const setBoardStyle = useEditor((s) => s.setBoardStyle);
+  const background = typeof doc.background?.value === "string" ? doc.background.value : "";
+  const theme = doc.themeOverrides as { ink?: string };
+  const lightText = theme.ink === "surface" || theme.ink === "paper";
+
+  const setInk = (ink: "ink" | "surface", label = "Change board text colour") =>
+    setBoardStyle({ themeOverrides: { ...doc.themeOverrides, ink } }, label);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3" data-board-settings>
+      <h2 className={`${CHROME_META} mb-1`}>Board</h2>
+      <p className={`${CHROME_META} mb-4`}>
+        Nothing selected, so these settings are for the whole board. Pick an element to edit it instead.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        <span className={PANEL_LABEL}>Background</span>
+        <BackgroundField
+          value={background}
+          onChange={(value, tone) => {
+            const next = { ...doc.background, value };
+            const ink = tone === "dark" ? "surface" : tone === "light" ? "ink" : undefined;
+            setBoardStyle(
+              ink ? { background: next, themeOverrides: { ...doc.themeOverrides, ink } } : { background: next },
+              "Change board background",
+            );
+          }}
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2">
+        <span className={PANEL_LABEL}>Text</span>
+        <div className="flex gap-2">
+          {(
+            [
+              [false, "Dark text"],
+              [true, "Light text"],
+            ] as const
+          ).map(([light, label]) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={lightText === light}
+              onClick={() => setInk(light ? "surface" : "ink")}
+              className={`${CHROME_BUTTON} flex-1 border ${lightText === light ? `${CHROME_BUTTON_ON} border-transparent` : "border-paper/20"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className={PANEL_LABEL}>Set automatically when you choose a background. Elements can override it on their Appearance tab.</p>
+      </div>
+    </div>
   );
 }
 

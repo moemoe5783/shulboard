@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { z } from "zod";
+import { backgroundCss, backgroundKind } from "@/lib/board-background";
 import { BOARD_FONTS, boardLength, type BoardFont } from "@/lib/board-theme";
 
 /*
@@ -46,9 +47,10 @@ export type WidgetFont = z.infer<typeof widgetFontSchema>;
 
 /** The style fields a widget spreads into its config schema. */
 export const widgetStyleFields = {
-  /** A CSS colour for the widget's background box, or "" for none
-   *  (transparent — the board shows through). Free-form: board content. */
-  background: z.string().max(64).default(""),
+  /** The widget's background box: a colour, a gradient or a library preset
+   *  (lib/board-background.ts), or "" for none — the board shows through.
+   *  Free-form: board content. Long enough for a three-stop gradient. */
+  background: z.string().max(600).default(""),
   /** The background's opacity, 0–100. Only meaningful with a background; a
    *  translucent panel over a photo is the point. */
   backgroundOpacity: z.number().min(0).max(100).default(100),
@@ -312,7 +314,15 @@ export function widgetStyle(
     minHeight: 0,
   };
 
-  if (config.background) style.backgroundColor = composeBackground(config.background, config.backgroundOpacity);
+  if (config.background) {
+    // A plain colour honours the transparency slider; a gradient or library
+    // preset is drawn as it is (its own layers carry any transparency).
+    if (backgroundKind(config.background) === "color") {
+      style.backgroundColor = composeBackground(config.background, config.backgroundOpacity);
+    } else {
+      style.background = backgroundCss(config.background);
+    }
+  }
   if (config.textColor) style.color = config.textColor;
   if (config.font !== "inherit") style.fontFamily = BOARD_FONTS[config.font as BoardFont];
   // padding is a multiple of the widget's own text size (referenceSize is that
