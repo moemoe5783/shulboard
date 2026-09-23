@@ -202,6 +202,13 @@ export type RegisteredWidget = {
 export type WidgetSettingsProps<TConfig = Record<string, unknown>> = {
   config: TConfig;
   onChange: (patch: Partial<TConfig>) => void;
+  /**
+   * The ids of the widgets being edited — for the rare Settings form that needs
+   * to reach its widget on the canvas (the collage's "Next page" dispatches a DOM
+   * event on it). Still not the store: the panel hands this over, the form does
+   * nothing with it but find its own elements.
+   */
+  widgetIds?: readonly string[];
 };
 
 export type WidgetSettingsComponent<TConfig = Record<string, unknown>> = ComponentType<

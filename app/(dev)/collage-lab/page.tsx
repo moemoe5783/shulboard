@@ -110,7 +110,7 @@ export default function CollageLabPage() {
   const threshold = (minShortPct / 100) * Math.min(activeBox.width, activeBox.height);
 
   return (
-    <main className="bg-paper min-h-screen p-6">
+    <main className="bg-paper font-ui min-h-screen p-6">
       <h1 className="text-title text-ink mb-1 font-semibold">Collage lab</h1>
       <p className="text-meta text-ink-soft mb-5 max-w-[720px]">
         Random photo sets through the collage engine. Every rectangle is a photo at its own aspect ratio — nothing is
