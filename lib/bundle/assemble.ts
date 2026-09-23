@@ -88,6 +88,17 @@ export function assetIdsFor(widgets: BoardWidget[]): string[] {
 }
 
 /**
+ * Every album id a board binds to, via the widgets' `dataNeeds` — the album
+ * equivalent of `assetIdsFor`. The build resolves these to photos
+ * (lib/media/album-photos.ts) and registers each photo's asset for caching.
+ */
+export function albumIdsFor(widgets: BoardWidget[]): string[] {
+  return collectDataNeeds(widgets)
+    .filter((need) => need.kind === "album" && typeof need.albumId === "string")
+    .map((need) => need.albumId as string);
+}
+
+/**
  * Whether any widget on a board wants Chabad zmanim at all — unlike an
  * `assetId`, a zmanim need carries no per-widget identity to collect (the
  * location it resolves against is screen/org state the builder already
@@ -145,8 +156,15 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
 
   // Only the assets these boards actually use, deduped, in a stable order — the
   // display's atomic swap waits on exactly this list, so an asset that crept in
-  // from another board would hold up a swap forever.
-  const usedIds = [...new Set(boards.flatMap((board) => assetIdsFor(board.doc.widgets)))].sort();
+  // from another board would hold up a swap forever. Album photos count too:
+  // every one a Gallery or Collage widget will show must be cached before the
+  // swap, or the board would flash a missing photo on first paint offline.
+  const albumAssetIds = Object.values(input.content.albums)
+    .flat()
+    .map((photo) => photo.assetId);
+  const usedIds = [
+    ...new Set([...boards.flatMap((board) => assetIdsFor(board.doc.widgets)), ...albumAssetIds]),
+  ].sort();
 
   const assets: BundleAsset[] = usedIds
     .map((id) => input.assets.get(id))

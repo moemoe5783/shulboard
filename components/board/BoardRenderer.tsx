@@ -1,9 +1,11 @@
 "use client";
 
 import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
+import { BoardAssetsProvider } from "@/lib/board-assets";
 import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
 import { BoardZmanimProvider, type BoardZmanim } from "@/lib/board-zmanim";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
+import type { BoardAlbums } from "@/lib/media/album-photos";
 import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
@@ -61,6 +63,11 @@ export type BoardRendererProps = {
    *  therefore show a zmanim or candle-lighting widget's "hasn't set a ZIP"
    *  empty state, which is the same thing a real shul with no ZIP sees. */
   zmanim?: BoardZmanim | null;
+  /** Album photos the Gallery/Collage widgets show, resolved from the bundle on
+   *  a display and from a live query in the editor (lib/board-assets.tsx).
+   *  Omitted wherever nothing resolves them, where those widgets show their own
+   *  empty state. */
+  albums?: BoardAlbums | null;
 };
 
 /** Widget types the document may contain that are not widgets. A group is a row
@@ -75,10 +82,12 @@ export function BoardRenderer({
   style,
   location = null,
   zmanim = null,
+  albums = null,
 }: BoardRendererProps) {
   return (
     <BoardLocationProvider location={location}>
       <BoardZmanimProvider zmanim={zmanim}>
+        <BoardAssetsProvider albums={albums}>
         <div
           className={`relative overflow-hidden ${className}`}
           style={{
@@ -103,6 +112,7 @@ export function BoardRenderer({
               />
             ))}
         </div>
+        </BoardAssetsProvider>
       </BoardZmanimProvider>
     </BoardLocationProvider>
   );

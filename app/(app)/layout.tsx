@@ -22,7 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", href: "/" },
   { id: "screens", label: "Screens", href: "/screens" },
   { id: "boards", label: "Boards", href: "/boards" },
-  { id: "media", label: "Media", href: "/media", disabled: true },
+  { id: "media", label: "Media", href: "/media" },
   { id: "people", label: "People", href: "/people", disabled: true },
   { id: "notices", label: "Notices", href: "/notices", disabled: true },
   { id: "schedules", label: "Schedules", href: "/schedules", disabled: true },

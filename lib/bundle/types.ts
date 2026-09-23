@@ -1,4 +1,5 @@
 import type { BoardDoc } from "@/lib/board-doc";
+import type { BoardAlbums } from "@/lib/media/album-photos";
 
 /*
  * The bundle — docs/plan.md §3a.
@@ -65,6 +66,10 @@ export type BundleContent = {
   /** 90 days of resolved zmanim, keyed by date. §3b: the screen only needs to
    *  reconnect sometime within three months. */
   zmanim: Record<string, unknown>;
+  /** Photos for every album a Gallery or Collage widget on these boards binds
+   *  to, resolved to proxy paths (lib/media/album-photos.ts), keyed by album id.
+   *  The display hands these to the widgets via BoardRenderer's `albums` prop. */
+  albums: BoardAlbums;
 };
 
 export type BundlePayload = {

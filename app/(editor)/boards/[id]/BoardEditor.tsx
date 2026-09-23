@@ -13,6 +13,7 @@ import type { BoardDoc } from "@/lib/board-doc";
 import type { BoardLocation } from "@/lib/board-location";
 import type { BoardZmanim } from "@/lib/board-zmanim";
 import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
+import { useEditorAlbums } from "@/lib/media/useEditorAlbums";
 import { saveBoardDoc } from "./actions";
 import { PublishControls, type PublishState } from "./PublishControls";
 
@@ -74,6 +75,9 @@ export function BoardEditor({
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const liveDoc = useEditor((s) => s.doc);
+  // Live album photos for the Gallery/Collage widgets — the editor's own
+  // resolution, so the preview matches the display (lib/media/useEditorAlbums.ts).
+  const editorAlbums = useEditorAlbums(liveDoc.widgets);
   const zoom = useEditor((s) => s.zoom);
   const showGrid = useEditor((s) => s.showGrid);
   const gridSize = useEditor((s) => s.gridSize);
@@ -334,6 +338,7 @@ export function BoardEditor({
                 canvas={canvas}
                 location={location}
                 zmanim={zmanim}
+                albums={editorAlbums}
                 className="h-full w-full"
                 widgetProps={(widget) => ({
                   "data-widget-id": widget.id,
