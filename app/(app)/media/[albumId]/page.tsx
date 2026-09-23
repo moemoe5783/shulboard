@@ -31,7 +31,7 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
 
   const { data: items, error } = await supabase
     .from("album_items")
-    .select("asset_id, caption, position, assets(id, variants, width, height, deleted_at)")
+    .select("asset_id, caption, position, display_until, assets(id, variants, width, height, deleted_at)")
     .eq("album_id", albumId)
     .eq("org_id", org.orgId)
     .order("position", { ascending: true });
@@ -58,6 +58,7 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
       thumbUrl: thumb,
       width: asset.width,
       height: asset.height,
+      displayUntil: item.display_until ?? null,
     });
   }
 
@@ -66,6 +67,7 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
       albumId={album.id}
       albumName={album.name}
       orgId={org.orgId}
+      timeZone={org.timezone}
       photos={photos}
       nextPosition={maxPosition + 1}
     />
