@@ -4,7 +4,8 @@ import type { Database, Json } from "@/lib/database.types";
 import { serviceClient } from "@/lib/supabase/service";
 import { resolveChabadLocation } from "@/lib/zmanim/location";
 import { effectiveZmanimProvider } from "@/lib/zmanim/provider";
-import { assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
+import { fetchAlbumPhotos } from "@/lib/media/album-photos";
+import { albumIdsFor, assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
 import { hashPayload, payloadBytes } from "./hash";
 import { readAssetVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
@@ -313,17 +314,27 @@ async function assemblePayloadFor(
   // all rides along in the same pass, for the same reason: a board with no
   // time-sensitive widget shouldn't cost resolveContent a zmanim_cache read.
   const referenced = new Set<string>();
+  const referencedAlbums = new Set<string>();
   let boardsNeedZmanim = false;
   for (const board of boards) {
     try {
       const { parseBoardDoc } = await import("@/lib/board-doc");
       const widgets = parseBoardDoc(board.doc).widgets;
       for (const id of assetIdsFor(widgets)) referenced.add(id);
+      for (const id of albumIdsFor(widgets)) referencedAlbums.add(id);
       if (!boardsNeedZmanim && needsZmanim(widgets)) boardsNeedZmanim = true;
     } catch {
       // A board that will not parse fails the whole build below, when it is
       // parsed for real. This pass just skips it.
     }
+  }
+
+  // Resolve the albums the Gallery/Collage widgets bind to, and fold every
+  // photo's asset into `referenced` so its display variant is fetched and
+  // cached alongside the Image widgets' assets below.
+  const albums = await fetchAlbumPhotos(db, [...referencedAlbums], orgId);
+  for (const photos of Object.values(albums)) {
+    for (const photo of photos) referenced.add(photo.assetId);
   }
 
   const assets = new Map<string, AssetRow>();
@@ -387,11 +398,10 @@ async function assemblePayloadFor(
   // either way, so the read is skipped rather than run to come back empty
   // — a shul with no ZIP, or one whose boards have no zmanim widget, never
   // touches this table.
-  const content = await resolveContent(
-    db,
-    orgId,
-    chabadLocation && boardsNeedZmanim ? chabadLocation.cacheKey : null,
-  );
+  const content: BundleContent = {
+    ...(await resolveContent(db, orgId, chabadLocation && boardsNeedZmanim ? chabadLocation.cacheKey : null)),
+    albums,
+  };
 
   return assembleBundle({
     screen: {
@@ -440,7 +450,7 @@ async function resolveContent(
   db: ReturnType<typeof serviceClient>,
   orgId: string,
   zmanimCacheKey: string | null,
-): Promise<BundleContent> {
+): Promise<Omit<BundleContent, "albums">> {
   const [announcements, schedules, people, events, zmanim] = await Promise.all([
     db
       .from("announcements")

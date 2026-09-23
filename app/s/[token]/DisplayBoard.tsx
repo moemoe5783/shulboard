@@ -58,6 +58,7 @@ export function DisplayBoard({ bundle }: { bundle: BundleEnvelope }) {
         canvas={canvas}
         location={location}
         zmanim={zmanim}
+        albums={bundle.content.albums}
         style={{
           aspectRatio: `${canvas.width} / ${canvas.height}`,
           width: `min(100vw, calc(100vh * ${canvas.width} / ${canvas.height}))`,
