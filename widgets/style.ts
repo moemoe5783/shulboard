@@ -292,7 +292,17 @@ export function composeBackground(color: string, opacityPct: number): string {
  * is a transparent, padding-less flex pass-through that changes nothing about
  * how it renders.
  */
-export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number, referenceSize: number): CSSProperties {
+export function widgetStyle(
+  config: WidgetStyleConfig,
+  canvasWidth: number,
+  referenceSize: number,
+  /**
+   * The widget's own box, in design units, so padding can be capped against it.
+   * `height` is `Infinity` in `hug` mode (the box grows to fit, so there is no
+   * fixed height to consume). Omitted only by callers with no box to measure.
+   */
+  box?: { width: number; height: number },
+): CSSProperties {
   const style: CSSProperties = {
     height: "100%",
     width: "100%",
@@ -307,7 +317,20 @@ export function widgetStyle(config: WidgetStyleConfig, canvasWidth: number, refe
   if (config.font !== "inherit") style.fontFamily = BOARD_FONTS[config.font as BoardFont];
   // padding is a multiple of the widget's own text size (referenceSize is that
   // size, in design units), so the frame scales with the content.
-  if (config.padding > 0) style.padding = boardLength(config.padding * referenceSize, canvasWidth);
+  //
+  // CAPPED AGAINST THE BOX, because referenceSize is `config.size`, which in a
+  // fit-mode widget is decoupled from the actual box: a box dragged small while
+  // config.size stays large (or an old size on a small box) would otherwise let
+  // padding consume the whole box, collapsing the content area to zero. A
+  // fit-mode Renderer that then measures a zero-width box freezes at its last
+  // type size — the "defaults to 400 and won't change" report. The cap only
+  // ever bites in that degenerate case; at normal sizes the relative padding is
+  // far under it, so ordinary boards are unchanged.
+  if (config.padding > 0) {
+    let pad = config.padding * referenceSize;
+    if (box) pad = Math.min(pad, MAX_FRAME_PADDING_FRACTION * Math.min(box.width, box.height));
+    style.padding = boardLength(pad, canvasWidth);
+  }
   if (config.radius > 0) style.borderRadius = boardLength(config.radius, canvasWidth);
   if (config.borderWidth > 0) {
     style.border = `${boardLength(config.borderWidth, canvasWidth)} solid ${config.borderColor || "currentColor"}`;
@@ -328,4 +351,30 @@ export const DEFAULT_REFERENCE_SIZE = 32;
 export function referenceSizeOf(config: Record<string, unknown>): number {
   const size = config.size;
   return typeof size === "number" && Number.isFinite(size) && size > 0 ? size : DEFAULT_REFERENCE_SIZE;
+}
+
+/**
+ * The most of a box each side's padding may take — so the two sides together
+ * never exceed 60% of the smaller box dimension and the content area can never
+ * collapse to nothing. See `widgetStyle`'s padding note for why this matters
+ * (a fit-mode widget freezes on a zero-size box). 0.3 leaves a comfortable
+ * margin against the header, which is capped separately (`cappedHeaderSize`).
+ */
+export const MAX_FRAME_PADDING_FRACTION = 0.3;
+
+/** The most of the box height the header (its own line) may take. With padding
+ *  capped at 0.3 each side, this leaves the content area positive even when both
+ *  are maxed: 2×0.3 + 0.3 = 0.9 of the height, so ≥10% remains for the table. */
+export const MAX_FRAME_HEADER_FRACTION = 0.3;
+
+/**
+ * The header's design-unit size, capped against the box height so a header on a
+ * fit-mode widget with a large `config.size` on a short box cannot consume the
+ * whole box (same decoupling as padding — see `widgetStyle`). `boxHeight` is
+ * `Infinity` in `hug` mode, where the box grows to fit and there is nothing to
+ * consume, so the header is left uncapped there.
+ */
+export function cappedHeaderSize(titleSize: number, referenceSize: number, boxHeight: number): number {
+  const header = titleSize * referenceSize;
+  return Number.isFinite(boxHeight) ? Math.min(header, MAX_FRAME_HEADER_FRACTION * boxHeight) : header;
 }

@@ -9,7 +9,7 @@ import type { BoardAlbums } from "@/lib/media/album-photos";
 import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
-import { normalizeWidgetStyle, referenceSizeOf, widgetStyle } from "@/widgets/style";
+import { cappedHeaderSize, normalizeWidgetStyle, referenceSizeOf, widgetStyle } from "@/widgets/style";
 import type { SizingMode } from "@/widgets/types";
 
 /*
@@ -172,6 +172,15 @@ function WidgetFrame({
    */
   const sizingMode = (widget.config as { sizingMode?: SizingMode }).sizingMode;
 
+  // The widget's box in design units, so the frame's padding and header can be
+  // capped against it (widgets/style.ts). Height is Infinity in `hug` mode,
+  // where the box grows to fit and there is nothing fixed to consume.
+  const boxDesign = {
+    width: (widget.w / 100) * canvas.width,
+    height: sizingMode === "hug" ? Infinity : (widget.h / 100) * canvas.height,
+  };
+  const headerSize = cappedHeaderSize(style.titleSize, referenceSize, boxDesign.height);
+
   /*
    * docs/sizing.md §3: "the renderer must not resize or reposition the box to
    * fit content... never grow the box." `overflow: hidden` below is what makes
@@ -253,7 +262,7 @@ function WidgetFrame({
         styled it is a transparent, padding-less flex pass-through, so an
         unstyled widget renders exactly as it did before this frame existed.
       */}
-      <div style={widgetStyle(style, canvas.width, referenceSize)}>
+      <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign)}>
         {style.title && (
           <div
             style={{
@@ -261,9 +270,11 @@ function WidgetFrame({
               fontWeight: 600,
               textAlign: "center",
               lineHeight: 1.1,
-              // titleSize is a multiple of the widget's own text size.
-              fontSize: boardLength(style.titleSize * referenceSize, canvas.width),
-              marginBottom: boardLength(style.titleSize * referenceSize * 0.35, canvas.width),
+              // titleSize is a multiple of the widget's own text size, capped
+              // against the box height so it can't consume a short box (same
+              // reason as padding — widgets/style.ts).
+              fontSize: boardLength(headerSize, canvas.width),
+              marginBottom: boardLength(headerSize * 0.35, canvas.width),
             }}
           >
             {style.title}

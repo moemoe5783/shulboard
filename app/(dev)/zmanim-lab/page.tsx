@@ -170,7 +170,15 @@ function buildCache(script: "english" | "transliteration"): ChabadZmanimByDate {
   return { [date]: day1 };
 }
 
-function buildDoc(options: { script: string; w: number; h: number; overflow: string }): BoardDoc {
+function buildDoc(options: {
+  script: string;
+  w: number;
+  h: number;
+  overflow: string;
+  padding: number;
+  background: string;
+  size: number;
+}): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
@@ -187,8 +195,10 @@ function buildDoc(options: { script: string; w: number; h: number; overflow: str
           zmanim: ROWS.map((row) => row.id),
           displayMode: "all",
           labelScript: options.script,
-          size: 32,
+          size: options.size,
           overflow: options.overflow,
+          padding: options.padding,
+          background: options.background,
         },
       },
     ],
@@ -201,13 +211,20 @@ function ZmanimLabInner() {
   const overflow = params.get("overflow") === "scroll" ? "scroll" : "page";
   const w = Number(params.get("w") ?? 60);
   const h = Number(params.get("h") ?? 60);
+  // `pad` (frame padding as a multiple of the type size), `bg` (a background
+  // hex, no `#`) and `size` (the stored `config.size`) let a test set up a
+  // heavy frame on a small box — the case where padding could consume the whole
+  // content area and freeze the fit (scripts/test-zmanim-layout.mjs, ITEM 3c).
+  const padding = Number(params.get("pad") ?? 0);
+  const background = params.get("bg") ? `#${params.get("bg")}` : "";
+  const size = Number(params.get("size") ?? 32);
 
   const zmanim: BoardZmanim = {
     provider: "chabad",
     hasChabadLocation: true,
     chabadZmanim: buildCache(script),
   };
-  const doc = buildDoc({ script, w, h, overflow });
+  const doc = buildDoc({ script, w, h, overflow, padding, background, size });
 
   return (
     <div className="p-4">
