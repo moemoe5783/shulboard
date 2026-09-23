@@ -1,8 +1,10 @@
 /**
- * Every background in the library is valid CSS a real browser draws —
- * /backgrounds-lab renders each one. A typo in a gradient or an SVG data URI
- * doesn't throw anywhere; the browser just drops the whole declaration and the
- * board shows plain white, so this is the only place that failure is visible.
+ * Board picture backgrounds draw in a real browser — /backgrounds-lab renders
+ * them through BoardRenderer. A malformed `background` shorthand doesn't throw
+ * anywhere; the browser drops the whole declaration and the board shows its
+ * plain ground, so this is the only place that failure is visible. Also: the
+ * darkening veil, pictures refused on a widget's box, and every library
+ * picture actually loading.
  *
  * Needs a production build; starts its own `next start`.
  */
@@ -51,17 +53,52 @@ const browser = await chromium.launch({ executablePath });
 try {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await page.goto(`${BASE}/backgrounds-lab`, { waitUntil: "networkidle" });
-  const report = await page.evaluate(() =>
-    [...document.querySelectorAll("[data-preset]")].map((el) => {
-      const cs = getComputedStyle(el);
-      return { id: el.getAttribute("data-preset"), declared: el.getAttribute("style") ?? "", image: cs.backgroundImage };
-    }),
+  const read = () =>
+    page.evaluate(() => {
+      const out = {};
+      for (const sample of document.querySelectorAll("[data-sample]")) {
+        const board = sample.firstElementChild;
+        const widget = sample.querySelector("[data-widget-id]");
+        out[sample.getAttribute("data-sample")] = {
+          board: getComputedStyle(board).backgroundImage,
+          // The appearance frame is the positioned box's first child
+          // (components/board/BoardRenderer.tsx) — that's what carries it.
+          widget: widget?.firstElementChild ? getComputedStyle(widget.firstElementChild).backgroundImage : null,
+        };
+      }
+      return out;
+    });
+  const samples = await read();
+  check((samples.photo?.board ?? "").includes("test-card.svg"), "a Media photo draws as the board's background", samples.photo?.board);
+  check(
+    /linear-gradient/.test(samples["photo-dim"]?.board ?? "") && (samples["photo-dim"]?.board ?? "").includes("test-card.svg"),
+    "darkening lays a veil over the photo",
+    samples["photo-dim"]?.board,
   );
-  const broken = report.filter((r) => !r.image || r.image === "none");
-  check(report.length >= 50, "the library renders", `${report.length} backgrounds`);
-  check(broken.length === 0, "every background is CSS the browser accepts (none dropped to blank)", broken.map((r) => r.id).join(", "));
-  const svgs = report.filter((r) => r.image.includes("data:image/svg+xml"));
-  check(svgs.length >= 15, "the patterns, textures and skies draw their SVG layers", `${svgs.length} with SVG`);
+  check((samples["widget-gradient"]?.widget ?? "none") !== "none", "(control: the probe sees a widget's gradient)", samples["widget-gradient"]?.widget);
+  check(samples["widget-picture"]?.widget === "none", "a picture value on a widget's box draws nothing", samples["widget-picture"]?.widget);
+  check(samples["legacy-preset"]?.board === "none", "a removed drawn preset falls back to the plain ground", samples["legacy-preset"]?.board);
+
+  const library = Object.entries(samples).filter(([id]) => id.startsWith("library-"));
+  const unloaded = await page.evaluate(async () => {
+    const bad = [];
+    for (const sample of document.querySelectorAll("[data-sample^='library-']")) {
+      const match = /url\("?([^")]+)"?\)/.exec(getComputedStyle(sample.firstElementChild).backgroundImage);
+      if (!match) {
+        bad.push(sample.getAttribute("data-sample"));
+        continue;
+      }
+      const ok = await new Promise((done) => {
+        const img = new Image();
+        img.onload = () => done(img.naturalWidth > 0);
+        img.onerror = () => done(false);
+        img.src = match[1];
+      });
+      if (!ok) bad.push(sample.getAttribute("data-sample"));
+    }
+    return bad;
+  });
+  check(unloaded.length === 0, "every library picture loads", `${library.length} in the library${unloaded.length ? `; broken: ${unloaded.join(", ")}` : ""}`);
 } finally {
   await browser.close();
   try {

@@ -42,3 +42,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 scripts/fixtures/
+
+# originals for the background library (scripts/add-backgrounds.mjs)
+/backgrounds-src/

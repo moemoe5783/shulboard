@@ -84,8 +84,8 @@ export function AppearanceControls({
         )}
       </div>
 
-      {/* Background — a colour, gradient or library preset — and, for a plain
-          colour, its transparency (a preset carries its own). */}
+      {/* Background — a colour or a gradient — and, for a plain colour, its
+          transparency. */}
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Background</span>
         <BackgroundField value={config.background} onChange={(background) => onChange({ background })} />

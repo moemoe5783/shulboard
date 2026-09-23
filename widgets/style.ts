@@ -47,7 +47,7 @@ export type WidgetFont = z.infer<typeof widgetFontSchema>;
 
 /** The style fields a widget spreads into its config schema. */
 export const widgetStyleFields = {
-  /** The widget's background box: a colour, a gradient or a library preset
+  /** The widget's background box: a colour or a gradient
    *  (lib/board-background.ts), or "" for none — the board shows through.
    *  Free-form: board content. Long enough for a three-stop gradient. */
   background: z.string().max(600).default(""),

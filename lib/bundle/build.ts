@@ -6,6 +6,7 @@ import { resolveChabadLocation } from "@/lib/zmanim/location";
 import { effectiveZmanimProvider } from "@/lib/zmanim/provider";
 import { fetchAlbumPhotos } from "@/lib/media/album-photos";
 import { albumIdsFor, assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
+import { boardBackgroundAssetId } from "./background";
 import { hashPayload, payloadBytes } from "./hash";
 import { readAssetVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
@@ -39,6 +40,8 @@ type ScreenForBuild = Pick<
  *  fetch by slot size, not the original") is the one variant every board
  *  embeds. */
 const BOARD_ASSET_VARIANT = "display";
+/** A board background's preferred sizes, best first. */
+const BACKGROUND_ASSET_VARIANTS = ["large", "display"];
 
 /*
  * The build job — docs/plan.md §3a, docs/schema.md §9 and §10.
@@ -315,11 +318,15 @@ async function assemblePayloadFor(
   // time-sensitive widget shouldn't cost resolveContent a zmanim_cache read.
   const referenced = new Set<string>();
   const referencedAlbums = new Set<string>();
+  const backgroundIds = new Set<string>();
   let boardsNeedZmanim = false;
   for (const board of boards) {
     try {
       const { parseBoardDoc } = await import("@/lib/board-doc");
-      const widgets = parseBoardDoc(board.doc).widgets;
+      const parsed = parseBoardDoc(board.doc);
+      const widgets = parsed.widgets;
+      const backgroundId = boardBackgroundAssetId(parsed);
+      if (backgroundId) backgroundIds.add(backgroundId);
       for (const id of assetIdsFor(widgets)) referenced.add(id);
       for (const id of albumIdsFor(widgets)) referencedAlbums.add(id);
       if (!boardsNeedZmanim && needsZmanim(widgets)) boardsNeedZmanim = true;
@@ -373,6 +380,32 @@ async function assemblePayloadFor(
         content_type: variant.contentType,
         bytes: variant.bytes,
       });
+    }
+  }
+
+  // A board whose background is a Media photo gets that photo's largest stored
+  // size — it fills the whole screen, where the `display` size would be soft.
+  const backgroundAssets = new Map<string, AssetRow>();
+  if (backgroundIds.size > 0) {
+    const { data: rows } = await db
+      .from("assets")
+      .select("id, variants")
+      .in("id", [...backgroundIds])
+      .is("deleted_at", null);
+    for (const row of rows ?? []) {
+      for (const name of BACKGROUND_ASSET_VARIANTS) {
+        const variant = readAssetVariant(row.variants, name);
+        if (!variant) continue;
+        backgroundAssets.set(row.id, {
+          id: row.id,
+          variant: name,
+          content_hash: variant.contentHash,
+          extension: variant.extension,
+          content_type: variant.contentType,
+          bytes: variant.bytes,
+        });
+        break;
+      }
     }
   }
 
@@ -439,6 +472,7 @@ async function assemblePayloadFor(
     boards,
     content,
     assets,
+    backgroundAssets,
   });
 }
 

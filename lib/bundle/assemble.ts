@@ -2,6 +2,7 @@ import { parseBoardDoc, type BoardWidget } from "@/lib/board-doc";
 import { dedupeDataNeeds } from "@/widgets/data-needs";
 import { getManifest } from "@/widgets/manifests";
 import type { DataNeed } from "@/widgets/types";
+import { backgroundBundleAssets, resolveBoardBackground } from "./background";
 import { mediaProxyPath } from "./media";
 import type { BundleAsset, BundleBoard, BundleContent, BundlePayload } from "./types";
 
@@ -52,6 +53,10 @@ export type AssembleInput = {
   /** Every asset the boards could reference, by id. The job fetches these after
    *  a first pass over the boards tells it which ids matter. */
   assets: Map<string, AssetRow>;
+  /** Board-background photos, by id, at the size a full-screen picture wants
+   *  (a separate map: the same photo may also sit in an Image widget at the
+   *  smaller `display` size). */
+  backgroundAssets?: Map<string, AssetRow>;
 };
 
 /**
@@ -141,6 +146,7 @@ function resolveWidgetAssets(widget: BoardWidget, assets: Map<string, AssetRow>)
 }
 
 export function assembleBundle(input: AssembleInput): BundlePayload {
+  const backgroundAssets = input.backgroundAssets ?? new Map<string, AssetRow>();
   const boards: BundleBoard[] = input.boards.map((board) => {
     // Through parseBoardDoc like every other read (lib/board-doc.ts): a document
     // written before a schema change still has to be understood, and one that
@@ -150,7 +156,10 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
     return {
       id: board.id,
       name: board.name,
-      doc: { ...doc, widgets: doc.widgets.map((w) => resolveWidgetAssets(w, input.assets)) },
+      doc: resolveBoardBackground(
+        { ...doc, widgets: doc.widgets.map((w) => resolveWidgetAssets(w, input.assets)) },
+        backgroundAssets,
+      ),
     };
   });
 
@@ -198,6 +207,9 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
   }
   albumVariants.sort((a, b) => a.url.localeCompare(b.url));
   assets.push(...albumVariants);
+
+  // Board backgrounds (./background.ts), cached before the swap like any photo.
+  assets.push(...backgroundBundleAssets(boards.map((board) => board.doc), backgroundAssets, seenUrls));
 
   return {
     screen: {

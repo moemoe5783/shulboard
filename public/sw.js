@@ -44,7 +44,8 @@ self.addEventListener("activate", (event) => {
 
 /** Immutable by construction: a variant's path contains its content hash, so a
  *  re-processed asset is a new path rather than a stale hit. */
-const isAsset = (url) => url.pathname.startsWith("/m/") || url.pathname.startsWith("/demo/");
+const isAsset = (url) =>
+  url.pathname.startsWith("/m/") || url.pathname.startsWith("/demo/") || url.pathname.startsWith("/backgrounds/");
 const isBuildOutput = (url) => url.pathname.startsWith("/_next/static/");
 
 async function cacheFirst(request, cacheName) {
