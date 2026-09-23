@@ -2,10 +2,11 @@
  * The image derivatives the upload pipeline generates, and the shapes the rest
  * of the system already agreed on (lib/bundle/media.ts).
  *
- * v1 is BROWSER-SIDE and image-only: no HEIC conversion (an iPhone .heic upload
- * is refused up front, not silently mangled), no video. The gabbai's browser
- * resizes each photo to these sizes, re-encodes to WebP — which strips EXIF,
- * including GPS, as a side effect of re-encoding — and uploads the results. A
+ * v1 is BROWSER-SIDE and image-only (no video). iPhone HEIC photos are decoded
+ * first (lib/media/heic.ts). The gabbai's browser then resizes each photo to
+ * these sizes — scaled down to fit, never cropped and never enlarged — re-encodes
+ * to WebP, which strips EXIF, including GPS, as a side effect, and uploads the
+ * results. No separate original is kept. A
  * server pipeline (sharp/libheif) can replace this later without changing the
  * stored shape, which is the whole reason that shape lives in one place.
  */
