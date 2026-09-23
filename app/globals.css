@@ -50,3 +50,28 @@
     color-scheme: dark;
   }
 }
+
+/*
+ * The Zmanim table's continuous scroll — widgets/zmanim/Renderer.tsx's
+ * `scroll` overflow mode.
+ *
+ * NOT IN A LAYER (a keyframes rule belongs to no cascade layer), and not a
+ * token. `-50%` is the whole mechanism: while this runs, the scrolling element
+ * holds exactly two identical copies of the rows, so half the stack is one copy,
+ * the last frame is pixel-identical to the first, and the loop closes with no
+ * seam. Nothing measured enters into it — a stale measurement can only change
+ * the animation-duration the Renderer sets, never reintroduce a jump.
+ *
+ * NOT disabled under prefers-reduced-motion, deliberately: this motion IS the
+ * content (the only way rows past the bottom are ever seen), so stopping it
+ * would hide zmanim rather than calm a board. A shul that wants a still board
+ * chooses "page" instead, which has no motion at all.
+ */
+@keyframes zmanim-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
