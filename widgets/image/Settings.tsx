@@ -6,6 +6,7 @@ import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { fetchAlbumPhotos, type BoardPhoto } from "@/lib/media/album-photos";
 import { uploadPhoto } from "@/lib/media/upload";
+import { IMAGE_INPUT_ACCEPT } from "@/lib/media/variants";
 import { createClient } from "@/lib/supabase/client";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import { useOrgAlbums } from "../media/AlbumField";
@@ -201,7 +202,7 @@ function MediaPicker({ selectedAssetId, onPick }: { selectedAssetId: string; onP
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={IMAGE_INPUT_ACCEPT}
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];

@@ -9,7 +9,9 @@ import {
   VARIANT_EXTENSION,
   VARIANT_QUALITY,
   VARIANT_SPECS,
+  isHeicFile,
 } from "./variants";
+import { decodeHeic } from "./heic";
 
 /*
  * The browser-side upload pipeline (v1, image-only, no HEIC).
@@ -34,7 +36,7 @@ export type UploadResult = { ok: true; assetId: string; deduped: boolean } | { o
 
 /** Where one photo's upload has got to, for the album page's progress tiles.
  *  `fraction` runs 0..1 across the whole upload of this photo. */
-export type UploadStage = "reading" | "resizing" | "uploading" | "saving";
+export type UploadStage = "reading" | "converting" | "resizing" | "uploading" | "saving";
 export type UploadProgress = (stage: UploadStage, fraction: number) => void;
 
 type VariantEntry = {
@@ -81,14 +83,9 @@ export async function uploadPhoto(input: {
   const { file, orgId, albumId, position } = input;
   const progress: UploadProgress = input.onProgress ?? (() => {});
 
-  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
-    const heic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
-    return {
-      ok: false,
-      error: heic
-        ? "iPhone HEIC photos aren't supported yet — export as JPEG first, or change the iPhone camera to “Most Compatible”."
-        : `${file.name} isn't an image type we can read.`,
-    };
+  const heic = isHeicFile(file);
+  if (!heic && !ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+    return { ok: false, error: `${file.name} isn't an image type we can read.` };
   }
 
   const supabase = createClient();
@@ -118,11 +115,23 @@ export async function uploadPhoto(input: {
   let naturalHeight: number;
   let source: ImageBitmap;
   try {
-    source = await createImageBitmap(file, { imageOrientation: "from-image" });
+    if (heic) {
+      // iPhone photos: decoded to pixels here (lib/media/heic.ts), then resized
+      // and re-encoded to WebP below exactly like any other photo.
+      progress("converting", 0.05);
+      source = await decodeHeic(file);
+    } else {
+      source = await createImageBitmap(file, { imageOrientation: "from-image" });
+    }
     naturalWidth = source.width;
     naturalHeight = source.height;
   } catch {
-    return { ok: false, error: `${file.name} couldn't be read as an image.` };
+    return {
+      ok: false,
+      error: heic
+        ? `${file.name} couldn't be converted from iPhone format. Try exporting it as JPEG.`
+        : `${file.name} couldn't be read as an image.`,
+    };
   }
 
   const variants: Record<string, VariantEntry> = {};

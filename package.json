@@ -45,6 +45,7 @@
     "@hebcal/learning": "^6.11.2",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.115.0",
+    "heic-to": "^1.5.2",
     "jose": "^6.2.12",
     "next": "16.3.4",
     "react": "19.2.8",
