@@ -321,13 +321,14 @@ export class CollagePlayer {
     this.advanceWhenReady = false;
 
     const mode = this.inputs?.config.transition ?? "none";
+    const speed = this.inputs?.config.transitionSpeed ?? 1;
     const leaving = this.snapshot.current;
     const keepPrevious = transition && mode !== "none" && leaving !== null;
-    const total = keepPrevious ? transitionTotal(mode, leaving.cells.length, next.page.cells.length) : 0;
+    const total = keepPrevious ? transitionTotal(mode, leaving.cells.length, next.page.cells.length, speed) : 0;
     this.emit({
       current: next.page,
       previous: keepPrevious ? leaving : null,
-      currentOffset: keepPrevious ? enterOffset(mode, leaving.cells.length) : 0,
+      currentOffset: keepPrevious ? enterOffset(mode, leaving.cells.length, speed) : 0,
     });
 
     if (keepPrevious) {

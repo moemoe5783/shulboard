@@ -23,6 +23,7 @@ import {
   emptyHistory,
   isEmptyPatch,
   push,
+  type BoardPatch,
   type History,
 } from "./history";
 
@@ -103,6 +104,9 @@ export type EditorState = {
    * keeps that class of bug from coming back.
    */
   setWidgetConfig: (ids: string[], patch: Record<string, unknown>, label?: string) => void;
+  /** Change the board itself — its background, its theme (lib/board-background.ts).
+   *  Undoable like every widget edit. Each field given replaces the old one. */
+  setBoardStyle: (patch: BoardPatch, label?: string) => void;
   /** Commit a transform for one or more widgets, in design units. */
   applyRects: (label: string, rects: Record<string, Rect>) => void;
   applyRotation: (label: string, rotations: Record<string, number>) => void;
@@ -221,6 +225,25 @@ export const useEditor = create<EditorState>((set, get) => {
     setSnapEnabled: (on) => set({ snapEnabled: on }),
     setGridSize: (size) => set({ gridSize: Math.max(1, Math.round(size)) }),
     setShowGrid: (on) => set({ showGrid: on }),
+
+    setBoardStyle: (patch, label = "Edit board") => {
+      const { doc, history } = get();
+      const forward: BoardPatch = {};
+      const backward: BoardPatch = {};
+      for (const key of ["background", "themeOverrides"] as const) {
+        if (patch[key] === undefined) continue;
+        if (JSON.stringify(patch[key]) === JSON.stringify(doc[key])) continue;
+        forward[key] = patch[key];
+        backward[key] = doc[key];
+      }
+      if (Object.keys(forward).length === 0) return;
+      const command = {
+        label,
+        forward: { upserts: [], deletes: [], board: forward },
+        backward: { upserts: [], deletes: [], board: backward },
+      };
+      set({ doc: applyPatch(doc, command.forward), history: push(history, command) });
+    },
 
     setWidgetConfig: (ids, patch, label = "Edit properties") => {
       const chosen = new Set(ids);

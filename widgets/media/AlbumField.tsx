@@ -21,13 +21,20 @@ export function useOrgAlbums(): OrgAlbum[] | null {
   const [albums, setAlbums] = useState<OrgAlbum[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    createClient()
-      .from("albums")
-      .select("id, name, org_id")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (!cancelled) setAlbums(data ?? []);
+    // Never throw out of a settings panel: an unconfigured or unreachable
+    // Supabase reads as "no albums", not as the whole editor failing.
+    Promise.resolve()
+      .then(() =>
+        createClient()
+          .from("albums")
+          .select("id, name, org_id")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false }),
+      )
+      .then(({ data }) => (data ?? []) as OrgAlbum[])
+      .catch(() => [] as OrgAlbum[])
+      .then((list) => {
+        if (!cancelled) setAlbums(list);
       });
     return () => {
       cancelled = true;

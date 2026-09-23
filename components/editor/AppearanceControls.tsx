@@ -3,6 +3,9 @@
 import { BOARD_FONT_OPTIONS } from "@/lib/board-theme";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
+import { backgroundKind } from "@/lib/board-background";
+import { BackgroundField } from "./BackgroundField";
+import { ColorField } from "./ColorField";
 import { SliderField } from "./SliderField";
 
 /*
@@ -22,7 +25,6 @@ import { SliderField } from "./SliderField";
 
 /** Where a freshly-enabled colour starts, before the gabbai edits it — values,
  *  not tokens, because this is board content. */
-const DEFAULT_BACKGROUND = "#1b2a2e";
 const DEFAULT_TEXT_COLOR = "#f2f4f3";
 const DEFAULT_BORDER_COLOR = "#1b2a2e";
 
@@ -33,7 +35,6 @@ export function AppearanceControls({
   config: WidgetStyleConfig;
   onChange: (patch: Partial<WidgetStyleConfig>) => void;
 }) {
-  const hasBackground = config.background !== "";
   const hasTextColor = config.textColor !== "";
   const hasBorder = config.borderWidth > 0;
 
@@ -83,38 +84,20 @@ export function AppearanceControls({
         )}
       </div>
 
-      {/* Background + its transparency. */}
+      {/* Background — a colour, gradient or library preset — and, for a plain
+          colour, its transparency (a preset carries its own). */}
       <div className="flex flex-col gap-2">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={hasBackground}
-            onChange={(event) => onChange({ background: event.target.checked ? DEFAULT_BACKGROUND : "" })}
-            className={PANEL_CHECKBOX}
+        <span className={PANEL_LABEL}>Background</span>
+        <BackgroundField value={config.background} onChange={(background) => onChange({ background })} />
+        {backgroundKind(config.background) === "color" && (
+          <SliderField
+            label="Transparency"
+            value={100 - config.backgroundOpacity}
+            min={0}
+            max={100}
+            onChange={(transparency) => onChange({ backgroundOpacity: 100 - transparency })}
+            format={(v) => `${v}%`}
           />
-          <span className="text-cell text-paper">Background</span>
-        </label>
-        {hasBackground && (
-          <div className="flex flex-col gap-3 pl-6">
-            <label className="flex items-center gap-2">
-              <input
-                type="color"
-                value={config.background}
-                onChange={(event) => onChange({ background: event.target.value })}
-                className="border-paper/20 h-8 w-12 rounded-[5px] border bg-transparent"
-                aria-label="Background colour"
-              />
-              <span className={PANEL_LABEL}>Colour</span>
-            </label>
-            <SliderField
-              label="Transparency"
-              value={100 - config.backgroundOpacity}
-              min={0}
-              max={100}
-              onChange={(transparency) => onChange({ backgroundOpacity: 100 - transparency })}
-              format={(v) => `${v}%`}
-            />
-          </div>
         )}
       </div>
 
@@ -162,16 +145,11 @@ export function AppearanceControls({
               max={40}
               onChange={(borderWidth) => onChange({ borderWidth })}
             />
-            <label className="flex items-center gap-2">
-              <input
-                type="color"
-                value={config.borderColor || DEFAULT_BORDER_COLOR}
-                onChange={(event) => onChange({ borderColor: event.target.value })}
-                className="border-paper/20 h-8 w-12 rounded-[5px] border bg-transparent"
-                aria-label="Border colour"
-              />
-              <span className={PANEL_LABEL}>Colour</span>
-            </label>
+            <ColorField
+              label="Border colour"
+              value={config.borderColor || DEFAULT_BORDER_COLOR}
+              onChange={(borderColor) => onChange({ borderColor })}
+            />
           </div>
         )}
       </div>
@@ -199,16 +177,9 @@ export function AppearanceControls({
           <span className="text-cell text-paper">Text colour</span>
         </label>
         {hasTextColor && (
-          <label className="flex items-center gap-2 pl-6">
-            <input
-              type="color"
-              value={config.textColor}
-              onChange={(event) => onChange({ textColor: event.target.value })}
-              className="border-paper/20 h-8 w-12 rounded-[5px] border bg-transparent"
-              aria-label="Text colour"
-            />
-            <span className={PANEL_LABEL}>Colour</span>
-          </label>
+          <div className="pl-6">
+            <ColorField label="Text colour" value={config.textColor} onChange={(textColor) => onChange({ textColor })} />
+          </div>
         )}
       </div>
 

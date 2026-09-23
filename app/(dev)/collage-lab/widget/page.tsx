@@ -53,7 +53,12 @@ function album(seed: number, count: number, mix: string): BoardPhoto[] {
   });
 }
 
-function doc(albums: { albumId?: string; albumIds?: string[] }, interval: number, transition: string) {
+function doc(
+  albums: { albumId?: string; albumIds?: string[] },
+  interval: number,
+  transition: string,
+  motion: { transitionOrder?: string; transitionSpeed?: number } = {},
+) {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
@@ -66,7 +71,7 @@ function doc(albums: { albumId?: string; albumIds?: string[] }, interval: number
         w: 90,
         h: 90,
         z: 0,
-        config: { ...albums, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
+        config: { ...albums, ...motion, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
       },
     ],
   });
@@ -79,13 +84,17 @@ function Inner() {
   const mix = params.get("mix") ?? "mixed";
   const interval = Number(params.get("interval") ?? 3);
   const transition = params.get("transition") ?? "crossfade";
+  const motion = {
+    transitionOrder: params.get("order") ?? "reading",
+    transitionSpeed: Number(params.get("speed") ?? 1),
+  };
 
   const lab = album(seed, count, mix);
   // Two overlapping albums for the multi-album board: photos 4 and 5 are in
   // both, and one photo in the second ended long ago.
   const ended = { ...lab[10], assetId: "lab-ended", displayUntil: "2000-01-01" };
   const albums: BoardAlbums = { lab, empty: [], first: lab.slice(0, 6), second: [...lab.slice(4, 10), ended] };
-  const full = doc({ albumId: "lab" }, interval, transition);
+  const full = doc({ albumId: "lab" }, interval, transition, motion);
   const empty = doc({ albumId: "empty" }, interval, transition);
   const multi = doc({ albumIds: ["first", "second"] }, interval, transition);
   const widgetProps = (widget: { id: string }) => ({ "data-widget-id": widget.id });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/Button";
 import { uploadPhoto, type UploadStage } from "@/lib/media/upload";
+import { IMAGE_INPUT_ACCEPT, isHeicFile } from "@/lib/media/variants";
 import { formatDate, isShowing, todayIn } from "@/lib/media/visibility";
 import { backfillPhotoSizes, deleteAlbum, deleteAssets, setCaption, setDisplayUntil } from "../actions";
 
@@ -36,6 +37,7 @@ type QueueItem = {
 
 const STAGE_LABEL: Record<UploadStage, string> = {
   reading: "Reading",
+  converting: "Converting from iPhone format",
   resizing: "Resizing",
   uploading: "Uploading",
   saving: "Saving",
@@ -95,13 +97,15 @@ export function AlbumDetail({
     setQueue((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
   const handleFiles = async (files: FileList | File[]) => {
-    const list = [...files].filter((file) => file.type.startsWith("image/") || /\.(hei[cf])$/i.test(file.name));
+    const list = [...files].filter((file) => file.type.startsWith("image/") || isHeicFile(file));
     if (list.length === 0) return;
 
     const added: QueueItem[] = list.map((file) => ({
       id: crypto.randomUUID(),
       file,
-      preview: URL.createObjectURL(file),
+      // A browser can't show a HEIC file itself, so its tile gets a label until
+      // it's converted and appears in the grid.
+      preview: isHeicFile(file) ? "" : URL.createObjectURL(file),
       status: "waiting",
       stage: null,
       progress: 0,
@@ -137,7 +141,7 @@ export function AlbumDetail({
     // until dismissed, so the reason is still on screen).
     setTimeout(() => {
       setQueue((items) => {
-        for (const item of items) if (item.status === "done") URL.revokeObjectURL(item.preview);
+        for (const item of items) if (item.status === "done") if (item.preview) URL.revokeObjectURL(item.preview);
         return items.filter((item) => item.status !== "done");
       });
     }, 1500);
@@ -145,7 +149,7 @@ export function AlbumDetail({
 
   const dismissFailures = () =>
     setQueue((items) => {
-      for (const item of items) if (item.status === "failed") URL.revokeObjectURL(item.preview);
+      for (const item of items) if (item.status === "failed") if (item.preview) URL.revokeObjectURL(item.preview);
       return items.filter((item) => item.status !== "failed");
     });
 
@@ -194,13 +198,13 @@ export function AlbumDetail({
           {uploading ? "Drop more photos to add them to the queue" : "Drop photos here, or click to choose"}
         </span>
         <span className="text-meta text-ink-soft">
-          JPEG, PNG, WebP or GIF. iPhone HEIC isn&rsquo;t supported yet — export as JPEG first.
+          JPEG, PNG, WebP, GIF, or iPhone HEIC photos, which are converted automatically.
         </span>
       </button>
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={IMAGE_INPUT_ACCEPT}
         multiple
         hidden
         onChange={(event) => {
@@ -275,12 +279,18 @@ function UploadQueue({ queue, onDismiss }: { queue: QueueItem[]; onDismiss: () =
         {queue.map((item) => (
           <li key={item.id} className="flex flex-col gap-1" data-upload-item={item.status}>
             <div className="rounded-panel border-rule bg-paper relative aspect-square overflow-hidden border">
-              {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL preview. */}
-              <img
-                src={item.preview}
-                alt=""
-                className={`h-full w-full object-cover ${item.status === "done" ? "" : "opacity-50"}`}
-              />
+              {item.preview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a local object URL preview.
+                <img
+                  src={item.preview}
+                  alt=""
+                  className={`h-full w-full object-cover ${item.status === "done" ? "" : "opacity-50"}`}
+                />
+              ) : (
+                <span className="text-meta text-ink-soft flex h-full w-full items-center justify-center p-2 text-center">
+                  iPhone photo
+                </span>
+              )}
               {item.status === "done" && (
                 <span className="bg-live text-surface rounded-control absolute top-1 right-1 flex size-6 items-center justify-center text-[13px]">
                   ✓

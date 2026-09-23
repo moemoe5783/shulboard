@@ -8,7 +8,15 @@ import { SliderField } from "@/components/editor/SliderField";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import { AlbumsField } from "../media/AlbumField";
 import { readCollageConfig, type CollageConfig } from "./manifest";
-import { COLLAGE_TRANSITIONS, TRANSITION_LABELS } from "./transitions";
+import {
+  COLLAGE_TRANSITIONS,
+  isPerPhoto,
+  TRANSITION_LABELS,
+  TRANSITION_ORDER_LABELS,
+  TRANSITION_ORDERS,
+  TRANSITION_SPEED_MAX,
+  TRANSITION_SPEED_MIN,
+} from "./transitions";
 
 /** The collage element on the canvas for this widget — where the preview
  *  controls send their events and read the cycle's state back from. */
@@ -147,6 +155,36 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
           ))}
         </select>
       </label>
+
+      {isPerPhoto(config.transition) && (
+        <label className="flex flex-col gap-1">
+          <span className={PANEL_LABEL}>Photo order</span>
+          <select
+            value={config.transitionOrder}
+            onChange={(event) => onChange({ transitionOrder: event.target.value as CollageConfig["transitionOrder"] })}
+            className={PANEL_CONTROL}
+          >
+            {TRANSITION_ORDERS.map((order) => (
+              <option key={order} value={order}>
+                {TRANSITION_ORDER_LABELS[order]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {config.transition !== "none" && (
+        <SliderField
+          label="Transition speed"
+          value={Math.round(config.transitionSpeed * 100)}
+          min={TRANSITION_SPEED_MIN * 100}
+          max={TRANSITION_SPEED_MAX * 100}
+          step={10}
+          onChange={(pct) => onChange({ transitionSpeed: pct / 100 })}
+          format={(pct) =>
+            pct === 100 ? "Normal" : pct > 100 ? `${(pct / 100).toFixed(1)}× faster` : `${(100 / pct).toFixed(1)}× slower`
+          }
+        />
+      )}
 
       <SliderField label="Gap" value={config.gutter} min={0} max={60} onChange={(gutter) => onChange({ gutter })} />
       <SliderField

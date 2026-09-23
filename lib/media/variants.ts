@@ -40,10 +40,19 @@ export const VARIANT_CONTENT_TYPE = "image/webp";
 export const VARIANT_EXTENSION = "webp";
 export const VARIANT_QUALITY = 0.85;
 
-/** The image types the browser pipeline accepts. HEIC is deliberately absent —
- *  browsers can't decode it to a canvas, so it would fail silently; it's
- *  refused with a clear message instead (lib/media/upload.ts). */
+/** The image types a browser decodes itself. HEIC/HEIF (iPhone photos) is
+ *  accepted too, but converted first — see `isHeicFile` and lib/media/heic.ts. */
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
+
+/** Whether a file is an iPhone HEIC/HEIF photo. By type when the browser
+ *  reports one; by name otherwise, since many browsers report HEIC as "". */
+export function isHeicFile(file: { type: string; name: string }): boolean {
+  return /image\/hei[cf](-sequence)?/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+}
+
+/** What a file input should offer: every image, plus HEIC by extension for the
+ *  desktop browsers that don't count it as an image type. */
+export const IMAGE_INPUT_ACCEPT = "image/*,.heic,.heif";
 
 /** The scaled dimensions for a source of `width`×`height` capped to `maxEdge`,
  *  never enlarged. Pure, so the arithmetic is testable without a canvas. */

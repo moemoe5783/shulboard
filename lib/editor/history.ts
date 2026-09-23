@@ -24,7 +24,12 @@ export type Patch = {
   upserts: BoardWidget[];
   /** Widget ids to remove. */
   deletes: string[];
+  /** Board-level fields to replace wholesale — the board's background and
+   *  theme — when a command changes the board rather than a widget. */
+  board?: BoardPatch;
 };
+
+export type BoardPatch = Partial<Pick<BoardDoc, "background" | "themeOverrides">>;
 
 export type Command = {
   /** Shown in the editor. Also what makes a stack readable while debugging. */
@@ -61,7 +66,7 @@ export function applyPatch(doc: BoardDoc, patch: Patch): BoardDoc {
   // of three widgets keeps their order.
   for (const widget of upserts.values()) widgets.push(widget);
 
-  return { ...doc, widgets };
+  return { ...doc, ...(patch.board ?? {}), widgets };
 }
 
 /**
@@ -104,7 +109,7 @@ export function diff(
 }
 
 export const isEmptyPatch = (patch: Patch) =>
-  patch.upserts.length === 0 && patch.deletes.length === 0;
+  patch.upserts.length === 0 && patch.deletes.length === 0 && !patch.board;
 
 function sameWidget(a: BoardWidget, b: BoardWidget): boolean {
   return (
