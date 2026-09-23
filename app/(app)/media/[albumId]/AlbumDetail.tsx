@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { uploadPhoto } from "@/lib/media/upload";
-import { deleteAsset, setCaption } from "../actions";
+import { backfillPhotoSizes, deleteAsset, setCaption } from "../actions";
 
 export type AlbumPhoto = {
   assetId: string;
@@ -32,6 +32,21 @@ export function AlbumDetail({
   const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
+
+  // A photo stored before sizes were recorded can't be laid out by a collage
+  // (it arranges by aspect ratio), so fill the gap from the photo's own file.
+  // Once per album visit; the action only touches rows still missing a size.
+  const missingSizes = photos.some((photo) => !photo.width || !photo.height);
+  useEffect(() => {
+    if (!missingSizes) return;
+    let cancelled = false;
+    backfillPhotoSizes(albumId).then((result) => {
+      if (!cancelled && result.ok && result.updated > 0) router.refresh();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [albumId, missingSizes, router]);
 
   const handleFiles = async (files: FileList | File[]) => {
     const list = [...files].filter((file) => file.type.startsWith("image/") || /\.(hei[cf])$/i.test(file.name));

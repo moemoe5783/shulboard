@@ -75,3 +75,45 @@
     transform: translateY(-50%);
   }
 }
+
+/*
+ * The collage's page transitions (widgets/collage/Renderer.tsx). A crossfade
+ * fades the new page in over the old; "fade" takes the old one out first.
+ * Under reduced motion the swap is instant — the page still changes, which is
+ * the content; the fade is only decoration.
+ */
+@keyframes collage-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes collage-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-collage-layer] {
+    animation: none !important;
+  }
+}
+
+/*
+ * Instructions a Renderer shows only while a board is being edited — "Album is
+ * empty" on a collage — and never on a screen, which shows nothing there
+ * instead. The Renderer's DOM is identical in both places; only the editor's
+ * canvas wrapper (app/(editor)/boards/[id]/BoardEditor.tsx) carries
+ * data-editor-surface, which is what reveals them.
+ */
+[data-editor-hint] {
+  visibility: hidden;
+}
+[data-editor-surface] [data-editor-hint] {
+  visibility: visible;
+}

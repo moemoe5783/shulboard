@@ -319,7 +319,7 @@ export function BoardEditor({
           }}
         >
           <div className="w-max p-8">
-            <div ref={canvasRef} style={{ width: canvasPx.width, height: canvasPx.height }}>
+            <div ref={canvasRef} data-editor-surface style={{ width: canvasPx.width, height: canvasPx.height }}>
               {showGrid && (
                 <div
                   aria-hidden

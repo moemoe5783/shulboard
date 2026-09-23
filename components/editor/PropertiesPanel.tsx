@@ -163,6 +163,7 @@ function Body({
             createElement(Settings, {
               config: config as never,
               onChange: (patch: Record<string, unknown>) => setWidgetConfig(ids, patch),
+              widgetIds: ids,
             })
           ) : (
             <p className={CHROME_META}>

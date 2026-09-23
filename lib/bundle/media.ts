@@ -59,6 +59,10 @@ export type AssetVariant = {
   extension: string;
   contentType: string;
   bytes: number;
+  /** The derivative's own pixel size, when the upload recorded it (newer
+   *  uploads do; older ones are sized from the asset's dimensions instead). */
+  width?: number;
+  height?: number;
 };
 
 /**
@@ -95,5 +99,6 @@ export function readAssetVariant(variants: unknown, variant: string): AssetVaria
     extension: v.extension,
     contentType: v.content_type,
     bytes: v.bytes,
+    ...(typeof v.width === "number" && typeof v.height === "number" ? { width: v.width, height: v.height } : {}),
   };
 }
