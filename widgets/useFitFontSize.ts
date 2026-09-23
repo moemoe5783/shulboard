@@ -32,6 +32,29 @@ const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffec
 const SEARCH_ITERATIONS = 14;
 
 /**
+ * Calls `onChange` whenever a web font finishes loading. Every board face is
+ * `display: swap`, so a widget can first lay out in a fallback face and then
+ * change width when the real one arrives — without its box changing size, so
+ * a ResizeObserver never hears about it. A fit measured before that stays
+ * wrong until something resizes the window: on a TV, never. (A display boots
+ * straight from its stored bundle, so it usually measures before the fonts
+ * land; the editor usually has them already, which is why the two disagreed.)
+ */
+export function onFontsChange(onChange: () => void): () => void {
+  if (typeof document === "undefined" || !document.fonts) return () => {};
+  let live = true;
+  const fire = () => {
+    if (live) onChange();
+  };
+  document.fonts.ready.then(fire, () => {});
+  document.fonts.addEventListener("loadingdone", fire);
+  return () => {
+    live = false;
+    document.fonts.removeEventListener("loadingdone", fire);
+  };
+}
+
+/**
  * Resolves a design-unit length to the real pixels it renders as, right now,
  * in this box — by asking the browser rather than recomputing its cqw math.
  * `boardLength`/`boardFontSize` convert to a `cqw` string against the board's
@@ -134,14 +157,17 @@ export function useFitFontSize(
 
     search();
 
-    const observer = new ResizeObserver(() => {
+    const schedule = () => {
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
       pendingFrame.current = requestAnimationFrame(search);
-    });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(box);
+    const stopFonts = onFontsChange(schedule);
 
     return () => {
       observer.disconnect();
+      stopFonts();
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
     };
     // `deps` is a caller-supplied list, the same idea as a plain effect's own

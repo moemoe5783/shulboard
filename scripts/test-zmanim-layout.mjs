@@ -365,6 +365,30 @@ try {
       `${table?.attributionFontPx?.toFixed(1)}px vs ${table?.rowFontPx?.toFixed(1)}px rows`,
     );
   }
+  console.log("\n-- ITEM 5: fonts that arrive late --------------------------");
+
+  {
+    // A display boots from its stored bundle and usually measures before the
+    // board's web fonts (display: swap) have loaded. The box doesn't change
+    // size when they land, so a fit taken in the fallback face stuck — on a TV
+    // the table scrolled (or sat at the wrong size) until a window resize.
+    const query = "overflow=scroll&script=english&w=30&h=60";
+    const settled = await open(query);
+    const late = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+    await late.route(/\.woff2?$/, async (route) => {
+      await sleep(2000);
+      await route.continue();
+    });
+    await late.goto(`${BASE}/zmanim-lab?${query}`);
+    await late.waitForTimeout(4500);
+    const after = await readTable(late);
+    await late.close();
+    check(
+      settled != null && after != null && Math.abs(after.rowFontPx - settled.rowFontPx) < 0.5,
+      "a table re-fits when its fonts load late, matching one that had them",
+      `${after?.rowFontPx?.toFixed(2)}px vs ${settled?.rowFontPx?.toFixed(2)}px`,
+    );
+  }
 } finally {
   await browser.close();
   await stopServer(server);

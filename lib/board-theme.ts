@@ -1,4 +1,4 @@
-import { backgroundCss } from "./board-background";
+import { boardBackgroundCss, type BoardBackground } from "./board-background";
 import type { CSSProperties } from "react";
 import type { BoardDoc } from "@/lib/board-doc";
 
@@ -107,9 +107,9 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
   const background = (theme.background ?? "surface") as BoardColor;
 
   // The board's own background (lib/board-background.ts) — a colour, gradient
-  // or library preset — drawn over the theme's token colour, which stays as the
+  // or picture — drawn over the theme's token colour, which stays as the
   // fallback beneath it.
-  const custom = typeof doc.background?.value === "string" ? backgroundCss(doc.background.value) : undefined;
+  const custom = boardBackgroundCss((doc.background ?? {}) as BoardBackground);
 
   return {
     fontFamily: BOARD_FONTS[font] ?? BOARD_FONTS.assistant,

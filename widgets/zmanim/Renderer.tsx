@@ -17,7 +17,7 @@ import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
 import type { WidgetRendererProps } from "../types";
-import { resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
+import { onFontsChange, resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
 import { splitTimeColumns } from "./display-time";
 import { pageCount, rowsPerPage, zmanimFontPx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
@@ -341,14 +341,17 @@ function useZmanimLayout(options: {
 
     measure();
 
-    const observer = new ResizeObserver(() => {
+    const schedule = () => {
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
       pendingFrame.current = requestAnimationFrame(measure);
-    });
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(box);
+    const stopFonts = onFontsChange(schedule);
 
     return () => {
       observer.disconnect();
+      stopFonts();
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
     };
   }, [boxRef, gridRef, chromeRef, canvasWidth, rowCount, signature]);

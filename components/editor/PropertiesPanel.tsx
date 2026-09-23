@@ -4,11 +4,12 @@ import { createElement, useState } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
 import { AppearanceControls } from "@/components/editor/AppearanceControls";
-import { BackgroundField } from "@/components/editor/BackgroundField";
+import { BoardBackgroundField } from "@/components/editor/BackgroundField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
+import type { BoardBackground } from "@/lib/board-background";
 import type { BoardWidget } from "@/lib/board-doc";
 import { widgetRect } from "@/lib/editor/geometry";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
@@ -220,15 +221,15 @@ function Body({
 
 /**
  * With nothing selected, the panel edits the BOARD: its background (a colour,
- * gradient or library preset — lib/board-background.ts) and whether its text is
- * dark or light. Choosing a background switches the text to whichever reads on
- * it, so a dark library background never leaves dark text on it; the choice
+ * gradient or picture — lib/board-background.ts) and whether its text is dark
+ * or light. Choosing a background switches the text to whichever reads on it,
+ * so a dark picture never leaves dark text on it; the choice
  * can still be flipped by hand, and both are undoable like any edit.
  */
 function BoardSettings() {
   const doc = useEditor((s) => s.doc);
   const setBoardStyle = useEditor((s) => s.setBoardStyle);
-  const background = typeof doc.background?.value === "string" ? doc.background.value : "";
+  const background = doc.background as BoardBackground;
   const theme = doc.themeOverrides as { ink?: string };
   const lightText = theme.ink === "surface" || theme.ink === "paper";
 
@@ -244,10 +245,9 @@ function BoardSettings() {
 
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Background</span>
-        <BackgroundField
+        <BoardBackgroundField
           value={background}
-          onChange={(value, tone) => {
-            const next = { ...doc.background, value };
+          onChange={(next, tone) => {
             const ink = tone === "dark" ? "surface" : tone === "light" ? "ink" : undefined;
             setBoardStyle(
               ink ? { background: next, themeOverrides: { ...doc.themeOverrides, ink } } : { background: next },
