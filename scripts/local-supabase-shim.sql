@@ -109,6 +109,42 @@ grant usage on schema realtime to anon, authenticated, service_role;
 grant select, insert on realtime.messages to anon, authenticated, service_role;
 grant usage on sequence realtime.messages_id_seq to anon, authenticated, service_role;
 
+-- A minimal stand-in for the `storage` schema a real Supabase project ships:
+-- the two tables and the one helper the media-storage migration's bucket row
+-- and storage.objects policies touch (20260923120000_media_storage.sql). Enough
+-- to apply that migration and test its RLS, not Storage itself.
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false
+);
+
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text not null,
+  owner uuid,
+  created_at timestamptz not null default now()
+);
+
+-- Real Supabase's storage.foldername(): the path's folder segments.
+create or replace function storage.foldername(name text)
+returns text[]
+language sql
+immutable
+as $$
+  select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1];
+$$;
+
+-- RLS is on by default for storage.objects on a real project.
+alter table storage.objects enable row level security;
+
+grant usage on schema storage to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+grant select on storage.buckets to anon, authenticated, service_role;
+
 -- PostgREST grants table privileges separately from RLS; without these the roles
 -- cannot reach the tables at all and every RLS test would pass vacuously.
 alter default privileges in schema public

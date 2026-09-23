@@ -15,6 +15,7 @@ export type Database = {
           asset_id: string
           caption: string | null
           created_at: string
+          display_until: string | null
           id: string
           org_id: string
           position: number
@@ -24,6 +25,7 @@ export type Database = {
           asset_id: string
           caption?: string | null
           created_at?: string
+          display_until?: string | null
           id?: string
           org_id: string
           position: number
@@ -33,6 +35,7 @@ export type Database = {
           asset_id?: string
           caption?: string | null
           created_at?: string
+          display_until?: string | null
           id?: string
           org_id?: string
           position?: number
