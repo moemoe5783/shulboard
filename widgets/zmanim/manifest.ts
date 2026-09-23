@@ -77,9 +77,11 @@ export const zmanimConfigSchema = z.object({
    */
   displayMode: z.enum(["all", "next"]).default("all"),
   hour12: hour12Schema,
-  /** Design pixels — used only for the empty-state message's size now. The
-   *  table itself is always fit-to-box (see `sizing`); the box is what sets
-   *  its size. Kept in the schema so stored documents keep parsing. */
+  /** The table's type size, in board design units — authoritative (see
+   *  `sizing`). The rows render at this size; the box's height never rescales
+   *  it (a shorter box or more rows PAGES rather than shrinks), and the width
+   *  only ever shrinks it so the widest row stays fully visible. The relative
+   *  padding and header size scale off this too (widgets/style.ts). */
   size: z.number().min(8).max(400).default(32),
   provider: zmanimProviderSchema,
   /**
@@ -143,23 +145,21 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
   settingsSchema: zmanimConfigSchema,
   dataNeeds,
   /**
-   * SIZING — FIT TO BOX, AND ONLY FIT TO BOX. The table always scales so the
-   * whole thing — every row's full text and all the rows stacked — fits the
-   * box, shrinking as far as it must so nothing is ever cut off or scrolled
-   * (widgets/zmanim/fit.ts). Fixed size, Hug height and the old
-   * scroll/page/clip overflow modes are gone: a busier day or a smaller box
-   * renders smaller rather than clipping or paging.
+   * SIZING — CONFIGURED TYPE SIZE, WIDTH-CAPPED, VERTICAL PAGING
+   * (widgets/zmanim/fit.ts and Renderer.tsx). The rows render at `config.size`.
+   * The box's HEIGHT never rescales the type — a shorter box, or more zmanim
+   * rows, pages through whole rows rather than shrinking them. The box's WIDTH
+   * only ever shrinks the type, and only enough that the widest row stays fully
+   * visible; it never grows above the configured size.
    *
-   * `userToggleable: false`, so the panel shows no mode switch. The "Type
-   * size" field it does show is editable and resizes the BOX to that size
-   * (PropertiesPanel) — enter a size and the box grows or shrinks so the
-   * content renders at it; on the board, if content later grows, the type
-   * shrinks to fit rather than overflowing.
-   *
-   * `minFontSize` is low so "shrink to fit" almost never bottoms out — the
-   * priority is never cutting content off, even small.
+   * So `mode: "fixed"` — the declared type size is authoritative, which is what
+   * makes the "Type size" field in the panel a plain editable number
+   * (PropertiesPanel), not a box-driven readout. `userToggleable: false`: there
+   * is one right behaviour for a luach and no toggle to offer. `minFontSize` is
+   * the floor the width-shrink stops at; the paging is what prevents vertical
+   * clipping, so nothing is cut off at any height.
    */
-  sizing: { mode: "fit", userToggleable: false, minFontSize: 6, maxFontSize: 200 },
+  sizing: { mode: "fixed", userToggleable: false, minFontSize: 6, maxFontSize: 400 },
   instanceLabel: (config) =>
     config.displayMode === "next"
       ? "Zmanim — next only"
