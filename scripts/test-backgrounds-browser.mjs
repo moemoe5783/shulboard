@@ -79,6 +79,32 @@ try {
   check(samples["widget-picture"]?.widget === "none", "a picture value on a widget's box draws nothing", samples["widget-picture"]?.widget);
   check(samples["legacy-preset"]?.board === "none", "a removed drawn preset falls back to the plain ground", samples["legacy-preset"]?.board);
 
+  {
+    // A rounded, shadowed widget frame: the shadow follows the corners (the
+    // pixel just inside the box's square corner is the board, not shadow), and
+    // it is visible outside the box rather than clipped away.
+    const rect = await page.evaluate(() => {
+      const sample = document.querySelector("[data-sample='rounded-shadow']");
+      sample.scrollIntoView({ block: "center" });
+      const box = sample.querySelector("[data-widget-id]").getBoundingClientRect();
+      return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+    });
+    const { default: sharp } = await import("sharp");
+    const shot = await page.screenshot({ clip: { x: rect.left - 20, y: rect.top - 20, width: rect.right - rect.left + 40, height: rect.bottom - rect.top + 40 } });
+    const { data, info } = await sharp(shot).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const scale = info.width / (rect.right - rect.left + 40);
+    const at = (x, y) => {
+      const i = (Math.round(y * scale) * info.width + Math.round(x * scale)) * 3;
+      return [data[i], data[i + 1], data[i + 2]];
+    };
+    const board = [232, 228, 220];
+    const distance = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    const corner = at(20 + 2, 20 + 2);
+    const below = at(20 + (rect.right - rect.left) / 2, 20 + (rect.bottom - rect.top) + 3);
+    check(distance(corner, board) <= 6, "a rounded frame's shadow follows its corners (no dark wedge)", `corner pixel ${corner}`);
+    check(board[0] - below[0] >= 8, "and the shadow shows outside the box rather than being clipped", `below pixel ${below}`);
+  }
+
   const library = Object.entries(samples).filter(([id]) => id.startsWith("library-"));
   const unloaded = await page.evaluate(async () => {
     const bad = [];

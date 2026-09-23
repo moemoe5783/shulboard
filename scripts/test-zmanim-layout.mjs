@@ -364,6 +364,18 @@ try {
       "and it is small relative to the times",
       `${table?.attributionFontPx?.toFixed(1)}px vs ${table?.rowFontPx?.toFixed(1)}px rows`,
     );
+    // Pinned to the bottom of the box: paging shows whole rows, so the slack
+    // left over goes above the credit rather than under it. Checked on a box
+    // that pages (slack is certain) and one where every row fits.
+    for (const query of ["overflow=page&script=english&w=20&h=37", "script=english&w=70&h=95"]) {
+      await open(query);
+      const gap = await page.evaluate(() => {
+        const widget = document.querySelector("[data-zmanim-lab] [data-widget-id]");
+        const credit = widget.querySelector("[data-zmanim-attribution]").getBoundingClientRect();
+        return widget.getBoundingClientRect().bottom - credit.bottom;
+      });
+      check(Math.abs(gap) <= 1.5, "the credit sits at the bottom of the box", `${query}: ${gap.toFixed(1)}px above the bottom`);
+    }
   }
   console.log("\n-- ITEM 5: fonts that arrive late --------------------------");
 

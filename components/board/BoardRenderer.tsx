@@ -9,7 +9,7 @@ import type { BoardAlbums } from "@/lib/media/album-photos";
 import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { getRenderer } from "@/widgets/renderers";
-import { cappedHeaderSize, normalizeWidgetStyle, referenceSizeOf, widgetStyle } from "@/widgets/style";
+import { cappedHeaderSize, normalizeWidgetStyle, referenceSizeOf, widgetBoxStyle, widgetStyle } from "@/widgets/style";
 import type { SizingMode } from "@/widgets/types";
 
 /*
@@ -253,6 +253,7 @@ function WidgetFrame({
         transform: `rotate(${widget.rotation}deg)`,
         opacity: widget.opacity,
         zIndex: widget.z,
+        ...widgetBoxStyle(style, canvas.width),
         ...extraStyle,
       }}
     >

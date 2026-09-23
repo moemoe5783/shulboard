@@ -144,8 +144,10 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
       )}
 
       {/* Footnotes (opt-in) and the source credit — held out of the rows region
-          and sitting just under it (no auto-margin gap). */}
-      <div ref={chromeRef} className="flex shrink-0 flex-col">
+          and pinned to the bottom of the box. Paging shows whole rows only, so
+          the rows region is usually a little shorter than the space it has;
+          the slack goes above the credit, not below it. */}
+      <div ref={chromeRef} className="mt-auto flex shrink-0 flex-col">
         {footnotes.length > 0 && (
           <div
             className="flex flex-col opacity-60"
