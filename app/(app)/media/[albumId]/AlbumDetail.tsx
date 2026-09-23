@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/Button";
 import { uploadPhoto, type UploadStage } from "@/lib/media/upload";
 import { formatDate, isShowing, todayIn } from "@/lib/media/visibility";
-import { backfillPhotoSizes, deleteAssets, setCaption, setDisplayUntil } from "../actions";
+import { backfillPhotoSizes, deleteAlbum, deleteAssets, setCaption, setDisplayUntil } from "../actions";
 
 export type AlbumPhoto = {
   assetId: string;
@@ -46,6 +46,7 @@ export function AlbumDetail({
   albumName,
   orgId,
   timeZone,
+  endDatesAvailable = true,
   photos,
   nextPosition,
 }: {
@@ -53,6 +54,8 @@ export function AlbumDetail({
   albumName: string;
   orgId: string;
   timeZone: string;
+  /** False on a database that hasn't applied the end-date migration yet. */
+  endDatesAvailable?: boolean;
   photos: AlbumPhoto[];
   nextPosition: number;
 }) {
@@ -165,6 +168,7 @@ export function AlbumDetail({
           </Link>
           <h1 className="text-title mt-1">{albumName}</h1>
         </div>
+        <DeleteAlbum albumId={albumId} albumName={albumName} onDeleted={() => router.push("/media")} />
       </div>
 
       {/* The dropzone IS the feature — plan.md §6: "since upload is the only
@@ -213,6 +217,7 @@ export function AlbumDetail({
           total={photos.length}
           selected={selected}
           today={today}
+          endDatesAvailable={endDatesAvailable}
           onSelectAll={() => setSelected(new Set(photos.map((photo) => photo.assetId)))}
           onClear={() => setSelected(new Set())}
           onDone={() => {
@@ -332,6 +337,7 @@ function SelectionBar({
   total,
   selected,
   today,
+  endDatesAvailable,
   onSelectAll,
   onClear,
   onDone,
@@ -340,6 +346,7 @@ function SelectionBar({
   total: number;
   selected: Set<string>;
   today: string;
+  endDatesAvailable: boolean;
   onSelectAll: () => void;
   onClear: () => void;
   onDone: () => void;
@@ -396,22 +403,28 @@ function SelectionBar({
 
       <span className="bg-rule-firm mx-1 hidden h-6 w-px sm:block" aria-hidden />
 
-      <label className="text-meta text-ink-soft flex items-center gap-2">
-        Stop showing after
-        <input
-          type="date"
-          value={date}
-          min={today}
-          onChange={(event) => setDate(event.target.value)}
-          className="rounded-control border-rule-firm bg-surface text-cell text-ink h-8 border px-2"
-        />
-      </label>
-      <Button disabled={pending || !date} onClick={() => run(() => setDisplayUntil(albumId, ids, date))}>
-        Set end date
-      </Button>
-      <Button disabled={pending} onClick={() => run(() => setDisplayUntil(albumId, ids, null))}>
-        Keep showing
-      </Button>
+      {endDatesAvailable ? (
+        <>
+          <label className="text-meta text-ink-soft flex items-center gap-2">
+            Stop showing after
+            <input
+              type="date"
+              value={date}
+              min={today}
+              onChange={(event) => setDate(event.target.value)}
+              className="rounded-control border-rule-firm bg-surface text-cell text-ink h-8 border px-2"
+            />
+          </label>
+          <Button disabled={pending || !date} onClick={() => run(() => setDisplayUntil(albumId, ids, date))}>
+            Set end date
+          </Button>
+          <Button disabled={pending} onClick={() => run(() => setDisplayUntil(albumId, ids, null))}>
+            Keep showing
+          </Button>
+        </>
+      ) : (
+        <span className="text-meta text-ink-soft">End dates need the latest database update.</span>
+      )}
 
       <span className="ml-auto flex items-center gap-2">
         {confirming ? (
@@ -516,6 +529,50 @@ function PhotoCell({
         maxLength={300}
         className="text-meta text-ink placeholder:text-ink-faint rounded-control hover:border-rule focus:border-rule-firm w-full border border-transparent bg-transparent px-1 py-0.5"
       />
+    </div>
+  );
+}
+
+/** Delete the whole album, behind a confirmation that says what happens to
+ *  its photos. */
+function DeleteAlbum({ albumId, albumName, onDeleted }: { albumId: string; albumName: string; onDeleted: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (!confirming) {
+    return (
+      <Button className="text-offline" onClick={() => setConfirming(true)}>
+        Delete album
+      </Button>
+    );
+  }
+  return (
+    <div className="rounded-panel border-rule-firm bg-surface flex max-w-md flex-col gap-2 border p-3" role="alertdialog" aria-label="Delete album">
+      <p className="text-cell text-ink">
+        Delete &ldquo;{albumName}&rdquo;? Its photos are deleted too, except any that are also in another album.
+        Boards showing this album stop showing it.
+      </p>
+      <div className="flex gap-2">
+        <Button
+          className="text-offline"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              setError(null);
+              const result = await deleteAlbum(albumId);
+              if (result.ok) onDeleted();
+              else setError(result.error);
+            })
+          }
+        >
+          {pending ? "Deleting" : "Delete album"}
+        </Button>
+        <Button variant="tertiary" onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+      </div>
+      {error && <p className="text-meta text-offline">{error}</p>}
     </div>
   );
 }

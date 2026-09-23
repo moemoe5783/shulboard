@@ -54,7 +54,7 @@ type ItemRow = {
   album_id: string;
   caption: string | null;
   created_at: string | null;
-  display_until: string | null;
+  display_until?: string | null;
   assets: {
     id: string;
     variants: unknown;
@@ -83,14 +83,32 @@ export async function fetchAlbumPhotos(
   // from one that was never resolved (undefined) by the widget.
   for (const id of albumIds) albums[id] = [];
 
-  let query = supabase
-    .from("album_items")
-    .select("album_id, caption, created_at, display_until, assets(id, variants, width, height, deleted_at)")
-    .in("album_id", albumIds)
-    .order("position", { ascending: true });
-  if (orgId) query = query.eq("org_id", orgId);
+  // A deleted album shows nothing, even if a board still points at it.
+  let live = supabase.from("albums").select("id").in("id", albumIds).is("deleted_at", null);
+  if (orgId) live = live.eq("org_id", orgId);
+  const { data: liveAlbums, error: liveError } = await live;
+  if (liveError) return albums;
+  const liveIds = (liveAlbums ?? []).map((album) => album.id);
+  if (liveIds.length === 0) return albums;
 
-  const { data, error } = await query;
+  const read = (columns: string) => {
+    let query = supabase
+      .from("album_items")
+      .select(columns)
+      .in("album_id", liveIds)
+      .order("position", { ascending: true });
+    if (orgId) query = query.eq("org_id", orgId);
+    return query;
+  };
+  const withEndDate = "album_id, caption, created_at, display_until, assets(id, variants, width, height, deleted_at)";
+  let { data, error } = await read(withEndDate);
+  // The end-date column arrived in its own migration
+  // (20260924090000_album_items_display_until.sql). On a database that hasn't
+  // applied it yet, read without it — every photo then simply has no end date —
+  // rather than resolving every album to nothing and blanking every board.
+  if (error && (error.code === "42703" || /display_until/.test(error.message))) {
+    ({ data, error } = await read(withEndDate.replace(" display_until,", "")));
+  }
   if (error) return albums;
 
   for (const item of (data ?? []) as unknown as ItemRow[]) {
@@ -110,7 +128,7 @@ export async function fetchAlbumPhotos(
       height: asset.height,
       caption: item.caption,
       addedAt: item.created_at,
-      displayUntil: item.display_until,
+      displayUntil: item.display_until ?? null,
       variants: photoVariants(asset),
     });
   }

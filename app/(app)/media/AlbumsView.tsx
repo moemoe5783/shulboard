@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, buttonClassName } from "@/components/Button";
-import { createAlbum } from "./actions";
+import { createAlbum, deleteAlbum } from "./actions";
 
 /*
  * The album list — a table of records, per design.md §5 ("Tables for lists").
@@ -97,18 +97,14 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
                 <tr className="border-rule-firm text-meta text-ink-soft border-b text-left">
                   <th className="px-4 py-2 font-normal">Album</th>
                   <th className="px-4 py-2 text-right font-normal">Photos</th>
+                  <th className="w-40 px-4 py-2 font-normal">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {albums.map((album) => (
-                  <tr
-                    key={album.id}
-                    onClick={() => router.push(`/media/${album.id}`)}
-                    className="hover:bg-verdigris-wash/40 border-rule cursor-pointer border-b last:border-0"
-                  >
-                    <td className="text-body text-ink px-4 py-3">{album.name}</td>
-                    <td className="text-body text-ink-soft numeric px-4 py-3 text-right">{album.count}</td>
-                  </tr>
+                  <AlbumRow key={album.id} album={album} onOpen={() => router.push(`/media/${album.id}`)} onDeleted={() => router.refresh()} />
                 ))}
               </tbody>
             </table>
@@ -116,5 +112,64 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
         )
       )}
     </>
+  );
+}
+
+/** One album in the list. Hover (or focus) reveals Delete; deleting asks first,
+ *  in the row itself, and says what happens to the photos. */
+function AlbumRow({ album, onOpen, onDeleted }: { album: Album; onOpen: () => void; onDeleted: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (confirming) {
+    return (
+      <tr className="bg-verdigris-wash/40 border-rule border-b last:border-0">
+        <td colSpan={3} className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-cell text-ink">
+              Delete &ldquo;{album.name}&rdquo;? Its photos go too, except any that are also in another album.
+            </span>
+            <Button
+              className="text-offline"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  setError(null);
+                  const result = await deleteAlbum(album.id);
+                  if (result.ok) onDeleted();
+                  else setError(result.error);
+                })
+              }
+            >
+              {pending ? "Deleting" : "Delete album"}
+            </Button>
+            <Button variant="tertiary" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            {error && <span className="text-meta text-offline">{error}</span>}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr onClick={onOpen} className="group hover:bg-verdigris-wash/40 border-rule cursor-pointer border-b last:border-0">
+      <td className="text-body text-ink px-4 py-3">{album.name}</td>
+      <td className="text-body text-ink-soft numeric px-4 py-3 text-right">{album.count}</td>
+      <td className="px-4 py-2 text-right">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setConfirming(true);
+          }}
+          className="text-meta text-offline invisible rounded-control px-2 py-1 group-hover:visible focus:visible"
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
   );
 }

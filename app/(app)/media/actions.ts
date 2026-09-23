@@ -18,6 +18,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
+const MAX_BATCH = 500;
+/** Ids per `in (...)` lookup, to keep each request's URL well short of limits. */
+const LOOKUP_CHUNK = 150;
+
 async function editorOrg() {
   const org = await requireActiveOrg();
   if (!hasRoleAtLeast(org.role, "editor")) {
@@ -65,20 +69,63 @@ export async function renameAlbum(albumId: string, name: string): Promise<Action
   return { ok: true };
 }
 
-export async function deleteAlbum(albumId: string): Promise<ActionResult> {
+/**
+ * Delete an album. Its photos that aren't in any other album go with it —
+ * otherwise they'd linger in storage with nowhere in Media to see or remove
+ * them — while photos also in another album stay there. Boards that pointed at
+ * the album stop showing it (lib/media/album-photos.ts skips deleted albums).
+ */
+export async function deleteAlbum(albumId: string): Promise<{ ok: true; photosDeleted: number } | { ok: false; error: string }> {
   const { org, error: roleError } = await editorOrg();
   if (!org) return { ok: false, error: roleError };
 
   const supabase = await createClient();
+  const { data: items, error: itemsError } = await supabase
+    .from("album_items")
+    .select("asset_id")
+    .eq("album_id", albumId)
+    .eq("org_id", org.orgId);
+  if (itemsError) return { ok: false, error: `Couldn't delete the album: ${itemsError.message}` };
+
+  const assetIds = [...new Set((items ?? []).map((item) => item.asset_id))];
+  let orphans: string[] = [];
+  if (assetIds.length > 0) {
+    // In chunks: a large album's ids would overflow one request's URL.
+    const kept = new Set<string>();
+    for (let at = 0; at < assetIds.length; at += LOOKUP_CHUNK) {
+      const { data: elsewhere, error: elsewhereError } = await supabase
+        .from("album_items")
+        .select("asset_id, albums(deleted_at)")
+        .in("asset_id", assetIds.slice(at, at + LOOKUP_CHUNK))
+        .neq("album_id", albumId)
+        .eq("org_id", org.orgId);
+      if (elsewhereError) return { ok: false, error: `Couldn't delete the album: ${elsewhereError.message}` };
+      for (const row of elsewhere ?? []) {
+        if (!(row.albums as unknown as { deleted_at: string | null } | null)?.deleted_at) kept.add(row.asset_id);
+      }
+    }
+    orphans = assetIds.filter((id) => !kept.has(id));
+  }
+
+  const now = new Date().toISOString();
+  for (let at = 0; at < orphans.length; at += LOOKUP_CHUNK) {
+    const { error } = await supabase
+      .from("assets")
+      .update({ deleted_at: now })
+      .in("id", orphans.slice(at, at + LOOKUP_CHUNK))
+      .eq("org_id", org.orgId);
+    if (error) return { ok: false, error: `Couldn't delete the album's photos: ${error.message}` };
+  }
+
   const { error } = await supabase
     .from("albums")
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq("id", albumId)
     .eq("org_id", org.orgId);
 
   if (error) return { ok: false, error: `Couldn't delete the album: ${error.message}` };
   revalidatePath("/media");
-  return { ok: true };
+  return { ok: true, photosDeleted: orphans.length };
 }
 
 /**
@@ -203,7 +250,6 @@ export async function backfillPhotoSizes(albumId: string): Promise<{ ok: true; u
   return { ok: true, updated };
 }
 
-const MAX_BATCH = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Delete several photos at once — the album page's multi-select. The same
@@ -215,13 +261,15 @@ export async function deleteAssets(albumId: string, assetIds: string[]): Promise
   if (!org) return { ok: false, error: roleError };
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("assets")
-    .update({ deleted_at: new Date().toISOString() })
-    .in("id", assetIds)
-    .eq("org_id", org.orgId);
-
-  if (error) return { ok: false, error: `Couldn't delete the photos: ${error.message}` };
+  const now = new Date().toISOString();
+  for (let at = 0; at < assetIds.length; at += LOOKUP_CHUNK) {
+    const { error } = await supabase
+      .from("assets")
+      .update({ deleted_at: now })
+      .in("id", assetIds.slice(at, at + LOOKUP_CHUNK))
+      .eq("org_id", org.orgId);
+    if (error) return { ok: false, error: `Couldn't delete the photos: ${error.message}` };
+  }
   revalidatePath(`/media/${albumId}`);
   revalidatePath("/media");
   return { ok: true };
@@ -242,14 +290,23 @@ export async function setDisplayUntil(albumId: string, assetIds: string[], date:
   if (!org) return { ok: false, error: roleError };
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("album_items")
-    .update({ display_until: date })
-    .eq("album_id", albumId)
-    .in("asset_id", assetIds)
-    .eq("org_id", org.orgId);
-
-  if (error) return { ok: false, error: `Couldn't save the date: ${error.message}` };
+  for (let at = 0; at < assetIds.length; at += LOOKUP_CHUNK) {
+    const { error } = await supabase
+      .from("album_items")
+      .update({ display_until: date })
+      .eq("album_id", albumId)
+      .in("asset_id", assetIds.slice(at, at + LOOKUP_CHUNK))
+      .eq("org_id", org.orgId);
+    if (error) {
+      const missing = error.code === "42703" || /display_until/.test(error.message);
+      return {
+        ok: false,
+        error: missing
+          ? "End dates need the latest database update. Apply the new migration, then try again."
+          : `Couldn't save the date: ${error.message}`,
+      };
+    }
+  }
   revalidatePath(`/media/${albumId}`);
   return { ok: true };
 }
