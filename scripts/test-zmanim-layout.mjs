@@ -323,6 +323,33 @@ try {
     check(still?.animation === "none" && (still?.gridCount ?? 0) === 1, "a table that fits does not scroll", `${still?.animation}, ${still?.gridCount} grid`);
   }
 
+  console.log("\n-- ITEM 3c: a heavy frame on a small box never freezes -----");
+
+  {
+    // THE "defaults to 400 and won't change" REGRESSION (widgets/style.ts,
+    // widgets/zmanim/Renderer.tsx). A frame's padding is a multiple of
+    // `config.size`, which in this fit-mode widget is decoupled from the box —
+    // so a large stored size on a small box (a box dragged down, a preset with
+    // padding) would let padding consume the whole content area. The Renderer
+    // then measured a zero-width box, early-returned, and left the type size
+    // frozen at whatever it last was (the 400 max, after any big size). The
+    // padding is now capped against the box, so the content area stays positive
+    // and the width-driven size tracks the box down to something small.
+    const heavy = await open("overflow=scroll&script=english&w=12&h=10&size=400&pad=0.5&bg=10141a");
+    const fit = await page.evaluate(() => {
+      const box = document.querySelector("[data-zmanim-lab] [data-widget-id] [data-fitted-size]");
+      if (!box) return null;
+      return { fitted: Number(box.dataset.fittedSize), contentWidth: box.clientWidth };
+    });
+    check(heavy != null && (heavy.rowCount ?? 0) === 11, "the table still renders every row under a heavy frame", `${heavy?.rowCount} rows`);
+    check(fit != null && fit.contentWidth > 0, "the frame's padding never consumes the whole content area", `content width ${fit?.contentWidth}px`);
+    check(
+      fit != null && fit.fitted > 0 && fit.fitted < 200,
+      "the type size tracks the small box rather than freezing at the 400 max",
+      `fitted ${fit?.fitted}`,
+    );
+  }
+
   console.log("\n-- ITEM 4: the Chabad.org credit line ----------------------");
 
   {

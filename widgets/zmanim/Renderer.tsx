@@ -286,10 +286,21 @@ function useZmanimLayout(options: {
     const grid = gridRef.current;
     if (!box || !grid || rowCount === 0) return;
 
+    const minFontUnits = manifest.sizing.minFontSize ?? 6;
+
     const measure = () => {
       const boxWidthPx = box.clientWidth;
       const boxHeightPx = box.clientHeight;
-      if (boxWidthPx === 0 || boxHeightPx === 0) return;
+      // A zero-size content area (e.g. a frame whose padding briefly consumes a
+      // small box) can't be measured — but must NOT freeze the last type size,
+      // or a box that once fitted a large size stays stuck at it and no resize
+      // recovers it. Settle at the minimum and keep the readout honest instead.
+      if (boxWidthPx === 0 || boxHeightPx === 0) {
+        const minPx = resolveDesignPx(minFontUnits, canvasWidth, box);
+        if (minPx > 0) box.style.fontSize = `${minPx}px`;
+        box.dataset.fittedSize = String(minFontUnits);
+        return;
+      }
 
       const ref = resolveDesignPx(100, canvasWidth, box);
       if (ref <= 0) return;
@@ -306,7 +317,7 @@ function useZmanimLayout(options: {
       const fontPx = zmanimFontPx(
         { boxWidthPx, widthPerFontPx },
         {
-          minPx: resolveDesignPx(manifest.sizing.minFontSize ?? 6, canvasWidth, box),
+          minPx: resolveDesignPx(minFontUnits, canvasWidth, box),
           maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 400, canvasWidth, box),
         },
       );
