@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { useBoardAlbum } from "@/lib/board-assets";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import type { BoardPhoto } from "@/lib/media/album-photos";
 import type { WidgetRendererProps } from "../types";
+import { albumSelectionKey, hasAlbumSelection, useSelectedPhotos } from "../media/albums";
 import { PhotoEmpty } from "../media/PhotoEmpty";
-import type { GalleryConfig } from "./manifest";
+import { readGalleryConfig, type GalleryConfig } from "./manifest";
 
 /** A tiny deterministic shuffle so "shuffle" order is stable across renders and
  *  between the editor and the display (SSR and CSR must agree) — seeded off the
@@ -32,17 +32,19 @@ function shuffled(photos: BoardPhoto[], seed: string): BoardPhoto[] {
   return out;
 }
 
-export function Renderer({ config, canvas }: WidgetRendererProps<GalleryConfig>) {
-  const photos = useBoardAlbum(config.albumId);
+export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryConfig>) {
+  const config = readGalleryConfig(raw);
+  const photos = useSelectedPhotos(config);
+  const albumKey = albumSelectionKey(config);
   const second = useSecond();
 
   const ordered = useMemo(
-    () => (photos && config.order === "shuffle" ? shuffled(photos, config.albumId) : photos),
-    [photos, config.order, config.albumId],
+    () => (photos && config.order === "shuffle" ? shuffled(photos, albumKey) : photos),
+    [photos, config.order, albumKey],
   );
 
-  if (!config.albumId) {
-    return <PhotoEmpty canvas={canvas} message="Pick an album in this gallery’s settings." />;
+  if (!hasAlbumSelection(config)) {
+    return <PhotoEmpty canvas={canvas} message="Pick albums in this gallery’s settings." />;
   }
   if (ordered === undefined) {
     return <PhotoEmpty canvas={canvas} message="Loading photos…" />;

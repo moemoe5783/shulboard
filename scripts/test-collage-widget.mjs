@@ -190,6 +190,24 @@ try {
     `${firstCycle.length} shown, ${new Set(firstCycle).size} distinct, across ${pages.filter(([k]) => k.startsWith("1:")).length} pages`,
   );
 
+  console.log("\n-- 5b: several albums, and end dates ----------------------------");
+  {
+    const shown = new Set();
+    const until = Date.now() + 20_000;
+    for (;;) {
+      const state = await readBoard(page, "multi");
+      for (const cell of state.cells) shown.add(cell.id);
+      if (Number(state.cycle) >= 2 || Date.now() > until) break;
+      await sleep(100);
+    }
+    const expected = Array.from({ length: 10 }, (_, i) => `lab-${i}`);
+    check(
+      expected.every((id) => shown.has(id)) && shown.size === 10,
+      "two albums merge, a photo in both shows once, and an ended photo is left out",
+      `${shown.size} distinct: ${[...shown].sort().join(",")}`,
+    );
+  }
+
   console.log("\n-- 6: the empty album ------------------------------------------");
   const visibility = await page.evaluate(() => {
     const read = (board) => {

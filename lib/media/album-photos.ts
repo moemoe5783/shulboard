@@ -38,6 +38,10 @@ export type BoardPhoto = {
   caption: string | null;
   /** When it was added to the album — what "newest first" sorts by. */
   addedAt: string | null;
+  /** The last date (shul time) boards show it, or null for no end —
+   *  album_items.display_until. Resolved on the device against its own clock
+   *  (lib/media/visibility.ts), so a screen offline still drops it on time. */
+  displayUntil: string | null;
   /** Every stored size, smallest first. Empty if the photo has no size on
    *  record (the album page backfills those — app/(app)/media/actions.ts). */
   variants: BoardPhotoVariant[];
@@ -50,6 +54,7 @@ type ItemRow = {
   album_id: string;
   caption: string | null;
   created_at: string | null;
+  display_until: string | null;
   assets: {
     id: string;
     variants: unknown;
@@ -80,7 +85,7 @@ export async function fetchAlbumPhotos(
 
   let query = supabase
     .from("album_items")
-    .select("album_id, caption, created_at, assets(id, variants, width, height, deleted_at)")
+    .select("album_id, caption, created_at, display_until, assets(id, variants, width, height, deleted_at)")
     .in("album_id", albumIds)
     .order("position", { ascending: true });
   if (orgId) query = query.eq("org_id", orgId);
@@ -105,6 +110,7 @@ export async function fetchAlbumPhotos(
       height: asset.height,
       caption: item.caption,
       addedAt: item.created_at,
+      displayUntil: item.display_until,
       variants: photoVariants(asset),
     });
   }
