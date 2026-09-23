@@ -109,9 +109,12 @@ function MediaPicker({ selectedAssetId, onPick }: { selectedAssetId: string; onP
   useEffect(() => {
     if (!activeAlbum) return;
     let cancelled = false;
-    fetchAlbumPhotos(createClient(), [activeAlbum]).then((resolved) => {
-      if (!cancelled) setPhotos({ albumId: activeAlbum, list: resolved[activeAlbum] ?? [] });
-    });
+    Promise.resolve()
+      .then(() => fetchAlbumPhotos(createClient(), [activeAlbum]))
+      .catch(() => ({}) as Record<string, BoardPhoto[]>)
+      .then((resolved) => {
+        if (!cancelled) setPhotos({ albumId: activeAlbum, list: resolved[activeAlbum] ?? [] });
+      });
     return () => {
       cancelled = true;
     };
