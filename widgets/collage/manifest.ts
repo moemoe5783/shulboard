@@ -72,8 +72,11 @@ export function readCollageConfig(raw: unknown): CollageConfig {
   return collageConfigSchema.parse(own);
 }
 
+/** `dataNeeds` is handed the STORED config (lib/bundle/assemble.ts), not a
+ *  parsed one — a collage saved before multi-album selection has no albumIds —
+ *  so it reads through readCollageConfig like the Renderer does. */
 function dataNeeds(config: CollageConfig): readonly DataNeed[] {
-  return albumSelectionNeeds(config);
+  return albumSelectionNeeds(readCollageConfig(config));
 }
 
 export const manifest: WidgetManifest<CollageConfig> = {

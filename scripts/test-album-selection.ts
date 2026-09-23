@@ -57,6 +57,23 @@ check(chosenAlbumIds(selection({ albumId: "purim" })).join() === "purim", "a leg
 check(chosenAlbumIds(selection({ albumId: "purim", albumIds: ["kiddush"] })).join() === "kiddush", "albumIds wins once it's set");
 check(!hasAlbumSelection(selection({})) && hasAlbumSelection(selection({ albumMode: "all" })), "nothing chosen is unconfigured; all albums is a choice");
 
+{
+  // A collage/gallery saved before multi-album selection, exactly as the board
+  // document stores it — dataNeeds and the editor see this raw shape, and it
+  // used to throw on `albumIds.length`, crashing the whole editor.
+  const legacy = { albumId: "purim" } as unknown as AlbumSelection;
+  let threw = false;
+  let needs: string[] = [];
+  try {
+    needs = albumSelectionNeeds(legacy).map((need) => String(need.albumId));
+  } catch {
+    threw = true;
+  }
+  check(!threw && needs.join() === "purim", "a legacy stored config (no albumIds) reads without throwing", threw ? "threw" : needs.join());
+  const empty = {} as unknown as AlbumSelection;
+  check(!hasAlbumSelection(empty) && albumSelectionNeeds(empty).length === 0, "and so does a config with none of the fields");
+}
+
 console.log("\n-- all albums, except… ---------------------------------------");
 const all = selection({ albumMode: "all", excludedAlbumIds: ["archive"] });
 check(ids(selectPhotos(all, albums, "2026-03-01")) === "c,shared,d,a,b", "all albums minus the excluded, in a stable album order", ids(selectPhotos(all, albums, "2026-03-01")));
