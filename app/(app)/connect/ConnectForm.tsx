@@ -70,7 +70,7 @@ export function ConnectForm({
         />
       </div>
       <div>
-        <Button type="submit" variant="primary" disabled={pending || !screenId}>
+        <Button type="submit" variant="primary" busy={pending} disabled={!screenId}>
           {pending ? "Connecting" : "Connect TV"}
         </Button>
       </div>

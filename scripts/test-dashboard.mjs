@@ -287,8 +287,20 @@ try {
     await page.goto(`${BASE}/screens/${HALL}`, { waitUntil: "networkidle" });
     check(/Connected to a/.test(await page.locator("main, body").first().textContent()), "the screen's page says it's connected");
     await page.getByRole("button", { name: "Disconnect TV" }).click();
+    // Server actions held for a moment, the way a real one takes a second or
+    // two, so the button's working state is there to see.
+    const slowActions = async (route) => {
+      if (route.request().method() === "POST" && route.request().headers()["next-action"]) await new Promise((r) => setTimeout(r, 1200));
+      await route.continue();
+    };
+    await page.route("**/*", slowActions);
     await page.locator("form button[type=submit]", { hasText: "Disconnect TV" }).click();
+    const working = page.locator("form button[type=submit][aria-busy=true]");
+    await working.waitFor({ timeout: 3000 }).catch(() => {});
+    check((await working.textContent().catch(() => "")) === "Disconnecting" && (await working.locator("svg").count()) === 1,
+      "confirming the disconnect shows it's working", (await working.textContent().catch(() => "")) ?? "");
     await page.waitForURL(/disconnected=1/, { timeout: 10000 }).catch(() => {});
+    await page.unroute("**/*", slowActions);
     check(/TV disconnected/.test(await page.locator("main, body").first().textContent()), "disconnecting frees the screen");
     await tv.reload({ waitUntil: "networkidle" });
     await tv.waitForURL(/\/pair\?reason=disconnected/, { timeout: 15000 }).catch(() => {});
@@ -296,6 +308,30 @@ try {
     await tv.locator("[data-pairing-code]").waitFor({ timeout: 10000 }).catch(() => {});
     check(await tv.locator("[data-pairing-code]").isVisible(), "a fresh one");
     if (SHOTS) await tv.screenshot({ path: join(SHOTS, "tv-pair.png") });
+  }
+
+  console.log("\n-- saving shows it's working --------------------------------");
+  {
+    await page.goto(`${BASE}/screens/5c000000-0000-4000-8000-000000000001`, { waitUntil: "networkidle" });
+    const slowActions = async (route) => {
+      if (route.request().method() === "POST" && route.request().headers()["next-action"]) await new Promise((r) => setTimeout(r, 1200));
+      await route.continue();
+    };
+    await page.route("**/*", slowActions);
+    await page.getByLabel("Board").selectOption({ label: "Weekday board (not published)" });
+    await page.getByRole("button", { name: "Show this board" }).click();
+    const saving = page.locator("button[aria-busy=true]", { hasText: "Saving" });
+    await saving.waitFor({ timeout: 3000 }).catch(() => {});
+    check(await saving.isVisible().catch(() => false), "choosing a screen's board shows it's saving");
+    const saved = page.getByRole("status").filter({ hasText: "Saved." });
+    await saved.waitFor({ timeout: 10000 }).catch(() => {});
+    check(/Saved\. This screen shows Weekday board/.test((await saved.textContent().catch(() => "")) ?? ""), "then says it's saved, and which board",
+      (await saved.textContent().catch(() => "")) ?? "");
+    await page.unroute("**/*", slowActions);
+
+    await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
+    check((await page.getByLabel("Timezone").count()) === 0, "settings don't ask for a timezone");
+    check(/Times are shown in Eastern Time/.test(await page.locator("body").textContent()), "they say the one the address gave");
   }
 
   console.log("\n-- phones ----------------------------------------------------");

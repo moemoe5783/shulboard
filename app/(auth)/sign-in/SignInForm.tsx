@@ -167,7 +167,7 @@ export function SignInForm({
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" disabled={working}>
+            <Button type="submit" variant="primary" busy={working}>
               {working ? "Signing in" : "Sign in"}
             </Button>
             <Button variant="tertiary" onClick={() => setMode("link")}>
@@ -189,7 +189,7 @@ export function SignInForm({
             onChange={(event) => setEmail(event.target.value)}
           />
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" disabled={working}>
+            <Button type="submit" variant="primary" busy={working}>
               {working ? "Sending" : "Email me a link"}
             </Button>
             <Button variant="tertiary" onClick={() => setMode("password")}>

@@ -74,7 +74,7 @@ export function VerifyForm({ next }: { next: string }) {
         }}
       />
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="primary" disabled={status === "working" || code.length !== 6}>
+        <Button type="submit" variant="primary" busy={status === "working"} disabled={code.length !== 6}>
           {status === "working" ? "Checking" : "Continue"}
         </Button>
         <Button variant="tertiary" onClick={signOut}>

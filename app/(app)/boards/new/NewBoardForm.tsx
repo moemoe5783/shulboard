@@ -31,7 +31,7 @@ export function NewBoardForm() {
       </SelectField>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" variant="primary" busy={pending}>
           {pending ? "Adding" : "Add board"}
         </Button>
         <Link href="/boards" className={buttonClassName("tertiary")}>

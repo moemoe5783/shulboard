@@ -57,7 +57,7 @@ export function NewPasswordForm({ next }: { next: string }) {
         onChange={(event) => setAgain(event.target.value)}
       />
       <div>
-        <Button type="submit" variant="primary" disabled={status !== "idle"}>
+        <Button type="submit" variant="primary" busy={status === "working"} disabled={status !== "idle"}>
           {status === "working" ? "Saving" : status === "done" ? "Saved" : "Save password"}
         </Button>
       </div>

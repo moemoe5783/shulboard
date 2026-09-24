@@ -229,6 +229,11 @@ lighting there so he can confirm it before anything is saved
 key backs the save-time check that a shul's ZIP and its coordinates
 describe the same place, which uses one forward and one reverse lookup.
 
+The shul's **timezone** is not asked for: it is read off the looked-up
+coordinates with an offline map of zone boundaries
+(`lib/geocoding/timezone.ts`, `@photostructure/tz-lookup`), so it needs no
+key and makes no request. Saving an address sets the zone with it.
+
 **Where it comes from.** Nowhere but you — `locationiq.com`, sign up, then
 Dashboard → Access Tokens. The free tier is 5,000 requests a day and 2 a
 second, needs no billing account, and permits commercial use **on condition

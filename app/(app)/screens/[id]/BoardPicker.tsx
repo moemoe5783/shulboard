@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { SelectField } from "@/components/Field";
-import { assignBoard } from "../actions";
+import { assignBoard, type AssignBoardState } from "../actions";
 
 /**
  * Wiring a board to a screen — plan.md §1: a screen points at a playlist, not
@@ -26,6 +27,12 @@ export function BoardPicker({
   boards: { id: string; name: string; published: boolean }[];
   currentBoardId: string | null;
 }) {
+  const [state, action, pending] = useActionState<AssignBoardState, FormData>(assignBoard, {});
+  // The confirmation belongs to the save that made it; choosing another board
+  // afterwards clears it, so it never describes a choice that isn't saved.
+  const [dirtyAfter, setDirtyAfter] = useState<number | undefined>(undefined);
+  const saved = state.assigned && state.at !== dirtyAfter ? state.assigned : null;
+
   if (boards.length === 0) {
     return (
       <p className="text-body text-ink-soft max-w-prose">
@@ -42,7 +49,7 @@ export function BoardPicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <form action={assignBoard} className="flex items-end gap-2">
+      <form action={action} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="screenId" value={screenId} />
         <div className="max-w-64 flex-1">
           <SelectField
@@ -51,6 +58,7 @@ export function BoardPicker({
             label="Board"
             defaultValue={currentBoardId ?? ""}
             required
+            onChange={() => setDirtyAfter(state.at)}
           >
             <option value="" disabled>
               Choose a board
@@ -63,9 +71,14 @@ export function BoardPicker({
             ))}
           </SelectField>
         </div>
-        <Button type="submit" variant="secondary">
-          Show this board
+        <Button type="submit" variant="secondary" busy={pending}>
+          {pending ? "Saving" : "Show this board"}
         </Button>
+        {saved && !pending && (
+          <p role="status" className="text-cell text-ink-soft h-8 leading-8">
+            Saved. This screen shows {saved} within a few minutes.
+          </p>
+        )}
       </form>
 
       {currentBoard && !currentBoard.published && (

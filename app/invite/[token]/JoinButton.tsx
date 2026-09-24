@@ -10,7 +10,7 @@ export function JoinButton({ token, shulName }: { token: string; shulName: strin
     <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="token" value={token} />
       <div>
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" variant="primary" busy={pending}>
           {pending ? "Joining" : `Join ${shulName}`}
         </Button>
       </div>

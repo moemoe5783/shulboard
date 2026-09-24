@@ -4,6 +4,7 @@ import { useState, useTransition, type ReactNode } from "react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { lookupShulLocation, type LocationLookupState } from "./actions";
+import { timeZoneName } from "@/lib/time-zone-name";
 
 /*
  * "Where is this shul?" — the one question, with every input that answers
@@ -51,7 +52,6 @@ export function LocationLookup({
   longitude,
   postalCode,
   locationLabel,
-  timezone,
   geocodingConfigured,
   children,
 }: {
@@ -66,10 +66,6 @@ export function LocationLookup({
    *  hand or saved before the column existed, and the summary falls back to
    *  the coordinates themselves there rather than pretending. */
   locationLabel: string | null;
-  /** The form's own currently-selected timezone, so the previewed candle
-   *  lighting is checked against the zone the gabbai is about to save
-   *  rather than the one on file. */
-  timezone: string;
   geocodingConfigured: boolean;
   /** Anything else that belongs to this question — the settings form
    *  passes its Chabad.org city search (ChabadCityLookup), which is the
@@ -104,7 +100,7 @@ export function LocationLookup({
   const runLookup = () => {
     if (!query.trim() || pending) return;
     startTransition(async () => {
-      setResult(await lookupShulLocation(query, timezone));
+      setResult(await lookupShulLocation(query));
     });
   };
 
@@ -191,7 +187,7 @@ export function LocationLookup({
                 autoComplete="off"
               />
             </div>
-            <Button onClick={runLookup} disabled={pending || !query.trim()}>
+            <Button onClick={runLookup} busy={pending} disabled={!query.trim()}>
               {pending ? "Looking up" : "Look up"}
             </Button>
           </div>
@@ -215,6 +211,9 @@ export function LocationLookup({
       {result.status === "found" && (
         <div className="rounded-panel border-rule bg-paper flex flex-col gap-2 border p-4">
           <p className="text-body text-ink">{result.label}</p>
+          {result.timezone && (
+            <p className="text-meta text-ink-soft">Times will be shown in {timeZoneName(result.timezone)}.</p>
+          )}
           {result.candleLighting && result.candleLightingWhen ? (
             <p className="text-body text-ink-soft">
               Candle lighting there on {result.candleLightingWhen}:{" "}
@@ -225,8 +224,8 @@ export function LocationLookup({
             </p>
           ) : (
             <p className="text-body text-ink-soft">
-              No candle lighting for those coordinates. Check the timezone
-              above before you use them.
+              No candle lighting for those coordinates. Check it&rsquo;s the
+              right place before you use them.
             </p>
           )}
           <p className="text-meta text-ink-soft numeric">
