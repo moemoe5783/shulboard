@@ -102,3 +102,34 @@ export function readAssetVariant(variants: unknown, variant: string): AssetVaria
     ...(typeof v.width === "number" && typeof v.height === "number" ? { width: v.width, height: v.height } : {}),
   };
 }
+
+/**
+ * The named variant if it's on file, otherwise the largest one that is — with
+ * the name it was actually found under, since that name goes into the proxy
+ * path.
+ *
+ * A photo no bigger than a size's smaller neighbour never gets that size
+ * (lib/media/variants.ts, `variantSpecsFor`), so asking for `large` on a
+ * 1000px photo is normal, not an error: its largest stored size IS its large.
+ * Largest is by recorded width, then by bytes for an older row with no size.
+ */
+export function readBestVariant(
+  variants: unknown,
+  preferred: string,
+): { name: string; variant: AssetVariant } | null {
+  const exact = readAssetVariant(variants, preferred);
+  if (exact) return { name: preferred, variant: exact };
+  if (typeof variants !== "object" || variants === null) return null;
+
+  let best: { name: string; variant: AssetVariant } | null = null;
+  for (const name of Object.keys(variants)) {
+    const variant = readAssetVariant(variants, name);
+    if (!variant) continue;
+    const larger =
+      !best ||
+      (variant.width ?? 0) > (best.variant.width ?? 0) ||
+      ((variant.width ?? 0) === (best.variant.width ?? 0) && variant.bytes > best.variant.bytes);
+    if (larger) best = { name, variant };
+  }
+  return best;
+}

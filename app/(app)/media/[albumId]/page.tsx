@@ -1,17 +1,18 @@
 import { notFound } from "next/navigation";
-import { mediaProxyPath, readAssetVariant } from "@/lib/bundle/media";
+import { mediaProxyPath, readBestVariant } from "@/lib/bundle/media";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { AlbumDetail, type AlbumPhoto } from "./AlbumDetail";
 
 export const dynamic = "force-dynamic";
 
-/** Build the proxy URL for one variant of an asset, or null if it isn't on
- *  file (unprocessed, or a shape this build doesn't recognise). */
+/** Build the proxy URL for one variant of an asset — or its largest on file
+ *  when that one isn't — or null if it has none (unprocessed, or a shape this
+ *  build doesn't recognise). */
 function variantUrl(id: string, variants: unknown, name: string): string | null {
-  const variant = readAssetVariant(variants, name);
-  if (!variant) return null;
-  return mediaProxyPath({ id, variant: name, content_hash: variant.contentHash, extension: variant.extension });
+  const best = readBestVariant(variants, name);
+  if (!best) return null;
+  return mediaProxyPath({ id, variant: best.name, content_hash: best.variant.contentHash, extension: best.variant.extension });
 }
 
 export default async function AlbumDetailPage({ params }: PageProps<"/media/[albumId]">) {
@@ -63,7 +64,7 @@ export default async function AlbumDetailPage({ params }: PageProps<"/media/[alb
       deleted_at: string | null;
     } | null;
     if (!asset || asset.deleted_at) continue;
-    const thumb = variantUrl(asset.id, asset.variants, "thumb") ?? variantUrl(asset.id, asset.variants, "display");
+    const thumb = variantUrl(asset.id, asset.variants, "thumb");
     if (!thumb) continue;
     maxPosition = Math.max(maxPosition, item.position);
     photos.push({

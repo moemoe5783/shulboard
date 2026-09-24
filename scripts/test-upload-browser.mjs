@@ -87,6 +87,12 @@ try {
   }
 
   {
+    const { result, calls } = await run({ width: 1000, height: 750 });
+    const names = uploads(calls).map((c) => c.detail.path.split("/").pop().split("-")[0]);
+    check(result.ok && names.join(",") === "thumb,display", "a 1000px photo uploads thumb and display only", names.join(","));
+  }
+
+  {
     const { result, calls } = await run({ width: 3000, height: 2000, failUploadAt: 1 });
     const up = uploads(calls);
     const failed = assetWrites(calls).find((w) => w.op === "update" && w.detail.payload.status === "failed");

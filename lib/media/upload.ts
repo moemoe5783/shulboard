@@ -5,10 +5,10 @@ import {
   ACCEPTED_IMAGE_TYPES,
   BOARD_VARIANT,
   scaledSize,
+  variantSpecsFor,
   VARIANT_CONTENT_TYPE,
   VARIANT_EXTENSION,
   VARIANT_QUALITY,
-  VARIANT_SPECS,
   isHeicFile,
 } from "./variants";
 import { decodeHeic } from "./heic";
@@ -180,8 +180,9 @@ export async function uploadPhoto(input: {
   try {
     // Reading is the first ~10%, each size is an equal share of the next 80%
     // (half resizing, half uploading), and saving the row is the last 10%.
-    const share = 0.8 / VARIANT_SPECS.length;
-    for (const [i, spec] of VARIANT_SPECS.entries()) {
+    const specs = variantSpecsFor(naturalWidth, naturalHeight);
+    const share = 0.8 / specs.length;
+    for (const [i, spec] of specs.entries()) {
       const { width, height } = scaledSize(naturalWidth, naturalHeight, spec.maxEdge);
       progress("resizing", 0.1 + share * i);
       const blob = await encodeVariant(source, width, height);

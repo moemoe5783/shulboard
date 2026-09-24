@@ -25,15 +25,33 @@ export type VariantSpec = {
 
 /**
  * thumb for the album grid and pickers, display for the board, large for a 4K
- * wall. Ordered small-to-large; the pipeline skips any whose maxEdge is past the
- * original's longest edge except that `display` is always written (the board
- * needs it) at whatever size the original allows.
+ * wall. Ordered small-to-large. See `variantSpecsFor` for which a given photo
+ * gets.
  */
 export const VARIANT_SPECS: VariantSpec[] = [
   { name: "thumb", maxEdge: 400 },
   { name: BOARD_VARIANT, maxEdge: 1080 },
   { name: "large", maxEdge: 2160 },
 ];
+
+/** thumb and display are written for every photo — the album grid and the
+ *  board read them by name. */
+const ALWAYS = new Set(["thumb", BOARD_VARIANT]);
+
+/**
+ * The sizes one photo gets. A size is skipped when the photo's long edge is no
+ * bigger than the next-smaller size's: it would come out pixel-for-pixel the
+ * same as that one (sizes are never enlarged), so it's the same picture stored
+ * twice. A 1000px photo gets thumb and display; a 3000px one gets all three.
+ * thumb and display are always written, however small the photo.
+ *
+ * Every reader falls back to the largest size on file when the one it asks for
+ * isn't there (lib/bundle/media.ts, `readBestVariant`).
+ */
+export function variantSpecsFor(width: number, height: number): VariantSpec[] {
+  const longest = Math.max(width, height);
+  return VARIANT_SPECS.filter((spec, i) => ALWAYS.has(spec.name) || longest > VARIANT_SPECS[i - 1].maxEdge);
+}
 
 /** WebP everywhere — one servable type, good compression, universal on the
  *  browsers a dashboard runs in and the TV browsers the display runs on. */
