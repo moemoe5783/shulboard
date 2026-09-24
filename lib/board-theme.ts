@@ -44,6 +44,30 @@ export const BOARD_FONTS = {
 export type BoardFont = keyof typeof BOARD_FONTS;
 
 /**
+ * The faces whose digits are all one width (with `tabular-nums`), MEASURED
+ * rather than assumed: 00000 against 11111 in a real browser, each face
+ * confirmed loaded, spread 0.00px for these five. Assistant, Alef, Suez One
+ * and Secular One have no tabular figures, so a clock set in them would jitter
+ * as its digits change and a column of times wouldn't line up (design.md §3,
+ * docs/sizing.md §4).
+ */
+export const TABULAR_FONTS: ReadonlySet<BoardFont> = new Set(["sefarim", "heebo", "rubik", "davidLibre", "miriamLibre"]);
+
+/** The face numbers are set in for a chosen font: that font when its digits
+ *  are one width, Frank Ruhl Libre when they aren't. */
+export function numericFace(font: string | undefined): string {
+  return font && TABULAR_FONTS.has(font as BoardFont) ? BOARD_FONTS[font as BoardFont] : BOARD_FONTS.sefarim;
+}
+
+/**
+ * What a clock time, a zman or a countdown sets its digits in. The board root
+ * and a widget frame with its own font each set `--board-numeric-font`
+ * (`numericFace`), so a Renderer reads it without being told the font — its
+ * props stay `{config, canvas}`.
+ */
+export const NUMERIC_FONT = `var(--board-numeric-font, ${BOARD_FONTS.sefarim})`;
+
+/**
  * The board faces a widget may pick, in the order a font menu shows them —
  * a stable label per face. `sefarim` is spelled "Frank Ruhl Libre" here
  * because that is the name a gabbai recognises; the key is the document's
@@ -113,6 +137,7 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
 
   return {
     fontFamily: BOARD_FONTS[font] ?? BOARD_FONTS.assistant,
+    ["--board-numeric-font" as string]: numericFace(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,
     backgroundColor: BOARD_COLORS[background] ?? BOARD_COLORS.surface,
     ...(custom ? { background: `${custom}`, backgroundColor: undefined } : {}),

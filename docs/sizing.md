@@ -436,6 +436,19 @@ figures, and numeric elements should either restrict the list or warn.
 Verify by measurement, not by applying the property and assuming. Render `11111`
 and `00000` in the candidate face and compare widths.
 
+**Built: the renderer falls back.** Numbers (Clock, the Zmanim times, Candle
+Lighting's time and countdown) are set in `NUMERIC_FONT`
+(lib/board-theme.ts): the widget's font, else the board's, when that face is
+in `TABULAR_FONTS`, and Frank Ruhl Libre when it isn't. The board root and a
+widget frame with its own font set `--board-numeric-font`, so no Renderer is
+told the font. The flag was measured, in a real browser with each face
+confirmed loaded, `00000` against `11111` at 100px with `tabular-nums`:
+Frank Ruhl Libre, Heebo, Rubik, David Libre and Miriam Libre close to
+0.0px; Assistant (21.5px), Alef (94.7px), Suez One (125.5px) and Secular
+One (74.0px) don't move. `scripts/test-clock-fit.mjs` pins the fallback.
+Hebrew Date, Parsha and Daf Yomi keep Frank Ruhl Libre for their Hebrew
+lines — that is sefarim typography for Hebrew letters, not a figure set.
+
 ---
 
 ## 5. Known bug to fix alongside this

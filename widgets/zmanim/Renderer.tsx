@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
+import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
@@ -371,7 +371,7 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
   const parts = splitTimeColumns(row.display);
 
   const gap: CSSProperties = { paddingLeft: LABEL_GAP };
-  const time: CSSProperties = { fontFamily: BOARD_FONTS.sefarim };
+  const time: CSSProperties = { fontFamily: NUMERIC_FONT };
   const timeClass = "numeric font-semibold leading-snug whitespace-nowrap";
 
   const labelCell = (
