@@ -558,6 +558,50 @@ try {
     check(cachedCount >= count && !(await tag.isVisible().catch(() => false)), "until every photo is on this device and the tag goes", `${cachedCount} cached`);
     await albumContext.close();
   }
+
+  // Many small albums behind one "every album" gallery — how a shul that files
+  // each kiddush in its own album actually looks. The head start is per
+  // gallery, so this waits for eight photos, not eight from every album.
+  {
+    const manyAlbums = await browser.newContext();
+    const page = await manyAlbums.newPage();
+    const albumCount = 30;
+    const albums = {};
+    const assets = [];
+    for (let a = 0; a < albumCount; a += 1) {
+      albums[`album-${a}`] = Array.from({ length: 5 }, (_, i) => {
+        const src = `/m/ma-${a}-${i}/display-ma${a}x${i}.svg`;
+        assets.push({ id: `ma-${a}-${i}`, url: src, variant: "display", contentType: "image/svg+xml", bytes: 200 });
+        return { assetId: `ma-${a}-${i}`, src, width: 4, height: 4, caption: null, addedAt: null, displayUntil: null, variants: [] };
+      });
+    }
+    const base = bundleFixture({ version: 1, hash: "albums-many", title: "Every kiddush" });
+    base.boards[0].doc.widgets.push({
+      id: "55555555-5555-4555-8555-555555555555",
+      type: "gallery",
+      x: 50, y: 10, w: 45, h: 80, rotation: 0, z: 2,
+      locked: false, hidden: false, opacity: 1, groupId: null,
+      styleOverrides: {},
+      config: { albumId: "", albumMode: "all", albumIds: [], excludedAlbumIds: [], intervalSeconds: 2, transition: "none" },
+    });
+    const bundle = { ...base, content: { ...base.content, albums }, assets };
+    let served = 0;
+    await manyAlbums.route("**/api/screen/*/bundle", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", headers: { etag: '"albums-many"' }, body: JSON.stringify(bundle) }),
+    );
+    await manyAlbums.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await manyAlbums.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+    await manyAlbums.route("**/m/**", async (route) => {
+      await new Promise((r) => setTimeout(r, 300));
+      served += 1;
+      await route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>' });
+    });
+    await page.goto(DISPLAY, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    check((await marker(page, "version")) === "1" && served <= 16, "a gallery of thirty albums waits for a handful of photos, not a few from each album",
+      `${served} of ${assets.length} downloaded`);
+    await manyAlbums.close();
+  }
   console.log("");
 } finally {
   await browser.close();
