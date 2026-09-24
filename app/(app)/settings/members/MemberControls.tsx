@@ -64,7 +64,7 @@ export function MemberActions({ userId, name, self = false }: { userId: string; 
       <div className="flex items-center justify-end gap-2">
         <Button
           variant="secondary"
-          disabled={pending}
+          busy={pending}
           onClick={() =>
             start(async () => {
               const result = await removeMember(userId);
@@ -72,9 +72,9 @@ export function MemberActions({ userId, name, self = false }: { userId: string; 
             })
           }
         >
-          {pending ? "Removing" : self ? "Leave the shul" : `Remove`}
+          {pending ? (self ? "Leaving" : "Removing") : self ? "Leave the shul" : `Remove`}
         </Button>
-        <Button variant="tertiary" onClick={() => setConfirming(false)}>
+        <Button variant="tertiary" disabled={pending} onClick={() => setConfirming(false)}>
           Keep
         </Button>
       </div>
@@ -93,6 +93,7 @@ export function InviteActions({ inviteId, email, link }: { inviteId: string; ema
   const [message, setMessage] = useState<string>();
   const [copied, setCopied] = useState(false);
   const [pending, start] = useTransition();
+  const [running, setRunning] = useState<"resend" | "withdraw" | null>(null);
 
   return (
     <div className="flex flex-col items-end gap-1 py-1">
@@ -108,18 +109,27 @@ export function InviteActions({ inviteId, email, link }: { inviteId: string; ema
         </Button>
         <Button
           variant="tertiary"
+          busy={pending && running === "resend"}
           disabled={pending}
-          onClick={() => start(async () => setMessage((await resendInvite(inviteId)).message))}
+          onClick={() => {
+            setRunning("resend");
+            setMessage(undefined);
+            start(async () => setMessage((await resendInvite(inviteId)).message));
+          }}
         >
-          Send again
+          {pending && running === "resend" ? "Sending" : "Send again"}
         </Button>
         <Button
           variant="tertiary"
+          busy={pending && running === "withdraw"}
           disabled={pending}
           aria-label={`Withdraw the invitation to ${email}`}
-          onClick={() => start(async () => revokeInvite(inviteId))}
+          onClick={() => {
+            setRunning("withdraw");
+            start(async () => revokeInvite(inviteId));
+          }}
         >
-          Withdraw
+          {pending && running === "withdraw" ? "Withdrawing" : "Withdraw"}
         </Button>
       </div>
       {message && <span className="text-meta text-ink-soft whitespace-normal">{message}</span>}

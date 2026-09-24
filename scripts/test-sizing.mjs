@@ -232,6 +232,56 @@ try {
   check((await heightStyle()).endsWith("%"), "and height goes back to a percentage", await heightStyle());
 
   console.log("");
+
+  // ---- dimensions and preset shapes (lib/editor/size-presets.ts) ----------
+
+  await page.keyboard.press("Escape");
+  await widget(TITLE_ID).click();
+  await settle();
+  const summary = page.locator("[data-size-summary]");
+  check(/^\d+ × \d+ px/.test((await summary.textContent()) ?? ""), "clicking an element says how big it is", (await summary.textContent()) ?? "");
+  await openSizeTab();
+  const presetLine = page.locator("[data-size-preset]");
+  await page.locator("[data-dimensions] select").selectOption("letter");
+  await settle();
+  check(/^Letter flyer, 8\.5 × 11 in, landscape/.test((await presetLine.textContent()) ?? ""),
+    "choosing letter makes it a letter flyer shape, keeping which way up it was", (await presetLine.textContent()) ?? "");
+  check(/Letter flyer/.test((await summary.textContent()) ?? ""), "and the summary says so", (await summary.textContent()) ?? "");
+  await page.getByRole("button", { name: "Portrait" }).click();
+  await settle();
+  check(/^Letter flyer.*portrait/.test((await presetLine.textContent()) ?? ""), "turning it portrait keeps the shape", (await presetLine.textContent()) ?? "");
+
+  // A corner drag along the diagonal keeps the shape, and says it's still on
+  // the preset while dragging.
+  const dragHandle = async (name, dx, dy, whileDragging) => {
+    const handle = await page.locator(`.moveable-control.moveable-${name}`).first().boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2 + dx, handle.y + handle.height / 2 + dy, { steps: 16 });
+    const during = whileDragging ? await whileDragging() : null;
+    await page.mouse.up();
+    await settle();
+    return during;
+  };
+  const box = await widget(TITLE_ID).boundingBox();
+  const tagText = await dragHandle("se", -box.width * 0.2, -box.height * 0.2, () => page.locator("[data-size-tag]").textContent());
+  check(/Letter flyer/.test(tagText ?? ""), "while resizing, a tag shows the size and the shape", tagText ?? "");
+  check(/Letter flyer/.test((await presetLine.textContent()) ?? ""), "a corner drag keeps the letter shape", (await presetLine.textContent()) ?? "");
+  check(await page.locator("[data-size-tag]").isHidden(), "and the tag goes when the drag ends");
+
+  // An edge drag changes the shape, so it's no longer a preset.
+  await dragHandle("e", 60, 0);
+  check(/^Not a preset size/.test((await presetLine.textContent()) ?? ""), "an edge drag changes the shape, and it stops being a preset",
+    (await presetLine.textContent()) ?? "");
+
+  // Typing a width is a resize too.
+  const widthInput = page.locator("[data-dimensions] label", { hasText: "Width" }).locator("input");
+  await widthInput.fill("640");
+  await widthInput.blur();
+  await settle();
+  const typed = await page.locator("[data-dimensions] label", { hasText: "Width" }).locator("input").inputValue();
+  check(typed === "640" && /^640 ×/.test((await summary.textContent()) ?? ""), "typing a width sets it", (await summary.textContent()) ?? "");
+
 } finally {
   await browser.close();
   await stopServer(server);

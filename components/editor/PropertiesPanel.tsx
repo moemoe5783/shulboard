@@ -5,6 +5,7 @@ import { CHROME_BUTTON, CHROME_BUTTON_ON, CHROME_DARK, CHROME_META, CHROME_RULE 
 import { widgetLabel } from "@/app/(dev)/editor-lab/labels";
 import { AppearanceControls } from "@/components/editor/AppearanceControls";
 import { BoardBackgroundField } from "@/components/editor/BackgroundField";
+import { DimensionsField } from "@/components/editor/DimensionsField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
@@ -12,6 +13,7 @@ import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardBackground } from "@/lib/board-background";
 import type { BoardWidget } from "@/lib/board-doc";
 import { widgetRect } from "@/lib/editor/geometry";
+import { matchPresets } from "@/lib/editor/size-presets";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
 import { getManifest } from "@/widgets/manifests";
 import { getSettings } from "@/widgets/settings";
@@ -127,7 +129,10 @@ function Body({
   const config = selected[0].config as { sizingMode?: SizingMode; size?: number };
 
   const showSizing = Boolean(manifest?.sizing.userToggleable) || Boolean(manifest && isTextSized(manifest));
-  const sizeTabVisible = showSizing || overflowing;
+  // Every single element has a size to show (DimensionsField), so the tab is
+  // always there for one; for several it's only there when there's sizing to
+  // set or a clip to warn about.
+  const sizeTabVisible = selected.length === 1 || showSizing || overflowing;
   const styleConfig = normalizeWidgetStyle(selected[0].config as Record<string, unknown>);
   // The Size tab can vanish when the selection changes to a widget with nothing
   // to size; fall the pane back to Options rather than render an empty one.
@@ -142,6 +147,19 @@ function Body({
           ? `${selected.length} ${manifest?.name.toLowerCase() ?? type} elements`
           : widgetLabel(selected[0])}
       </h2>
+
+      {/* The size at a glance, whatever tab is open — click an element and
+          this says how big it is, and whether it's a photo or flyer shape. */}
+      {selected.length === 1 && (
+        <button
+          type="button"
+          onClick={() => setTab("size")}
+          className={`${CHROME_META} hover:text-paper flex h-8 shrink-0 items-center border-b px-3 text-left ${CHROME_RULE}`}
+          data-size-summary
+        >
+          <SizeSummary widget={selected[0]} />
+        </button>
+      )}
 
       <TabBar tab={activeTab} onChange={setTab} showSize={sizeTabVisible} />
 
@@ -176,6 +194,8 @@ function Body({
         {/* Size — how the widget fits its box, plus the clip warning. */}
         {activeTab === "size" && (
           <>
+            {selected.length === 1 && <DimensionsField widget={selected[0]} />}
+
             {manifest?.sizing.userToggleable && (
               <SizingToggle
                 mode={config.sizingMode ?? manifest.sizing.mode}
@@ -209,13 +229,25 @@ function Body({
               </p>
             )}
 
-            {!showSizing && !overflowing && (
+            {!showSizing && !overflowing && selected.length !== 1 && (
               <p className={CHROME_META}>This element sizes itself to its box — nothing to set.</p>
             )}
           </>
         )}
       </div>
     </>
+  );
+}
+
+/** "600 × 900 px, 4 × 6 in photo" — the one-line version of DimensionsField. */
+function SizeSummary({ widget }: { widget: BoardWidget }) {
+  const canvas = useEditor((s) => s.canvas);
+  const rect = widgetRect(widget, canvas);
+  const preset = matchPresets(rect.w, rect.h)[0];
+  return (
+    <span className="numeric truncate">
+      {Math.round(rect.w)} × {Math.round(rect.h)} px{preset ? `, ${preset.label}` : ""}
+    </span>
   );
 }
 
