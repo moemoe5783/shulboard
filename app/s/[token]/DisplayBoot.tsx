@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useDisplay } from "@/lib/display/useDisplay";
-import { DisplayBoard, WaitingForBoard } from "./DisplayBoard";
+import { DisplayBoard, LoadingPhotos, UpdatingBadge, WaitingForBoard } from "./DisplayBoard";
 
 /*
  * Which token this device runs on, and everything that follows from it.
@@ -48,6 +48,19 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
   const token = stored ?? urlToken;
 
   const { bundle, status } = useDisplay(token);
+
+  // An update downloading behind a board that's showing: say so only once it
+  // has taken a few seconds.
+  const updating = Boolean(bundle && status.assetProgress && status.assetProgress.done < status.assetProgress.total);
+  const [slowUpdate, setSlowUpdate] = useState(false);
+  useEffect(() => {
+    if (!updating) {
+      const reset = setTimeout(() => setSlowUpdate(false), 0);
+      return () => clearTimeout(reset);
+    }
+    const timer = setTimeout(() => setSlowUpdate(true), 3000);
+    return () => clearTimeout(timer);
+  }, [updating]);
 
   useEffect(() => {
     // Reads storage itself rather than trusting `stored`. During hydration that
@@ -101,6 +114,9 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
   }
 
   if (!bundle) {
+    if (status.assetProgress && status.assetProgress.total > 0) {
+      return <LoadingPhotos done={status.assetProgress.done} total={status.assetProgress.total} />;
+    }
     return <WaitingForBoard reason="Waiting for this screen's board." />;
   }
 
@@ -121,6 +137,9 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
         {status.source === "cache" ? "this device" : "the server"}
       </span>
       <DisplayBoard bundle={bundle} />
+      {updating && slowUpdate && status.assetProgress && (
+        <UpdatingBadge done={status.assetProgress.done} total={status.assetProgress.total} />
+      )}
     </>
   );
 }
