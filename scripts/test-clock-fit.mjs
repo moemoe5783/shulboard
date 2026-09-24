@@ -6,9 +6,10 @@
  *     never passes either edge. A big box isn't held back by a low ceiling.
  *  2. `fit` HOLDS STILL when the hour gains a digit — it fits the widest time
  *     the format can show, not the one on screen.
- *  3. NUMBERS FOLLOW THE FONT when its digits are all one width, and fall back
- *     to Frank Ruhl Libre when they aren't — for the widget's own font and for
- *     the board's.
+ *  3. NUMBERS FOLLOW THE FONT — the widget's own, else the board's — in every
+ *     face. One with tabular figures lines its digits up by itself
+ *     (`lining-nums tabular-nums`); one without gets a box per digit as wide
+ *     as its widest (widgets/Digits.tsx), so the digits still share one width.
  *
  * Needs a production build; starts its own `next start`.
  * Run with: npm run test:clock-fit
@@ -77,6 +78,10 @@ try {
         fitted: Number(box.dataset.fittedSize),
         family: getComputedStyle(span).fontFamily.split(",")[0].replace(/"/g, ""),
         text: span.textContent,
+        digitWidths: [...span.querySelectorAll("[data-digit]")].map((d) => Math.round(d.getBoundingClientRect().width * 10) / 10),
+        // The clock sets its digits at 600 (widgets/clock/Renderer.tsx).
+        digitBox: getComputedStyle(span).getPropertyValue("--board-digit-600").trim(),
+        numeric: span.querySelector("[data-digit]") ? getComputedStyle(span.querySelector("[data-digit]")).fontVariantNumeric : "",
       };
     });
   };
@@ -125,19 +130,26 @@ try {
     check(Math.abs(a.fontPx - b.fontPx) < 0.5, "the type is the same size either way", `${a.fontPx.toFixed(1)} vs ${b.fontPx.toFixed(1)}px`);
   }
 
-  console.log("\n-- numbers follow the font when its digits are one width -------");
+  console.log("\n-- numbers follow the font, in every face ----------------------");
   {
     for (const [query, expected, why] of [
       ["font=heebo", "Heebo", "a widget set in Heebo shows its time in Heebo"],
       ["font=rubik", "Rubik", "and Rubik"],
-      ["font=alef", "Frank Ruhl Libre", "a widget set in Alef (no tabular figures) falls back to Frank Ruhl Libre"],
+      ["font=alef", "Alef", "a widget set in Alef (no tabular figures) keeps Alef"],
       ["boardFont=davidLibre", "David Libre", "a board set in David Libre shows its clocks in it"],
-      ["boardFont=suezOne", "Frank Ruhl Libre", "a board set in Suez One falls back"],
-      ["boardFont=heebo&font=alef", "Frank Ruhl Libre", "a widget's own font wins over the board's"],
+      ["boardFont=suezOne", "Suez One", "a board set in Suez One keeps Suez One"],
+      ["boardFont=heebo&font=alef", "Alef", "a widget's own font wins over the board's"],
     ]) {
       const clock = await open(`w=40&h=20&${query}`);
       check(clock.family === expected, why, clock.family);
     }
+    const rubik = await open("w=40&h=20&font=rubik");
+    check(/lining-nums/.test(rubik.numeric) && /tabular-nums/.test(rubik.numeric), "digits ask for lining, tabular figures", rubik.numeric);
+    check(new Set(rubik.digitWidths).size === 1, "Rubik (tnum) lines its digits up with no box", rubik.digitWidths.join(" "));
+    const alef = await open("w=40&h=20&font=alef");
+    check(/em$/.test(alef.digitBox), "Alef (no tnum) gets a digit box", alef.digitBox);
+    check(rubik.digitBox === "" || rubik.digitBox === "auto", "Rubik gets none", rubik.digitBox || "unset");
+    check(new Set(alef.digitWidths).size === 1, "and its digits share one width", alef.digitWidths.join(" "));
   }
 } finally {
   await browser.close();

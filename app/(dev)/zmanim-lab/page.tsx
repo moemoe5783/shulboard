@@ -178,10 +178,12 @@ function buildDoc(options: {
   padding: number;
   background: string;
   size: number;
+  /** The board font — ?boardFont=<catalog id>. */
+  font: string;
 }): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
-    themeOverrides: { font: "assistant", ink: "ink", background: "surface" },
+    themeOverrides: { font: options.font, ink: "ink", background: "surface" },
     widgets: [
       {
         id: ZMANIM_ID,
@@ -224,7 +226,7 @@ function ZmanimLabInner() {
     hasChabadLocation: true,
     chabadZmanim: buildCache(script),
   };
-  const doc = buildDoc({ script, w, h, overflow, padding, background, size });
+  const doc = buildDoc({ script, w, h, overflow, padding, background, size, font: params.get("boardFont") ?? "assistant" });
 
   return (
     <div className="p-4">

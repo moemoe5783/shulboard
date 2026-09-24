@@ -436,16 +436,20 @@ figures, and numeric elements should either restrict the list or warn.
 Verify by measurement, not by applying the property and assuming. Render `11111`
 and `00000` in the candidate face and compare widths.
 
-**Built: the renderer falls back.** Numbers (Clock, the Zmanim times, Candle
-Lighting's time and countdown) are set in `NUMERIC_FONT`
-(lib/board-theme.ts): the widget's font, else the board's, when that face is
-in `TABULAR_FONTS`, and Frank Ruhl Libre when it isn't. The board root and a
-widget frame with its own font set `--board-numeric-font`, so no Renderer is
-told the font. The flag was measured, in a real browser with each face
-confirmed loaded, `00000` against `11111` at 100px with `tabular-nums`:
-Frank Ruhl Libre, Heebo, Rubik, David Libre and Miriam Libre close to
-0.0px; Assistant (21.5px), Alef (94.7px), Suez One (125.5px) and Secular
-One (74.0px) don't move. `scripts/test-clock-fit.mjs` pins the fallback.
+**Built: every face lines up, in its own face.** (This replaced an earlier
+fallback to Frank Ruhl Libre for faces without tabular figures, when the board
+font catalog arrived.) Numbers (Clock, the Zmanim times, Candle Lighting's time
+and countdown) are set in `NUMERIC_FONT` (lib/board-theme.ts): the widget's
+font, else the board's. Each digit is wrapped by `widgets/Digits.tsx` and set
+`lining-nums tabular-nums` — even height and even width in a face that has both
+features. A face with no tnum (measured in its files by
+`scripts/build-fonts.ts`) gets a fixed box per digit instead, as wide as its
+widest digit at that weight: the build measures every offered weight (variable
+faces instanced at each), the board root and a widget frame publish the widths
+as `--board-digit-<weight>`, and a digit's box reads the one for its own
+weight. Colons, spaces and AM/PM stay natural width. `npm run fonts` prints
+which faces use which method and flags any with old-style figures and no lining
+alternative. `scripts/test-clock-fit.mjs` pins both paths.
 Hebrew Date, Parsha and Daf Yomi keep Frank Ruhl Libre for their Hebrew
 lines — that is sefarim typography for Hebrew letters, not a figure set.
 

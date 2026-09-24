@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useSecond } from "@/lib/tick";
 import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
+import { Digits } from "../Digits";
 import type { WidgetRendererProps } from "../types";
 import { onFontsChange, useFitFontSize } from "../useFitFontSize";
 import { manifest, type ClockConfig } from "./manifest";
@@ -77,12 +78,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
   return (
     <div ref={boxRef} className={`relative flex h-full w-full items-center ${align}`}>
       {/*
-        The numbers face (lib/board-theme.ts's NUMERIC_FONT): the board's or
-        this widget's font when its digits are all one width, Frank Ruhl Libre
-        when they aren't — docs/sizing.md §4. A clock's digits change every
-        second it's on screen; in a face without tabular figures it would
-        jitter. The `numeric` class asks for the tabular figures, which the
-        faces have but don't all use by default.
+        The board's or this widget's own face (lib/board-theme.ts's
+        NUMERIC_FONT). A clock's digits change every second it's on screen, and
+        in a face without tabular figures it would jitter: the `numeric` class
+        asks for tabular figures, and <Digits> boxes each digit to the face's
+        widest where it has none (widgets/Digits.tsx) — docs/sizing.md §4.
       */}
       <span
         ref={contentRef}
@@ -92,7 +92,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
           fontSize: isFit ? undefined : isCapped && scale < 1 ? `calc(${declared} * ${scale})` : declared,
         }}
       >
-        {text}
+        <Digits text={text} weight={600} />
       </span>
       {!isHug && (
         <span
@@ -102,7 +102,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
           className={`numeric pointer-events-none invisible absolute font-semibold leading-none whitespace-nowrap ${trim}`}
           style={{ fontFamily: NUMERIC_FONT, fontSize: isFit ? undefined : declared }}
         >
-          {widest}
+          <Digits text={widest} weight={600} />
         </span>
       )}
     </div>

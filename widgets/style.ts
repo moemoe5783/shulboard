@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
-import { boardLength, numericFace } from "@/lib/board-theme";
+import { boardLength, digitWidthVars, numericFace } from "@/lib/board-theme";
 import { catalogId, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 
@@ -337,9 +337,14 @@ export function widgetStyle(
     const font = config.font !== "inherit" ? config.font : board?.font;
     const hebrew = config.hebrewFont !== "inherit" ? config.hebrewFont : board?.hebrewFont;
     style.fontFamily = fontStack(font, hebrew);
-    // Numbers follow the widget's font when its digits are one width
-    // (lib/board-theme.ts's hasEvenDigits), else stay in Frank Ruhl Libre.
+    // Numbers are set in the widget's own face (lib/board-theme.ts).
     (style as Record<string, string>)["--board-numeric-font"] = numericFace(font, hebrew);
+    // Its own digit widths — or none, clearing the board's, when its face's
+    // digits line up by themselves (widgets/Digits.tsx).
+    const digits = digitWidthVars(font);
+    for (const weight of [100, 200, 300, 400, 500, 600, 700, 800, 900]) {
+      (style as Record<string, string>)[`--board-digit-${weight}`] = digits[`--board-digit-${weight}`] ?? "auto";
+    }
   }
   // padding is a multiple of the widget's own text size (referenceSize is that
   // size, in design units), so the frame scales with the content.
