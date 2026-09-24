@@ -208,6 +208,22 @@ try {
   const overflowing = await widget(CLOCK_FIXED_ID).evaluate((el) => el.dataset.overflowing);
   check(overflowing === "false", "a hugged box never reports overflowing", overflowing);
 
+  // ---- fixed, too narrow: the clock shrinks to fit rather than clipping ----
+
+  await page.locator("button", { hasText: "Fixed size" }).click();
+  await settle();
+  await typeSizeInput().fill("400");
+  await typeSizeInput().blur();
+  await page.waitForTimeout(400);
+  const clip = await widget(CLOCK_FIXED_ID).evaluate((el) => {
+    const span = el.querySelector("span");
+    const box = span.parentElement.getBoundingClientRect();
+    const text = span.getBoundingClientRect();
+    return { overhang: Math.max(text.right - box.right, box.left - text.left), text: span.textContent };
+  });
+  check(clip.overhang <= 1, "a fixed clock too wide for its box shrinks to fit instead of being cut off", `${clip.text}: ${clip.overhang.toFixed(1)}px over`);
+  check((await typeSizeInput().inputValue()) === "400", "and the declared size stays what was typed");
+
   // ---- back to fit: read-only again, height a percentage again -----------
 
   await page.locator("button", { hasText: "Fit to box" }).click();

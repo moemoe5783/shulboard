@@ -499,8 +499,16 @@ per §3's general overflow rule.** A wrapped clock — `7:4` on one line, `5 PM`
 on the next — reads as broken in a way plain text never does, because
 everyone already knows the shape a clock is supposed to have. §3's wrap rule
 is right for prose and wrong for a value with a fixed, familiar format; Clock
-clips instead of wrapping, and no other numeric-format element (Date, Zmanim)
-should wrap either, for the same reason.
+never wraps, and no other numeric-format element (Date, Zmanim) should wrap
+either, for the same reason.
+
+It doesn't clip either, in `fixed` mode: a clock whose box is too narrow for
+it at the declared size (seconds turned on, a box dragged in) used to be cut
+off, which on a wall reads as broken. Instead the type shrinks exactly enough
+to fit the widest time its format can show — every digit a zero, a two-digit
+hour — so the size never moves when 9:59 becomes 10:00. The declared size is
+still what the panel shows and what the clock returns to in a wider box.
+`hug` is left alone: its contract is that the declared size drives the box.
 
 **A `fit`-mode element has no fitted size at its very first paint under SSR.**
 `useFitFontSize` measures the real DOM to compute a size, which needs a
