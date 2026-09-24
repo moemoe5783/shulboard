@@ -49,7 +49,8 @@
     "test:editor-menus": "node scripts/test-editor-menus.mjs",
     "emails": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/build-emails.ts",
     "test:emails": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/build-emails.ts --check",
-    "test:dashboard": "node scripts/test-dashboard.mjs"
+    "test:dashboard": "node scripts/test-dashboard.mjs",
+    "test:upload": "node scripts/test-upload-browser.mjs"
   },
   "dependencies": {
     "@hebcal/core": "^6.9.2",

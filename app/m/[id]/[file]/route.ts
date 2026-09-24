@@ -38,7 +38,7 @@ export async function GET(_request: Request, { params }: RouteContext<"/m/[id]/[
 
   const { data: asset } = await db
     .from("assets")
-    .select("variants, deleted_at, storage_bucket")
+    .select("variants, deleted_at, status, storage_bucket")
     .eq("id", id)
     .maybeSingle();
 
@@ -47,6 +47,9 @@ export async function GET(_request: Request, { params }: RouteContext<"/m/[id]/[
   // caller should not be able to tell "never existed" from "removed" here any
   // more than the bundle route lets one tell that apart for a screen token.
   if (!asset || asset.deleted_at) return notFound();
+  // An upload still in progress, or one that failed, has no complete set of
+  // files to serve (lib/media/upload.ts).
+  if (asset.status !== "ready") return notFound();
 
   const resolved = readAssetVariant(asset.variants, parsed.variant);
 

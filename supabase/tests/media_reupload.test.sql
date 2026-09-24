@@ -64,4 +64,32 @@ select tests.eq(
   (select count(*) from public.assets where checksum_sha256 = 'same-file'),
   2, 'reupload: the deleted row is kept alongside it');
 
+-- ---------------------------------------------------------------------------
+-- A failed upload doesn't hold the checksum; one in progress does.
+-- ---------------------------------------------------------------------------
+
+insert into public.assets (id, org_id, kind, storage_path, mime_type, checksum_sha256, status)
+values ('a5000000-0000-4000-8000-000000000004', '0e000000-0000-4000-8000-000000000001',
+        'image', '0e000000-0000-4000-8000-000000000001/a5000000-0000-4000-8000-000000000004/',
+        'image/webp', 'second-file', 'pending');
+
+do $$
+begin
+  insert into public.assets (id, org_id, kind, storage_path, mime_type, checksum_sha256, status)
+  values ('a5000000-0000-4000-8000-000000000005', '0e000000-0000-4000-8000-000000000001',
+          'image', 'z', 'image/webp', 'second-file', 'pending');
+  perform tests.fail('reupload: a second upload of a file already in progress was allowed');
+exception when unique_violation then
+  perform tests.pass('reupload: a file already uploading holds its checksum');
+end $$;
+
+update public.assets set status = 'failed', processing_error = 'Upload failed'
+ where id = 'a5000000-0000-4000-8000-000000000004';
+
+select tests.allowed($$
+  insert into public.assets (id, org_id, kind, storage_path, mime_type, checksum_sha256, status)
+  values ('a5000000-0000-4000-8000-000000000005', '0e000000-0000-4000-8000-000000000001',
+          'image', 'z', 'image/webp', 'second-file', 'pending')
+$$, 'reupload: a file whose upload failed can be tried again');
+
 rollback;

@@ -61,6 +61,7 @@ type ItemRow = {
     width: number | null;
     height: number | null;
     deleted_at: string | null;
+    status?: string;
   } | null;
 };
 
@@ -69,8 +70,8 @@ type ItemRow = {
  *
  * `orgId` is passed by the service-role caller (the bundle build, which has no
  * RLS to scope it) and omitted by the browser caller (RLS already scopes to the
- * member's org). A soft-deleted asset or one without a display variant is
- * skipped rather than rendered as a hole.
+ * member's org). A soft-deleted or unfinished asset, or one without a
+ * display variant, is skipped rather than rendered as a hole.
  */
 export async function fetchAlbumPhotos(
   supabase: SupabaseClient<Database>,
@@ -100,7 +101,7 @@ export async function fetchAlbumPhotos(
     if (orgId) query = query.eq("org_id", orgId);
     return query;
   };
-  const withEndDate = "album_id, caption, created_at, display_until, assets(id, variants, width, height, deleted_at)";
+  const withEndDate = "album_id, caption, created_at, display_until, assets(id, variants, width, height, deleted_at, status)";
   let { data, error } = await read(withEndDate);
   // The end-date column arrived in its own migration
   // (20260924090000_album_items_display_until.sql). On a database that hasn't
@@ -113,7 +114,9 @@ export async function fetchAlbumPhotos(
 
   for (const item of (data ?? []) as unknown as ItemRow[]) {
     const asset = item.assets;
-    if (!asset || asset.deleted_at) continue;
+    // Only a finished upload: a 'pending' or 'failed' row's files are
+    // incomplete or already removed (lib/media/upload.ts).
+    if (!asset || asset.deleted_at || asset.status !== "ready") continue;
     const variant = readAssetVariant(asset.variants, DISPLAY_VARIANT);
     if (!variant) continue;
     albums[item.album_id]?.push({

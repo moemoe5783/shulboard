@@ -365,7 +365,9 @@ async function assemblePayloadFor(
       .from("assets")
       .select("id, variants")
       .in("id", [...referenced])
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      // A 'pending' or 'failed' upload has no complete set of files yet.
+      .eq("status", "ready");
 
     for (const row of rows ?? []) {
       const variant = readAssetVariant(row.variants, BOARD_ASSET_VARIANT);
@@ -391,7 +393,8 @@ async function assemblePayloadFor(
       .from("assets")
       .select("id, variants")
       .in("id", [...backgroundIds])
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .eq("status", "ready");
     for (const row of rows ?? []) {
       for (const name of BACKGROUND_ASSET_VARIANTS) {
         const variant = readAssetVariant(row.variants, name);
