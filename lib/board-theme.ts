@@ -136,6 +136,10 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
   const custom = boardBackgroundCss((doc.background ?? {}) as BoardBackground);
 
   return {
+    // A board is light-scheme wherever it's drawn: inside the editor's dark
+    // chrome (which sets `color-scheme: dark` for its own controls) and on a
+    // TV alike, so it renders the same in both (CLAUDE.md: one renderer).
+    colorScheme: "only light",
     fontFamily: BOARD_FONTS[font] ?? BOARD_FONTS.assistant,
     ["--board-numeric-font" as string]: numericFace(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,

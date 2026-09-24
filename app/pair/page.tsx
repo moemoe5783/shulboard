@@ -1,4 +1,8 @@
 import { PairScreen } from "./PairScreen";
+import { TvColorScheme } from "@/components/board/TvColorScheme";
+
+/** The meta-tag half of TvColorScheme, for browsers that decide before CSS. */
+export const viewport = { colorScheme: "dark" as const };
 
 /*
  * The page a TV opens to be connected: shulboard's address plus /pair, typed
@@ -14,6 +18,7 @@ export default async function PairPage({ searchParams }: PageProps<"/pair">) {
   const reason = typeof params.reason === "string" ? params.reason : undefined;
   return (
     <main>
+      <TvColorScheme />
       <h1 className="sr-only">Connect this TV</h1>
       <PairScreen reason={reason} />
     </main>
