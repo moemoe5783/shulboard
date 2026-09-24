@@ -325,8 +325,10 @@ try {
     check(await saving.isVisible().catch(() => false), "choosing a screen's board shows it's saving");
     const saved = page.getByRole("status").filter({ hasText: "Saved." });
     await saved.waitFor({ timeout: 10000 }).catch(() => {});
-    check(/Saved\. This screen shows Weekday board/.test((await saved.textContent().catch(() => "")) ?? ""), "then says it's saved, and which board",
+    check(/^Saved\./.test((await saved.textContent().catch(() => "")) ?? ""), "then says it's saved",
       (await saved.textContent().catch(() => "")) ?? "");
+    const chosenLabel = await page.getByLabel("Board").evaluate((el) => el.options[el.selectedIndex]?.textContent ?? "");
+    check(/Weekday board/.test(chosenLabel), "and the choice stays showing, rather than going back to Choose a board", chosenLabel);
     await page.unroute("**/*", slowActions);
 
     // A new album: the box stays up and working until the album's own page is

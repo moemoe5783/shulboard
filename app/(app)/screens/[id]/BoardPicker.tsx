@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { Button } from "@/components/Button";
 import { SelectField } from "@/components/Field";
 import { assignBoard, type AssignBoardState } from "../actions";
@@ -28,6 +28,8 @@ export function BoardPicker({
   currentBoardId: string | null;
 }) {
   const [state, action, pending] = useActionState<AssignBoardState, FormData>(assignBoard, {});
+  // Controlled, so the choice stays what was chosen after saving.
+  const [chosen, setChosen] = useState(currentBoardId ?? "");
   // The confirmation belongs to the save that made it; choosing another board
   // afterwards clears it, so it never describes a choice that isn't saved.
   const [dirtyAfter, setDirtyAfter] = useState<number | undefined>(undefined);
@@ -49,16 +51,30 @@ export function BoardPicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <form action={action} className="flex flex-wrap items-end gap-2">
+      <form
+        // Submitted by hand rather than through `action={…}`: React resets a
+        // form after its action runs, and that reset reaches a controlled
+        // select's DOM too, putting "Choose a board" back under a message
+        // saying the save worked.
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          startTransition(() => action(form));
+        }}
+        className="flex flex-wrap items-end gap-2"
+      >
         <input type="hidden" name="screenId" value={screenId} />
         <div className="max-w-64 flex-1">
           <SelectField
             id="boardId"
             name="boardId"
             label="Board"
-            defaultValue={currentBoardId ?? ""}
+            value={chosen}
             required
-            onChange={() => setDirtyAfter(state.at)}
+            onChange={(event) => {
+              setChosen(event.target.value);
+              setDirtyAfter(state.at);
+            }}
           >
             <option value="" disabled>
               Choose a board
@@ -76,7 +92,9 @@ export function BoardPicker({
         </Button>
         {saved && !pending && (
           <p role="status" className="text-cell text-ink-soft h-8 leading-8">
-            Saved. This screen shows {saved} within a few minutes.
+            {state.published
+              ? `Saved. This screen switches to ${saved} in a few seconds.`
+              : "Saved."}
           </p>
         )}
       </form>
