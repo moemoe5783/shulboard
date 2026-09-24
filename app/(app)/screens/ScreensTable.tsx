@@ -193,7 +193,7 @@ export function ScreensTable({ rows }: { rows: ScreenRow[] }) {
       )}
       empty={{
         title: "Add your first screen",
-        description: "Each screen gets its own link you open on the TV or display device.",
+        description: "Each screen is one TV. Open /pair on the TV, then enter the code it shows in the screen’s settings.",
         action: (
           <Link href="/screens/new" className={buttonClassName("primary")}>
             Add screen

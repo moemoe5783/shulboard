@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient, supabaseUrl } from "@/lib/supabase/client";
+import { deviceHeaders } from "./device";
 
 /*
  * Realtime `bundle_changed` on channel `screen:<id>` — docs/plan.md §3d.
@@ -33,6 +34,7 @@ async function fetchRealtimeToken(screenToken: string): Promise<string | null> {
     const response = await fetch(`/api/screen/${screenToken}/realtime-auth`, {
       method: "POST",
       cache: "no-store",
+      headers: deviceHeaders(),
     });
     if (!response.ok) return null;
     const body = (await response.json()) as { token?: string };

@@ -1,5 +1,6 @@
 import { SignJWT } from "jose";
 import { NextResponse } from "next/server";
+import { DEVICE_HEADER } from "@/lib/pairing";
 import { resolveScreenToken } from "@/lib/screen-token";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
@@ -53,10 +54,12 @@ export async function POST(
     );
   }
 
-  const result = await resolveScreenToken(db, token);
+  const result = await resolveScreenToken(db, token, request.headers.get(DEVICE_HEADER));
   if (!result.ok) {
     return NextResponse.json(
-      { error: "This screen link is no longer valid.", code: "token_invalid" },
+      result.reason === "other_device"
+        ? { error: "This screen is connected to a different TV.", code: "other_device" }
+        : { error: "This screen link is no longer valid.", code: "token_invalid" },
       { status: 410, headers: { "cache-control": "no-store" } },
     );
   }

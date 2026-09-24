@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { etagFor, etagMatches } from "@/lib/bundle/hash";
 import type { BundleEnvelope } from "@/lib/bundle/types";
+import { DEVICE_HEADER } from "@/lib/pairing";
 import { resolveScreenToken } from "@/lib/screen-token";
 import { serviceClientOrNull } from "@/lib/supabase/service";
 
@@ -35,9 +36,11 @@ export const dynamic = "force-dynamic";
  * thing that can say no, and the display's answer to this status is to clear its
  * stored token and fall back to whatever the URL carries.
  */
-function gone() {
+function gone(otherDevice = false) {
   return NextResponse.json(
-    { error: "This screen link is no longer valid.", code: "token_invalid" },
+    otherDevice
+      ? { error: "This screen is connected to a different TV.", code: "other_device" }
+      : { error: "This screen link is no longer valid.", code: "token_invalid" },
     { status: 410, headers: { "cache-control": "no-store" } },
   );
 }
@@ -53,7 +56,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
     );
   }
 
-  const result = await resolveScreenToken(db, token);
+  const result = await resolveScreenToken(db, token, request.headers.get(DEVICE_HEADER));
 
   if (!result.ok && result.reason === "lookup_failed") {
     return NextResponse.json(
@@ -64,7 +67,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
 
   // A rotated token no longer matches any row, so "not found" and "rotated" are
   // the same branch. A deactivated screen is revocation without deletion.
-  if (!result.ok) return gone();
+  if (!result.ok) return gone(result.reason === "other_device");
 
   const screen = result.screen;
 

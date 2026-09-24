@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BundleEnvelope } from "@/lib/bundle/types";
 import { evictUnusedAssets, warmAssets } from "./assets";
 import { forgetBundle, readBundle, writeBundle } from "./store";
+import { deviceHeaders } from "./device";
 
 /*
  * The display's whole runtime — docs/plan.md §3c, §3d, §3e.
@@ -36,6 +37,8 @@ export type DisplayStatus = {
   online: boolean;
   /** Set when the server says this token is finished. */
   tokenInvalid: boolean;
+  /** The token was refused because this screen is connected to another TV. */
+  otherDevice: boolean;
   lastFetchAt: number | null;
   /** A new bundle is held back because not all of its assets are cached yet. */
   waitingForAssets: boolean;
@@ -50,6 +53,7 @@ export function useDisplay(token: string) {
     source: "none",
     online: true,
     tokenInvalid: false,
+    otherDevice: false,
     lastFetchAt: null,
     waitingForAssets: false,
     errorCount: 0,
@@ -79,7 +83,7 @@ export function useDisplay(token: string) {
     inFlightRef.current = true;
 
     try {
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = deviceHeaders();
       const held = currentRef.current;
       if (held?.contentHash) headers["if-none-match"] = `"${held.contentHash}"`;
 
@@ -103,8 +107,9 @@ export function useDisplay(token: string) {
        * the bundle it belongs to, and come back as whatever the URL carries.
        */
       if (response.status === 410 || response.status === 401) {
+        const reason = ((await response.json().catch(() => null)) as { code?: string } | null)?.code;
         await forgetBundle(token);
-        setStatus((s) => ({ ...s, tokenInvalid: true, online: true }));
+        setStatus((s) => ({ ...s, tokenInvalid: true, otherDevice: reason === "other_device", online: true }));
         return;
       }
 
@@ -215,7 +220,7 @@ export function useDisplay(token: string) {
       const held = currentRef.current;
       void fetch(`/api/screen/${token}/heartbeat`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: deviceHeaders({ "content-type": "application/json" }),
         cache: "no-store",
         // keepalive so the last beat before a reload still lands.
         keepalive: true,

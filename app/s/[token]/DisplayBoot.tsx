@@ -10,8 +10,8 @@ import { DisplayBoard, WaitingForBoard } from "./DisplayBoard";
  * The stored token is read first and the URL token is the fallback, per the
  * plan's pairing-code flow (plan.md §1): a device paired once keeps working from
  * storage, so a power cut does not mean somebody retyping 32 characters into a
- * TV remote, and a future `/pair/ABC-123` entry can hand a device a token
- * without the token ever being in the address bar.
+ * TV remote, and /pair hands a device a token without the token ever being
+ * in the address bar.
  *
  * Storage cannot enforce rotation — a device that has booted once keeps
  * presenting its old token whatever URL somebody opens on it. plan.md §3a makes
@@ -78,9 +78,25 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
     }
   }, [status.tokenInvalid]);
 
-  if (status.tokenInvalid && token === urlToken) {
+  // The link is dead for this device — disconnected in the dashboard, rotated,
+  // the screen deleted, or it now belongs to another TV. Go and show a pairing
+  // code, so connecting it again is a code on the TV rather than a new link
+  // typed with a remote.
+  const retired = status.tokenInvalid && token === urlToken;
+  useEffect(() => {
+    if (!retired) return;
+    window.location.replace(`/pair?reason=${status.otherDevice ? "other-tv" : "disconnected"}`);
+  }, [retired, status.otherDevice]);
+
+  if (retired) {
     return (
-      <WaitingForBoard reason="This screen's link was changed. Open the new link on this device." />
+      <WaitingForBoard
+        reason={
+          status.otherDevice
+            ? "This screen is connected to a different TV."
+            : "This screen was disconnected. Showing a code to connect it again."
+        }
+      />
     );
   }
 

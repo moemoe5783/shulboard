@@ -10,7 +10,7 @@ export default async function NewScreenPage() {
     <div className="max-w-xl">
       <h1 className="text-title">Add screen</h1>
       <p className="text-body text-ink-soft mt-1">
-        Each screen gets its own link you open on the TV or display device.
+        Each screen is one TV. Open /pair on the TV, then enter the code it shows in the screen’s settings.
       </p>
 
       {/* No panel around this. docs/design.md §5: a card is for a bounded

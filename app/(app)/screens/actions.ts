@@ -210,3 +210,57 @@ export async function assignBoard(formData: FormData): Promise<void> {
 
   revalidatePath(`/screens/${screenId}`);
 }
+
+export type ConnectTvState = { error?: string; connected?: string };
+
+/**
+ * Connect the TV showing a pairing code to this screen (plan.md §1's pairing
+ * code, done the TV-shows-the-code way: app/pair). claim_pairing checks it's
+ * an admin, the code is live, and neither the screen nor the TV is taken.
+ */
+export async function connectTv(_previous: ConnectTvState, formData: FormData): Promise<ConnectTvState> {
+  await requireActiveOrg();
+  const screenId = String(formData.get("screenId") ?? "");
+  const code = String(formData.get("code") ?? "").replace(/\D/g, "");
+  if (!screenId) return { error: "Choose which screen this TV is." };
+  if (code.length !== 6) return { error: "Enter the 6-digit code the TV is showing." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("claim_pairing", { p_code: code, p_screen_id: screenId });
+  if (error) {
+    const message = error.message;
+    if (/wrong or has expired/i.test(message)) return { error: "That code is wrong or has expired. Check the TV — it shows a new code every 10 minutes." };
+    if (/already has a TV/i.test(message)) return { error: "This screen already has a TV. Disconnect it first." };
+    if (/another screen/i.test(message)) return { error: "That TV is already connected to another screen. Disconnect it there first." };
+    if (/owner or admin/i.test(message)) return { error: "Only an owner or admin can connect a TV." };
+    return { error: `That didn't connect: ${message}.` };
+  }
+  revalidatePath(`/screens/${screenId}`);
+  revalidatePath("/screens");
+  return { connected: data ?? "the screen" };
+}
+
+/**
+ * Disconnect this screen's TV. The binding is cleared and the link rotated, so
+ * the TV is refused on its next request — within a minute — and goes back to
+ * showing a code. One TV per screen: this is how a screen gets a new one.
+ */
+export async function disconnectTv(formData: FormData): Promise<void> {
+  await requireActiveOrg();
+  const screenId = String(formData.get("screenId") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("screens")
+    .update({
+      device_secret_hash: null,
+      device_label: null,
+      device_paired_at: null,
+      token: generateToken(),
+      token_rotated_at: new Date().toISOString(),
+    })
+    .eq("id", screenId);
+  if (error) throw new Error(`Couldn't disconnect the TV: ${error.message}`);
+  revalidatePath(`/screens/${screenId}`);
+  revalidatePath("/screens");
+  redirect(`/screens/${screenId}?disconnected=1`);
+}

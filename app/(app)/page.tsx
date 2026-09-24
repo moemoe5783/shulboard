@@ -80,7 +80,7 @@ export default async function OverviewPage() {
                 ? {
                     title: "Add your first screen",
                     description:
-                      "Each screen gets its own link you open on the TV or display device.",
+                      "Each screen is one TV. Open /pair on the TV, then enter the code it shows in the screen’s settings.",
                     action: (
                       <Link href="/screens/new" className={buttonClassName("primary")}>
                         Add screen

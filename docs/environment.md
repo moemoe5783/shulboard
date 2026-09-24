@@ -18,7 +18,7 @@ server-side settings, read only by server code that never runs on the client.
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | public | the whole app |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | the whole app |
-| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron) |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron, TV pairing) |
 | `SUPABASE_JWT_SECRET` | secret | live board updates over Realtime |
 | `CRON_SECRET` | secret | the bundle build worker, and the Chabad zmanim cache-warming cron |
 | `GEOCODING_API_KEY` | secret | the address lookup on the shul settings and new-shul forms |
@@ -75,9 +75,10 @@ missing one the same as a missing other.
 ## `SUPABASE_SERVICE_ROLE_KEY`
 
 **What it is.** The service-role key. It bypasses Row Level Security
-entirely, which is why CLAUDE.md restricts it to exactly eight places: the
+entirely, which is why CLAUDE.md restricts it to exactly ten places: the
 bundle endpoint, the heartbeat endpoint, the realtime-auth endpoint, the
-media proxy, the cron build worker, and the Chabad zmanim warming cron —
+media proxy, the cron build worker, the Chabad zmanim warming cron, and the
+two TV pairing endpoints (`/api/pair/start` and `/api/pair/poll`) —
 every one of them a server route that does its own authorization (a screen
 token, a shared secret) rather than leaning on a policy — plus two that
 are not routes: `publishBoard`, which calls the build worker's own
@@ -109,6 +110,8 @@ everywhere it's called, so —
   photo on every board is a broken image.
 - `POST /api/cron/build-bundles` answers 503 — no bundle is ever built or
   rebuilt, so even a screen that once worked never sees a content change.
+- `POST /api/pair/start` answers 503 — a TV at `/pair` says pairing isn't
+  available, and no TV can be connected with a code.
 - `POST /api/cron/warm-zmanim` answers 503, and the settings page's "Fetch
   now" reports that Supabase isn't configured — no Chabad zmanim are ever
   cached, so those Candle Lighting widgets fall back to Hebcal with the

@@ -13,9 +13,20 @@ Environment variables: @docs/environment.md
 - `app/s/[token]/` — public display route. No auth. One TV per URL.
 - `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
   `app/m/[id]/[file]/`, `app/api/cron/build-bundles/`,
-  `app/api/cron/warm-zmanim/`, and `publishBoard` in
+  `app/api/cron/warm-zmanim/`, `app/api/pair/start/`, `app/api/pair/poll/`,
+  and `publishBoard` in
   `app/(editor)/boards/[id]/actions.ts`, and `lib/zmanim/warm.ts` — the
-  eight places holding the service-role key. `publishBoard` is a Server
+  ten places holding the service-role key. The two `pair` routes are TV
+  pairing (supabase/migrations/20260925090200_screen_pairing.sql): a TV at
+  `/pair` has no session, and `pairing_requests` deliberately has no
+  policies, so asking for a code and checking whether it was entered can only
+  be done with the key. Each answers only about the caller's own device
+  secret. The admin's half — entering the code — is `claim_pairing`, a
+  SECURITY DEFINER function under the admin's own session, not a key holder;
+  so are invitations (`accept_org_invite`, `invite_preview`,
+  `org_member_directory`). **One TV per screen** is enforced in
+  `lib/screen-token.ts`, which every screen route calls: a screen bound to a
+  TV answers only that TV's secret. `publishBoard` is a Server
   Action, not a route, and it earns the exception by calling the exact same `buildScreenBundle` the cron
   route does, immediately, for the screens the just-published board reaches,
   rather than a second copy of the build logic. `warm-zmanim` is the Chabad
