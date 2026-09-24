@@ -390,6 +390,43 @@ try {
     check(/Times are shown in Eastern Time/.test(await page.locator("body").textContent()), "they say the one the address gave");
   }
 
+  console.log("\n-- platform admin --------------------------------------------");
+  {
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    check((await page.getByRole("link", { name: "Platform admin" }).count()) >= 1, "a platform admin gets a Platform admin row in the menu");
+    await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+    const summary = (await page.locator("[data-admin-summary]").textContent()) ?? "";
+    check(/1 shul: 1 on a free trial, 0 on Basic, 0 on Pro\. 2 screens, 1 live now, and 4\.2 MB of photos stored\./.test(summary),
+      "the admin sees every shul, with plans, screens and storage", summary);
+    const row = page.locator("tr", { hasText: "Beis Menachem" });
+    check(/Free trial/.test((await row.textContent()) ?? "") && /4\.2 MB/.test((await row.textContent()) ?? ""), "each shul's row shows its plan and storage");
+    await page.getByRole("link", { name: "Beis Menachem" }).click();
+    await page.waitForURL(/\/admin\/shuls\//, { timeout: 10000 }).catch(() => {});
+    await page.getByLabel("Plan").selectOption("pro");
+    await page.getByRole("button", { name: "Save plan" }).click();
+    await page.getByRole("status").filter({ hasText: "Saved" }).waitFor({ timeout: 10000 }).catch(() => {});
+    check(await page.getByRole("status").filter({ hasText: "Saved" }).isVisible().catch(() => false), "the admin moves the shul to Pro");
+    check((await page.getByLabel("Plan").inputValue()) === "pro", "and the choice stays showing");
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, "admin-shul.png"), fullPage: true });
+    await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+    check(/Pro/.test((await page.locator("tr", { hasText: "Beis Menachem" }).textContent()) ?? ""), "the list shows the new plan");
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, "admin-shuls.png"), fullPage: true });
+
+    await page.goto(`${BASE}/admin/accounts`, { waitUntil: "networkidle" });
+    const editorRow = page.locator("tr", { hasText: "Sara Cohen" });
+    await editorRow.getByRole("button", { name: "Make admin" }).click();
+    await editorRow.getByRole("button", { name: "Make admin" }).click();
+    await editorRow.getByRole("button", { name: "Remove admin" }).waitFor({ timeout: 10000 }).catch(() => {});
+    check(await editorRow.getByRole("button", { name: "Remove admin" }).isVisible().catch(() => false), "the admin makes another account an admin, after a confirm");
+    check(/Admin \(you\)/.test((await page.locator("tr", { hasText: "Moshe Levi" }).textContent()) ?? ""), "and can't remove themselves");
+    await editorRow.getByRole("button", { name: "Remove admin" }).click();
+    await editorRow.getByRole("button", { name: "Make admin" }).waitFor({ timeout: 10000 }).catch(() => {});
+    check(await editorRow.getByRole("button", { name: "Make admin" }).isVisible().catch(() => false), "and remove them again");
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, "admin-accounts.png"), fullPage: true });
+    await page.goto(`${BASE}/admin/accounts?q=sara`, { waitUntil: "networkidle" });
+    check((await page.locator("input[name=q]").inputValue()) === "sara", "the account search keeps what was searched");
+  }
+
   console.log("\n-- phones ----------------------------------------------------");
   // The gabbai, signed in (and past the code step) above, on a phone.
   const phone = await browser.newContext({
@@ -412,6 +449,8 @@ try {
     ["album", "/media/a1000000-0000-4000-8000-000000000001"],
     ["settings", "/settings"],
     ["members", "/settings/members"],
+    ["admin", "/admin"],
+    ["admin-accounts", "/admin/accounts"],
     ["account", "/account"],
   ];
   for (const [name, path] of pages) {

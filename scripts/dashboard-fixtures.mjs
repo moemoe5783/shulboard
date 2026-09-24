@@ -25,7 +25,8 @@ export function fixtures() {
   const now = Date.now();
   const ago = (ms) => new Date(now - ms).toISOString();
   const f = {
-    orgs: [org],
+    platform_admins: [GABBAI.id],
+    orgs: [{ ...org }],
     org_members: [
       { org_id: ORG_ID, user_id: GABBAI.id, role: "owner", orgs: org },
       { org_id: ORG_ID, user_id: EDITOR.id, role: "editor", orgs: org },
@@ -58,6 +59,36 @@ export function fixtures() {
           ? [{ org_id: ORG_ID, org_name: "Beis Menachem", email: "newcomer@example.org", role: "editor", invited_by_name: "Moshe Levi", status: "pending", expires_at: new Date(now + 10 * 864e5).toISOString() }]
           : [],
       accept_org_invite: () => ORG_ID,
+      // The platform admin (supabase/tests/platform_admin.test.sql holds the
+      // database's own checks): the gabbai runs the platform in these tests.
+      is_platform_admin: (_args, who) => f.platform_admins.includes(who?.userId),
+      platform_orgs: (_args, who) =>
+        f.platform_admins.includes(who?.userId)
+          ? f.orgs.map((o) => ({
+              org_id: o.id, name: o.name, slug: o.slug, created_at: ago(40 * 864e5), deleted_at: null,
+              plan: o.plan ?? "trial", trial_ends_at: o.plan && o.plan !== "trial" ? null : (o.trial_ends_at ?? new Date(now + 12 * 864e5).toISOString()),
+              stripe_customer_id: null, stripe_subscription_id: null, owner_email: GABBAI.email,
+              member_count: 2, screen_count: f.screens.length, screens_live: 1, board_count: f.boards.length, photo_count: 3, storage_bytes: 4_200_000,
+            }))
+          : [],
+      platform_set_org_plan: ({ p_org, p_plan, p_trial_ends_at }) => {
+        const o = f.orgs.find((one) => one.id === p_org);
+        if (!o) return { __error: "no such shul" };
+        Object.assign(o, { plan: p_plan, trial_ends_at: p_plan === "trial" ? p_trial_ends_at : null });
+        return null;
+      },
+      platform_users: (_args, who) =>
+        f.platform_admins.includes(who?.userId)
+          ? [GABBAI, EDITOR].map((u) => ({
+              user_id: u.id, email: u.email, full_name: u.metadata.full_name, created_at: ago(40 * 864e5),
+              last_sign_in_at: ago(3600e3), is_platform_admin: f.platform_admins.includes(u.id), two_step: false, shuls: "Beis Menachem",
+            }))
+          : [],
+      platform_set_admin: ({ p_user, p_admin }, who) => {
+        if (!p_admin && p_user === who?.userId) return { __error: "you can't remove yourself as a platform admin" };
+        f.platform_admins = p_admin ? [...new Set([...f.platform_admins, p_user])] : f.platform_admins.filter((id) => id !== p_user);
+        return null;
+      },
       // The database's own checks are in supabase/tests/pairing.test.sql;
       // this is just enough of claim_pairing to drive the flow.
       claim_pairing: ({ p_code, p_screen_id }) => {

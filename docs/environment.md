@@ -423,6 +423,31 @@ Google sends people back to Supabase, which sends them to the app's
 
 ---
 
+## Platform admin (no variable here)
+
+The **Platform admin** pages (`/admin`) show every shul — its plan, screens,
+members, photos and storage — and let a platform admin change a shul's plan
+(free trial, Basic, Pro) and make other accounts platform admins
+(`supabase/migrations/20260926090000_platform_admin.sql`). They run under the
+admin's own session through narrow database functions, so there's nothing to
+set in Vercel and no new holder of the service-role key.
+
+There's nobody to grant the **first** admin, so it's made once by hand, in the
+Supabase dashboard → SQL Editor, after the migration has run and the account
+has signed up:
+
+```sql
+insert into public.platform_admins (user_id)
+select id from auth.users where email = 'you@example.org';
+```
+
+After that, admins make other admins from the Accounts tab. An admin with an
+authenticator app on has to have used it this session, as everywhere else.
+Stripe is not connected yet: each shul has room for its customer and
+subscription ids, and the shul's admin page says billing isn't set up.
+
+---
+
 ## Setting these up on a real project
 
 Ask Claude Code to run the migrations and wire up the cron job — neither

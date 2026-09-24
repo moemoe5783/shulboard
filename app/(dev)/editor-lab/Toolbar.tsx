@@ -26,6 +26,15 @@ import { useCommands } from "./commands";
 
 const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
+/** The next zoom step in or out from `zoom` — the + and − buttons, and the
+ *  editor's Ctrl/⌘ + and − keys, step through the same list. */
+export function nextZoomStep(zoom: number, direction: 1 | -1): number {
+  const index = ZOOM_STEPS.findIndex((step) => step > zoom + 0.001);
+  return direction === 1
+    ? (ZOOM_STEPS[index] ?? ZOOM_STEPS[ZOOM_STEPS.length - 1])
+    : (ZOOM_STEPS[(index === -1 ? ZOOM_STEPS.length : index) - 2] ?? ZOOM_STEPS[0]);
+}
+
 export function Toolbar({
   onFit,
   canvas,
@@ -48,14 +57,7 @@ export function Toolbar({
   const byId = new Map(groups.flatMap((group) => group.commands).map((c) => [c.id, c]));
   const run = (id: string) => byId.get(id);
 
-  const stepZoom = (direction: 1 | -1) => {
-    const index = ZOOM_STEPS.findIndex((step) => step > zoom + 0.001);
-    const next =
-      direction === 1
-        ? (ZOOM_STEPS[index] ?? ZOOM_STEPS[ZOOM_STEPS.length - 1])
-        : (ZOOM_STEPS[(index === -1 ? ZOOM_STEPS.length : index) - 2] ?? ZOOM_STEPS[0]);
-    setZoom(next);
-  };
+  const stepZoom = (direction: 1 | -1) => setZoom(nextZoomStep(zoom, direction));
 
   return (
     <div

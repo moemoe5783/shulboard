@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { ContextMenu, type MenuPosition } from "@/app/(dev)/editor-lab/ContextMenu";
 import { LayersPanel } from "@/app/(dev)/editor-lab/LayersPanel";
-import { Toolbar } from "@/app/(dev)/editor-lab/Toolbar";
+import { nextZoomStep, Toolbar } from "@/app/(dev)/editor-lab/Toolbar";
 import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { TransformFrame } from "@/components/editor/TransformFrame";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
@@ -169,6 +169,11 @@ export function BoardEditor({
     };
   }, []);
 
+  /** The zoom the last fit produced — while the zoom is still that, the
+   *  board is "fitted" and follows the window's size; once someone zooms, it
+   *  stays where they put it. */
+  const lastFitRef = useRef<number | null>(null);
+
   /** Zoom to fit, which is where the editor opens (§4a). */
   const fit = useCallback(() => {
     const viewport = viewportRef.current;
@@ -180,17 +185,71 @@ export function BoardEditor({
         (viewport.clientHeight - padding) / canvas.height,
       ),
     );
+    lastFitRef.current = useEditor.getState().zoom;
   }, [setZoom, canvas.width, canvas.height]);
+  const fitRef = useRef(fit);
+  useEffect(() => {
+    fitRef.current = fit;
+  }, [fit]);
 
   useEffect(() => {
     if (!ready) return;
     fit();
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const observer = new ResizeObserver(fit);
+    // Re-fit when the window resizes — but only while the board is still at
+    // its fitted zoom. Refitting unconditionally undid every zoom-in: zooming
+    // in brings up scrollbars, which (on Windows, and on a Mac set to always
+    // show them) take room from the viewport, which fired this, which fitted
+    // the board straight back.
+    const observer = new ResizeObserver(() => {
+      const fitted = lastFitRef.current;
+      if (fitted !== null && Math.abs(useEditor.getState().zoom - fitted) < 1e-9) fit();
+    });
     observer.observe(viewport);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  /*
+   * Zooming keeps a point still: the pointer, for Ctrl/⌘ + scroll and a
+   * trackpad pinch; the middle of the view, for the buttons and keys — so
+   * zooming in means zooming in on what you're looking at, not drifting off
+   * toward the board's top-left corner.
+   */
+  const anchorRef = useRef<{ x: number; y: number } | null>(null);
+  const previousZoomRef = useRef(zoom);
+  useLayoutEffect(() => {
+    const previous = previousZoomRef.current;
+    previousZoomRef.current = zoom;
+    const viewport = viewportRef.current;
+    const anchor = anchorRef.current;
+    anchorRef.current = null;
+    if (!viewport || previous === zoom || zoom === lastFitRef.current) return;
+    const at = anchor ?? { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 };
+    // The canvas sits inside 32px of padding (the p-8 around it below).
+    const pad = 32;
+    const x = (viewport.scrollLeft + at.x - pad) / previous;
+    const y = (viewport.scrollTop + at.y - pad) / previous;
+    viewport.scrollLeft = x * zoom + pad - at.x;
+    viewport.scrollTop = y * zoom + pad - at.y;
+  }, [zoom]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!ready || !viewport) return;
+    const onWheel = (event: WheelEvent) => {
+      // A trackpad pinch arrives as a wheel event with ctrlKey set.
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      anchorRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const store = useEditor.getState();
+      const perUnit = event.deltaMode === 1 ? 0.05 : 0.002;
+      store.setZoom(store.zoom * Math.exp(-event.deltaY * perUnit));
+    };
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
   }, [ready]);
 
   // ---- keyboard — §4b, duplicated from EditorLab.tsx; see the file comment --
@@ -203,6 +262,14 @@ export function BoardEditor({
       const store = useEditor.getState();
       const mod = event.metaKey || event.ctrlKey;
       const step = event.shiftKey ? NUDGE_LARGE : NUDGE_SMALL;
+
+      // Ctrl/⌘ + and − zoom the board (not the page), and 0 fits it again.
+      if (mod && (event.key === "=" || event.key === "+" || event.key === "-" || event.key === "0")) {
+        event.preventDefault();
+        if (event.key === "0") fitRef.current();
+        else store.setZoom(nextZoomStep(store.zoom, event.key === "-" ? -1 : 1));
+        return;
+      }
 
       const arrows: Record<string, [number, number]> = {
         ArrowLeft: [-step, 0],
