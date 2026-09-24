@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SIGN_IN_PATH, safeNext } from "@/lib/routes";
+import { requestOrigin } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -9,7 +10,9 @@ import { createClient } from "@/lib/supabase/server";
  * everything else in the dashboard.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
+  // The address the browser used, as in app/auth/confirm/route.ts.
+  const origin = await requestOrigin();
   const code = searchParams.get("code");
   const from = searchParams.get("from");
   const next = safeNext(from);

@@ -4,11 +4,12 @@ import { escapeHtml, type EmailContent } from "./layout.ts";
  * What each email says. Pure data over lib/email/layout.ts.
  *
  * AUTH EMAILS are sent by Supabase Auth, which fills in Go template variables
- * ({{ .RedirectTo }}, {{ .TokenHash }}, …) itself. Their links all go to
- * /auth/confirm, which verifies the token on the server
- * (app/auth/confirm/route.ts). `{{ .RedirectTo }}` is the address the app
- * asked for — always `/auth/confirm?next=…` (app/(auth)/shared.ts), so the
- * token is appended with `&`. scripts/build-emails.ts writes these to
+ * ({{ .SiteURL }}, {{ .TokenHash }}, {{ .RedirectTo }}, …) itself. Every link
+ * goes to {{ .SiteURL }}/auth/confirm, which verifies the token on the server
+ * (app/auth/confirm/route.ts), and carries {{ .RedirectTo }} along as
+ * `redirect_to` — the address the app asked for, or just the site's address
+ * when the email was sent from the Supabase dashboard — which that route turns
+ * into where to go next. So a link works whoever sent it. scripts/build-emails.ts writes these to
  * supabase/templates/, which config.toml points at; the hosted project takes
  * the same HTML pasted into Dashboard → Authentication → Email Templates.
  *
@@ -16,6 +17,11 @@ import { escapeHtml, type EmailContent } from "./layout.ts";
  * invitation isn't an Auth event: the person may have no account yet, or may
  * already have one.
  */
+
+/** An account email's link: /auth/confirm with the token, its type, and where
+ *  the app asked to go next. */
+const link = (type: string) =>
+  `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=${type}&redirect_to={{ .RedirectTo }}`;
 
 export type AuthTemplate = { file: string; configKey: string; subject: string; content: EmailContent };
 
@@ -28,7 +34,7 @@ export const AUTH_TEMPLATES: AuthTemplate[] = [
       preheader: "One click to finish setting up your account.",
       heading: "Confirm your email",
       paragraphs: ["Confirm this is your address to finish setting up your Shulboard account."],
-      button: { label: "Confirm email", href: "{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" },
+      button: { label: "Confirm email", href: link("email") },
       footnote: "If you didn&#39;t create an account, you can ignore this email and nothing will happen.",
     },
   },
@@ -40,7 +46,7 @@ export const AUTH_TEMPLATES: AuthTemplate[] = [
       preheader: "Sign in with one click. The link works once.",
       heading: "Sign in to Shulboard",
       paragraphs: ["Here&#39;s the sign-in link you asked for. It works once and expires in an hour."],
-      button: { label: "Sign in", href: "{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" },
+      button: { label: "Sign in", href: link("email") },
       footnote: "If you didn&#39;t ask to sign in, you can ignore this email. Nobody can sign in without the link.",
     },
   },
@@ -52,7 +58,7 @@ export const AUTH_TEMPLATES: AuthTemplate[] = [
       preheader: "Choose a new password. The link works once.",
       heading: "Reset your password",
       paragraphs: ["Use this link to choose a new password. It works once and expires in an hour."],
-      button: { label: "Choose a new password", href: "{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery" },
+      button: { label: "Choose a new password", href: link("recovery") },
       footnote: "If you didn&#39;t ask to reset your password, you can ignore this email. Your password hasn&#39;t changed.",
     },
   },
