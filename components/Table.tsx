@@ -44,6 +44,10 @@ export type Column<Row> = {
   align?: "left" | "right";
   /** A Tailwind width utility, e.g. "w-40". Omit to let the column size itself. */
   width?: string;
+  /** Leave the column out on a narrow screen (a phone), where it would squeeze
+   *  the columns that matter. The information must be somewhere else too —
+   *  the row's page, or a line under the name. */
+  hideBelow?: "sm" | "md";
   cell: (row: Row) => ReactNode;
 };
 
@@ -81,7 +85,13 @@ export type TableProps<Row> = {
 };
 
 // px-5 rather than a padded wrapper, so the hover background spans the full row.
-const CELL = "px-5 align-middle";
+// Tighter on a phone, where every pixel of width is a column's.
+const CELL = "px-3 sm:px-5 align-middle";
+
+const HIDE: Record<NonNullable<Column<unknown>["hideBelow"]>, string> = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+};
 
 export function Table<Row>({
   columns,
@@ -127,7 +137,7 @@ export function Table<Row>({
               scope="col"
               className={`text-meta text-ink-soft h-8 font-regular ${CELL} ${
                 column.align === "right" ? "text-right" : "text-left"
-              } ${column.width ?? ""}`}
+              } ${column.width ?? ""} ${column.hideBelow ? HIDE[column.hideBelow] : ""}`}
             >
               {column.label}
             </th>
@@ -173,7 +183,7 @@ export function Table<Row>({
                 key={column.key}
                 className={`text-cell ${CELL} ${
                   column.align === "right" ? "text-right" : "text-left"
-                } ${column.kind === "time" ? "font-sefarim numeric" : ""}`}
+                } ${column.kind === "time" ? "font-sefarim numeric" : ""} ${column.hideBelow ? HIDE[column.hideBelow] : ""}`}
               >
                 {column.cell(row)}
               </td>
@@ -187,7 +197,8 @@ export function Table<Row>({
                 // cannot carry one.
                 onClick={onRowClick ? (event) => event.stopPropagation() : undefined}
               >
-                <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 has-[[open]]:opacity-100">
+                {/* On a touch screen there's no hover to reveal it, so it's always shown. */}
+                <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 has-[[open]]:opacity-100 [@media(hover:none)]:opacity-100">
                   {rowAction(row)}
                 </div>
               </td>

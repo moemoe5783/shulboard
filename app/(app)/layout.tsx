@@ -1,4 +1,5 @@
-import { NavRail, type NavItem } from "@/components/NavRail";
+import { AppShell } from "@/components/AppShell";
+import type { NavItem } from "@/components/NavRail";
 import { navRowClassName } from "@/components/navRow";
 import { getActiveOrg, getMemberships, requireUser } from "@/lib/orgs";
 import { setActiveOrg, signOut } from "./actions";
@@ -45,17 +46,17 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   }
 
   return (
-    <div className="bg-paper font-ui flex min-h-screen">
-      <NavRail
-        orgs={memberships.map((membership) => ({
+    <AppShell
+      rail={{
+        orgs: memberships.map((membership) => ({
           id: membership.orgId,
           name: membership.name,
-        }))}
-        activeOrgId={active.orgId}
-        switchAction={setActiveOrg}
-        items={NAV_ITEMS}
-        footerItems={NAV_FOOTER}
-        footer={
+        })),
+        activeOrgId: active.orgId,
+        switchAction: setActiveOrg,
+        items: NAV_ITEMS,
+        footerItems: NAV_FOOTER,
+        footer: (
           // A rail row, not a button variant. Sign out is navigation-adjacent and
           // should not wear the accent that marks the active section.
           <form action={signOut}>
@@ -63,11 +64,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               Sign out
             </button>
           </form>
-        }
-      />
-      <div className="min-w-0 flex-1 px-6 py-6">
-        <div className="mx-auto max-w-360">{children}</div>
-      </div>
-    </div>
+        ),
+      }}
+    >
+      {children}
+    </AppShell>
   );
 }

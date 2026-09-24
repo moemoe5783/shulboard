@@ -165,7 +165,7 @@ export function AlbumDetail({
 
   return (
     <>
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div>
           <Link href="/media" className="text-meta text-ink-soft hover:text-ink">
             ← Media

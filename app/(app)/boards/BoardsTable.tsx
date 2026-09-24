@@ -160,7 +160,7 @@ export function BoardsTable({ rows }: { rows: BoardRow[] }) {
     {
       key: "status",
       label: "Status",
-      width: "w-44",
+      width: "sm:w-44",
       cell: (board) => (
         <span className={board.status === "pending" ? "text-stale" : "text-ink-soft"}>
           {STATUS_LABEL[board.status]}
@@ -171,6 +171,7 @@ export function BoardsTable({ rows }: { rows: BoardRow[] }) {
       key: "size",
       label: "Size",
       width: "w-36",
+      hideBelow: "sm",
       cell: (board) => <span className="numeric">{board.size}</span>,
     },
   ];
