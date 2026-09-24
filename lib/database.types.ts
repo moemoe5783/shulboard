@@ -653,8 +653,11 @@ export type Database = {
           postal_code: string | null
           screen_limit: number | null
           slug: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           theme: NonNullable<Json>
           timezone: string
+          trial_ends_at: string | null
           updated_at: string
           zmanim_location_id: string | null
           zmanim_location_name: string | null
@@ -679,8 +682,11 @@ export type Database = {
           postal_code?: string | null
           screen_limit?: number | null
           slug: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           theme?: NonNullable<Json>
           timezone?: string
+          trial_ends_at?: string | null
           updated_at?: string
           zmanim_location_id?: string | null
           zmanim_location_name?: string | null
@@ -705,8 +711,11 @@ export type Database = {
           postal_code?: string | null
           screen_limit?: number | null
           slug?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           theme?: NonNullable<Json>
           timezone?: string
+          trial_ends_at?: string | null
           updated_at?: string
           zmanim_location_id?: string | null
           zmanim_location_name?: string | null
@@ -875,6 +884,24 @@ export type Database = {
             referencedColumns: ["id", "org_id"]
           },
         ]
+      }
+      platform_admins: {
+        Row: {
+          created_at: string
+          granted_by: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_by?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       playlist_items: {
         Row: {
@@ -1385,6 +1412,7 @@ export type Database = {
         }[]
       }
       is_org_member: { Args: { org: string }; Returns: boolean }
+      is_platform_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
       mfa_satisfied: { Args: Record<PropertyKey, never>; Returns: boolean }
       org_member_directory: {
         Args: { p_org: string }
@@ -1393,6 +1421,48 @@ export type Database = {
           full_name: string
           joined_at: string
           role: Database["public"]["Enums"]["org_role"]
+          two_step: boolean
+          user_id: string
+        }[]
+      }
+      platform_orgs: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          board_count: number
+          created_at: string
+          deleted_at: string
+          member_count: number
+          name: string
+          org_id: string
+          owner_email: string
+          photo_count: number
+          plan: string
+          screen_count: number
+          screens_live: number
+          slug: string
+          storage_bytes: number
+          stripe_customer_id: string
+          stripe_subscription_id: string
+          trial_ends_at: string
+        }[]
+      }
+      platform_set_admin: {
+        Args: { p_admin: boolean; p_user: string }
+        Returns: undefined
+      }
+      platform_set_org_plan: {
+        Args: { p_org: string; p_plan: string; p_trial_ends_at: string }
+        Returns: undefined
+      }
+      platform_users: {
+        Args: { p_search?: string }
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          is_platform_admin: boolean
+          last_sign_in_at: string
+          shuls: string
           two_step: boolean
           user_id: string
         }[]
