@@ -36,11 +36,11 @@ export function describeAuthError(error: { message: string; code?: string }, url
 }
 
 /**
- * Where an account email's link returns: /auth/confirm, carrying where to go
- * after. The email templates append the one-time token to this
- * (`{{ .RedirectTo }}&token_hash=…&type=…`, supabase/templates/), and the
- * server verifies it — so the link works on any device, not only the browser
- * that asked for it. Always has a query string, which the templates rely on.
+ * Where an account email should return: /auth/confirm, carrying where to go
+ * after. Supabase passes this to the email template as {{ .RedirectTo }},
+ * which the link carries along (lib/email/templates.ts); the server verifies
+ * the token — so the link works on any device, not only the browser that
+ * asked for it.
  */
 export function confirmUrl(next?: string): string {
   const url = new URL("/auth/confirm", window.location.origin);

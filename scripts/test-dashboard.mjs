@@ -119,6 +119,21 @@ try {
   check(page.url() === `${BASE}/`, "the right password opens the dashboard", page.url());
   check(await page.getByRole("navigation", { name: "Sections" }).isVisible(), "with the rail");
 
+  console.log("\n-- email links -----------------------------------------------");
+  {
+    // What a reset email's link looks like (lib/email/templates.ts), asked
+    // for by the app (redirect_to carries ?next=) and sent from the Supabase
+    // dashboard (redirect_to is just the site).
+    const reader = await (await browser.newContext()).newPage();
+    const fromApp = `${BASE}/auth/confirm?next=%2Faccount`;
+    await reader.goto(`${BASE}/auth/confirm?token_hash=hash-${GABBAI.email}&type=recovery&redirect_to=${encodeURIComponent(fromApp)}`, { waitUntil: "networkidle" });
+    check(/\/auth\/new-password\?next=%2Faccount$/.test(reader.url()), "a reset link opens the new-password page, headed back where it was asked from", reader.url());
+    await reader.goto(`${BASE}/auth/confirm?token_hash=hash-${GABBAI.email}&type=email&redirect_to=${encodeURIComponent(BASE)}`, { waitUntil: "networkidle" });
+    check(reader.url() === `${BASE}/`, "a link sent from the Supabase dashboard still signs in", reader.url());
+    await reader.goto(`${BASE}/auth/confirm?token_hash=hash-${GABBAI.email}&type=email&redirect_to=${encodeURIComponent("https://evil.example/steal")}`, { waitUntil: "networkidle" });
+    check(reader.url() === `${BASE}/`, "and a link can't send anyone to another site", reader.url());
+  }
+
   console.log("\n-- members ---------------------------------------------------");
   await page.goto(`${BASE}/settings/members`, { waitUntil: "networkidle" });
   const people = await page.locator("table").first().textContent();
