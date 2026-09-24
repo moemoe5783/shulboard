@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_PRIMARY, CHROME_META } from "@/app/(dev)/editor-lab/chrome";
+import { Spinner } from "@/components/Button";
 import type { BoardDoc } from "@/lib/board-doc";
 import { discardBoardChanges, publishBoard } from "./actions";
 
@@ -43,33 +44,47 @@ export function PublishControls({
   onDiscarded: (doc: BoardDoc) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [working, setWorking] = useState<"publish" | "discard" | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The publish this session just made, so the header can say it happened —
+  // and to how many screens — until the next edit makes it old news. Without
+  // it, "done" and "nothing to publish" looked the same: a greyed-out button.
+  const [justPublished, setJustPublished] = useState<{ publishedAt: string; screenCount: number } | null>(null);
 
   const neverPublished = state.publishedAt === null;
+  const showJustPublished =
+    justPublished !== null && !state.pendingChanges && justPublished.publishedAt === state.publishedAt;
   const stateLabel = neverPublished
     ? "Never published"
     : state.pendingChanges
       ? "Unpublished changes"
-      : "Published";
+      : showJustPublished
+        ? justPublished.screenCount === 0
+          ? "Published"
+          : `Published to ${justPublished.screenCount} ${justPublished.screenCount === 1 ? "screen" : "screens"}`
+        : "Published. No changes to publish";
 
   const publishLabel =
     state.screenCount === 0 ? "Publish" : `Publish to ${state.screenCount} ${state.screenCount === 1 ? "screen" : "screens"}`;
 
   function publish() {
     setError(null);
+    setWorking("publish");
     startTransition(async () => {
       const result = await publishBoard(boardId);
       if (!result.ok) {
         setError(result.error);
         return;
       }
+      setJustPublished({ publishedAt: result.publishedAt, screenCount: result.screenCount });
       onPublished(result);
     });
   }
 
   function discard() {
     setError(null);
+    setWorking("discard");
     startTransition(async () => {
       const result = await discardBoardChanges(boardId);
       if (!result.ok) {
@@ -88,8 +103,9 @@ export function PublishControls({
           Whatever you&rsquo;ve changed since publishing will be lost. The draft
           goes back to what&rsquo;s live now.
         </span>
-        <button type="button" onClick={discard} disabled={pending} className={CHROME_BUTTON}>
-          Discard changes
+        <button type="button" onClick={discard} disabled={pending} aria-busy={pending || undefined} className={`${CHROME_BUTTON} gap-2`}>
+          {pending && working === "discard" && <Spinner />}
+          {pending && working === "discard" ? "Discarding" : "Discard changes"}
         </button>
         <button
           type="button"
@@ -110,7 +126,9 @@ export function PublishControls({
           {error}
         </span>
       )}
-      <span className={CHROME_META}>{stateLabel}</span>
+      <span className={CHROME_META} role="status" data-publish-state>
+        {stateLabel}
+      </span>
       {!neverPublished && state.pendingChanges && (
         <button
           type="button"
@@ -125,9 +143,11 @@ export function PublishControls({
         type="button"
         onClick={publish}
         disabled={pending || !state.pendingChanges}
-        className={CHROME_BUTTON_PRIMARY}
+        aria-busy={(pending && working === "publish") || undefined}
+        className={`${CHROME_BUTTON_PRIMARY} gap-2`}
       >
-        {pending ? "Publishing…" : publishLabel}
+        {pending && working === "publish" && <Spinner />}
+        {pending && working === "publish" ? "Publishing" : publishLabel}
       </button>
     </div>
   );
