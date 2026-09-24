@@ -131,8 +131,13 @@ Environment variables: @docs/environment.md
   against `00000` inside the real board and finds the sefarim face closes a
   6.97px spread to 0.00px under `tabular-nums` while the UI face is 3.08px
   either way. A column of board times gets its clean edge from setting the face.
-  On a board that face is `NUMERIC_FONT` (lib/board-theme.ts): the chosen font
-  when it is one of the measured `TABULAR_FONTS`, Frank Ruhl Libre when not.
+  On a board that face is `NUMERIC_FONT` (lib/board-theme.ts): the chosen font,
+  whatever it is — there is no swap to another face. Digits are set
+  `lining-nums tabular-nums` (`widgets/Digits.tsx`), which is enough in a face
+  with tnum; a face without it gets a box per digit as wide as its widest
+  digit at that weight, measured in the font files at build time
+  (`scripts/build-fonts.ts`, `--board-digit-<weight>`). The build report flags
+  any face whose figures are old-style with no lining alternative.
   **The face is necessary and not sufficient.** Figures of equal width still
   do not line up when the strings are different lengths: `7:22 PM` against
   `11:21 AM` puts the two-digit hour a digit out past the one-digit ones,

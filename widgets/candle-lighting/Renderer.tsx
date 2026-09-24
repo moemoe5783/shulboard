@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { BOARD_FONTS, NUMERIC_FONT } from "@/lib/board-theme";
+import { Digits } from "../Digits";
 import { formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
@@ -295,12 +296,13 @@ function Entry({
         </span>
       )}
 
-      {/* The time itself — the numbers face (lib/board-theme.ts), tabular, same as Clock. */}
+      {/* The time itself — the widget's own face, its digits lined up the way
+          Clock's are (widgets/Digits.tsx). */}
       <span
         className="numeric font-semibold leading-none whitespace-nowrap"
         style={{ fontFamily: NUMERIC_FONT, fontSize: "1em" }}
       >
-        {time}
+        <Digits text={time} weight={600} />
       </span>
 
       {/*
@@ -321,7 +323,7 @@ function Entry({
           className="numeric leading-tight whitespace-nowrap opacity-80"
           style={{ fontFamily: NUMERIC_FONT, fontSize: `${COUNTDOWN_SCALE}em` }}
         >
-          {countdown}
+          <Digits text={countdown} weight={400} />
         </span>
       )}
     </div>

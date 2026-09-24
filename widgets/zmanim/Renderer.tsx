@@ -13,6 +13,7 @@ import {
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
 import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
+import { Digits } from "../Digits";
 import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
@@ -385,7 +386,7 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
       <>
         {labelCell}
         <span className={timeClass} style={{ ...time, ...gap, gridColumn: "span 3", justifySelf: "end" }}>
-          {row.display}
+          <Digits text={row.display} weight={600} />
         </span>
       </>
     );
@@ -395,10 +396,10 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
     <>
       {labelCell}
       <span key="hours" className={timeClass} style={{ ...time, justifySelf: "end", ...gap }}>
-        {parts.hours}
+        <Digits text={parts.hours} weight={600} />
       </span>
       <span key="minutes" className={timeClass} style={time}>
-        {parts.minutes}
+        <Digits text={parts.minutes} weight={600} />
       </span>
       <span key="meridiem" className={timeClass} style={{ ...time, whiteSpace: "pre", justifySelf: "end" }}>
         {parts.meridiem}

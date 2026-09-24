@@ -41,8 +41,14 @@ type Built = {
   hasTabularNums: boolean;
   /** Widest digit, in em, at each offered weight (normal style). */
   digitEm: Record<number, number>;
-  /** Its default digits are already one width (Heebo), tnum or not. */
+  /** Its digits, as a time widget draws them, are already one width. */
   digitsEqual: boolean;
+  /** Has the 'lnum' OpenType feature. */
+  hasLiningNums: boolean;
+  /** Its digits, as drawn (lnum on where it has it), are lining. */
+  liningDigits: boolean;
+  /** Has a glyph for every digit 0–9. */
+  digits: boolean;
   latin: boolean;
   hebrew: boolean;
   nikud: boolean;
@@ -69,19 +75,49 @@ const top = (font: AnyFont, char: string) => {
   return glyph?.bbox ? glyph.bbox.maxY / font.unitsPerEm : 0;
 };
 
-/** The widest of 0–9, in em. */
+const DIGITS = "0123456789";
+
+/**
+ * The digits as a time widget draws them: with lining figures switched on
+ * where the face has them (widgets/Digits.tsx sets `lining-nums
+ * tabular-nums`), so widths and heights are measured on the same glyphs the
+ * board shows — Playfair Display's default figures are old-style, its lining
+ * ones are what a clock uses.
+ */
+const digitRun = (font: AnyFont) => {
+  const features = (font.availableFeatures ?? []).includes("lnum") ? ["lnum"] : [];
+  return font.layout(DIGITS, features);
+};
+
+/** The widest of 0–9 as drawn, in em. */
 const widestDigit = (font: AnyFont) => {
-  let widest = 0;
-  for (let d = 0; d <= 9; d += 1) widest = Math.max(widest, font.glyphForCodePoint(0x30 + d).advanceWidth);
+  const widest = Math.max(...digitRun(font).positions.map((p: { xAdvance: number }) => p.xAdvance));
   return Math.round((widest / font.unitsPerEm) * 10000) / 10000;
 };
 
-/** Whether 0–9 all share one advance in the default figures. */
-const digitsEqual = (font: AnyFont) => {
-  const widths = new Set<number>();
-  for (let d = 0; d <= 9; d += 1) widths.add(font.glyphForCodePoint(0x30 + d).advanceWidth);
-  return widths.size === 1;
+/** Whether 0–9 all share one advance as drawn. */
+const digitsEqual = (font: AnyFont) =>
+  new Set(digitRun(font).positions.map((p: { xAdvance: number }) => Math.round(p.xAdvance))).size === 1;
+
+/**
+ * Whether the digits as drawn are lining — all one height, standing on the
+ * baseline — rather than old-style (3, 4, 5, 7 and 9 dropping below it, 6 and 8
+ * rising above the rest). Read from the glyphs' own extents.
+ */
+const liningDigits = (font: AnyFont) => {
+  const glyphs = digitRun(font).glyphs.filter((g: AnyFont) => g.bbox);
+  const tops = glyphs.map((g: AnyFont) => g.bbox.maxY / font.unitsPerEm);
+  const bottoms = glyphs.map((g: AnyFont) => g.bbox.minY / font.unitsPerEm);
+  const spread = (values: number[]) => Math.max(...values) - Math.min(...values);
+  // Spreads, not absolute positions: a script face whose figures all hang the
+  // same small way below the line (Dancing Script) is still lining, and a
+  // hand-drawn one wobbles a few hundredths (Caveat); old-style figures drop
+  // 0.10–0.27 em.
+  return spread(tops) < 0.08 && spread(bottoms) < 0.08;
 };
+
+/** Whether the face has a glyph for every digit 0–9. */
+const hasDigits = (font: AnyFont) => DIGITS.split("").every((d) => font.hasGlyphForCodePoint(d.codePointAt(0)!));
 
 /** The nikud points, and whether the font positions them over letters. */
 const NIKUD = [0x05b0, 0x05b1, 0x05b2, 0x05b3, 0x05b4, 0x05b5, 0x05b6, 0x05b7, 0x05b8, 0x05b9, 0x05bb, 0x05bc, 0x05c1, 0x05c2, 0x05c7];
@@ -162,6 +198,9 @@ async function build(
     hasTabularNums: (base.availableFeatures ?? []).includes("tnum"),
     digitEm,
     digitsEqual: digitsEqual(base),
+    hasLiningNums: (base.availableFeatures ?? []).includes("lnum"),
+    liningDigits: liningDigits(base),
+    digits: hasDigits(base),
     latin: all(base, 0x41, 0x5a) && all(base, 0x61, 0x7a) && all(base, 0x30, 0x39),
     hebrew,
     nikud,
@@ -279,8 +318,14 @@ export type BuiltFont = {
   hasTabularNums: boolean;
   /** The widest digit, in em, at each offered weight. */
   digitEm: Record<number, number>;
-  /** Its default digits are already all one width. */
+  /** Its digits, as a time widget draws them, are already all one width. */
   digitsEqual: boolean;
+  /** Has the 'lnum' OpenType feature. */
+  hasLiningNums: boolean;
+  /** Its digits as drawn (lnum on where it has it) are lining, not old-style. */
+  liningDigits: boolean;
+  /** Has a glyph for every digit 0–9. */
+  digits: boolean;
   /** Covers A–Z, a–z and 0–9. */
   latin: boolean;
   /** Covers the Hebrew letters א–ת. */
@@ -303,3 +348,20 @@ writeFileSync(GENERATED, body);
 
 const files = Object.values(built).reduce((n, b) => n + b.faces.length, 0);
 console.log(`fonts: ${Object.keys(built).length} families, ${files} files in public/fonts`);
+
+// The build report: how each face will set a column of times, and any face
+// that can't — old-style figures with no lining alternative, or a missing
+// digit — flagged for a decision (drop it, or special-case it).
+const flags: string[] = [];
+for (const font of [...ENGLISH_FONTS, ...HEBREW_FONTS]) {
+  const b = built[font.id];
+  if (!b.digits) flags.push(`${font.name}: no complete digit set`);
+  else if (!b.liningDigits) flags.push(`${font.name}: old-style figures and no lining alternative (lnum)`);
+}
+const method = (b: Built) => (b.hasTabularNums ? "tnum" : "digit boxes");
+const counts = Object.values(built).reduce<Record<string, number>>((acc, b) => {
+  acc[method(b)] = (acc[method(b)] ?? 0) + 1;
+  return acc;
+}, {});
+console.log(`fonts: times line up by ${Object.entries(counts).map(([k, v]) => `${k} ×${v}`).join(", ")}`);
+console.log(flags.length ? `fonts: FLAGGED\n${flags.map((f) => `  - ${f}`).join("\n")}` : "fonts: no face flagged");

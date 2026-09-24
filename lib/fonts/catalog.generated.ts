@@ -9,8 +9,14 @@ export type BuiltFont = {
   hasTabularNums: boolean;
   /** The widest digit, in em, at each offered weight. */
   digitEm: Record<number, number>;
-  /** Its default digits are already all one width. */
+  /** Its digits, as a time widget draws them, are already all one width. */
   digitsEqual: boolean;
+  /** Has the 'lnum' OpenType feature. */
+  hasLiningNums: boolean;
+  /** Its digits as drawn (lnum on where it has it) are lining, not old-style. */
+  liningDigits: boolean;
+  /** Has a glyph for every digit 0–9. */
+  digits: boolean;
   /** Covers A–Z, a–z and 0–9. */
   latin: boolean;
   /** Covers the Hebrew letters א–ת. */
@@ -48,6 +54,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.69
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -90,14 +99,17 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "400": 0.6,
-      "500": 0.615,
-      "600": 0.63,
-      "700": 0.645,
-      "800": 0.66,
-      "900": 0.675
+      "400": 0.607,
+      "500": 0.6222,
+      "600": 0.6374,
+      "700": 0.6526,
+      "800": 0.6678,
+      "900": 0.683
     },
     "digitsEqual": false,
+    "hasLiningNums": true,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -147,6 +159,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "800": 0.54
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -189,11 +204,14 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": true,
     "digitEm": {
-      "500": 0.489,
-      "600": 0.489,
-      "700": 0.489
+      "500": 0.501,
+      "600": 0.501,
+      "700": 0.501
     },
     "digitsEqual": false,
+    "hasLiningNums": true,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -240,6 +258,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.755
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -271,6 +292,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.8062
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": false,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -316,6 +340,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.538
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -352,6 +379,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.7285
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -400,6 +430,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.636
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -449,6 +482,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "800": 0.6239
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -499,6 +535,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.699
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -535,6 +574,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.7109
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -578,13 +620,16 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "hasTabularNums": true,
     "digitEm": {
       "400": 0.6622,
-      "500": 0.6693,
+      "500": 0.6686,
       "600": 0.6789,
       "700": 0.6891,
       "800": 0.7002,
       "900": 0.712
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -688,6 +733,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.58
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -722,6 +770,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.628
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -750,14 +801,17 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "400": 0.6122,
-      "500": 0.614,
-      "600": 0.614,
-      "700": 0.614,
-      "800": 0.614,
-      "900": 0.614
+      "400": 0.6735,
+      "500": 0.68,
+      "600": 0.686,
+      "700": 0.6926,
+      "800": 0.6998,
+      "900": 0.708
     },
     "digitsEqual": false,
+    "hasLiningNums": true,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -794,6 +848,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.676
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -830,6 +887,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.655
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -866,6 +926,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.67
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -972,6 +1035,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.704
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1003,6 +1069,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.664
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1034,6 +1103,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.4
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1068,6 +1140,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.55
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1096,9 +1171,12 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "400": 0.458
+      "400": 0.448
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1130,6 +1208,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.7305
     },
     "digitsEqual": false,
+    "hasLiningNums": true,
+    "liningDigits": false,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1158,9 +1239,12 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "400": 0.7236
+      "400": 0.7197
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": false,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1195,6 +1279,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.66
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1229,6 +1316,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.471
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": false,
     "nikud": false,
@@ -1264,8 +1354,8 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": true,
     "digitEm": {
-      "300": 0.559,
-      "400": 0.563,
+      "300": 0.551,
+      "400": 0.557,
       "500": 0.586,
       "600": 0.5934,
       "700": 0.5998,
@@ -1273,6 +1363,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.609
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1355,6 +1448,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.5049
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1401,6 +1497,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.569
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1478,10 +1577,13 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": true,
     "digitEm": {
-      "400": 0.546,
-      "700": 0.566
+      "400": 0.605,
+      "700": 0.699
     },
     "digitsEqual": false,
+    "hasLiningNums": true,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1528,6 +1630,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.582
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1572,6 +1677,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "800": 0.54
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1637,6 +1745,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.735
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1807,6 +1918,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.6
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": false,
@@ -1853,6 +1967,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.6108
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": false,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": false,
@@ -1888,9 +2005,12 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "400": 0.655
+      "400": 0.65
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": false,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1929,6 +2049,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.586
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -1967,6 +2090,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "400": 0.522
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -2049,6 +2175,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.383
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -2109,6 +2238,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "700": 0.343
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -2155,6 +2287,9 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
       "900": 0.569
     },
     "digitsEqual": true,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -2190,16 +2325,19 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     ],
     "hasTabularNums": false,
     "digitEm": {
-      "100": 0.709,
-      "200": 0.7161,
-      "300": 0.7232,
-      "400": 0.731,
-      "500": 0.7343,
-      "600": 0.7375,
-      "700": 0.7411,
-      "800": 0.744
+      "100": 0.715,
+      "200": 0.7215,
+      "300": 0.7279,
+      "400": 0.735,
+      "500": 0.7333,
+      "600": 0.7315,
+      "700": 0.7296,
+      "800": 0.728
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,
@@ -2237,10 +2375,13 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "digitEm": {
       "400": 0.595,
       "500": 0.6037,
-      "600": 0.613,
-      "700": 0.625
+      "600": 0.6123,
+      "700": 0.621
     },
     "digitsEqual": false,
+    "hasLiningNums": false,
+    "liningDigits": true,
+    "digits": true,
     "latin": true,
     "hebrew": true,
     "nikud": true,

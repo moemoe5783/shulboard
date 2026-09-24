@@ -29,22 +29,50 @@ export const BOARD_FONTS = {
   sefarim: fontStack("frank-ruhl-libre"),
 } as const;
 
+const WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+
 /**
- * Whether a face's digits line up in a column: it has tabular figures (tnum)
- * or its default digits are already one width — MEASURED in the font files at
- * build time (scripts/build-fonts.ts). The same five of the old faces pass as
- * the browser measurement this replaced: Frank Ruhl Libre, Heebo, Rubik, David
- * Libre and Miriam Libre.
+ * For a face WITHOUT tabular figures (no tnum, measured at build time): its
+ * widest digit at every weight from 100 to 900, as `--board-digit-<weight>` custom properties, in em.
+ * Measured per weight — a variable face's digits widen as it gets bolder — and
+ * filled in between the measured weights by straight-line interpolation (and
+ * held flat beyond them). Empty for a face with tnum, whose digits
+ * `lining-nums tabular-nums` already lines up — every digit box is then `auto`
+ * (widgets/Digits.tsx).
  */
-export function hasEvenDigits(font: string | undefined): boolean {
+export function digitWidthVars(font: string | undefined): Record<string, string> {
   const info = fontInfo(font ?? DEFAULT_FONT);
-  return Boolean(info && (info.measured.hasTabularNums || info.measured.digitsEqual));
+  if (!info || info.measured.hasTabularNums) return {};
+  const measured = Object.entries(info.measured.digitEm)
+    .map(([weight, em]) => [Number(weight), em] as const)
+    .sort((a, b) => a[0] - b[0]);
+  if (measured.length === 0) return {};
+  const at = (weight: number) => {
+    if (weight <= measured[0][0]) return measured[0][1];
+    const last = measured[measured.length - 1];
+    if (weight >= last[0]) return last[1];
+    const upper = measured.findIndex(([w]) => w >= weight);
+    const [w0, e0] = measured[upper - 1];
+    const [w1, e1] = measured[upper];
+    return e0 + ((e1 - e0) * (weight - w0)) / (w1 - w0);
+  };
+  const vars: Record<string, string> = {};
+  for (const weight of WEIGHT_STEPS) vars[`--board-digit-${weight}`] = `${Math.round(at(weight) * 10000) / 10000}em`;
+  return vars;
 }
 
-/** The face numbers are set in for a chosen font: that font when its digits
- *  are one width, Frank Ruhl Libre when they aren't. */
+/** The digit box width for text at a weight: its face's widest digit when the
+ *  face needs boxes, else `auto`. */
+export function digitWidthVar(weight: number): string {
+  const step = Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
+  return `var(--board-digit-${step}, auto)`;
+}
+
+/** The face numbers are set in: the text's own. Times, zmanim and countdowns
+ *  line up through `tabular-nums` and, where a face needs them, digit boxes
+ *  (digitWidthVars) — not by switching to another face. */
 export function numericFace(font: string | undefined, hebrew?: string | null): string {
-  return hasEvenDigits(font) ? fontStack(font, hebrew) : BOARD_FONTS.sefarim;
+  return fontStack(font, hebrew);
 }
 
 /**
@@ -53,7 +81,7 @@ export function numericFace(font: string | undefined, hebrew?: string | null): s
  * (`numericFace`), so a Renderer reads it without being told the font — its
  * props stay `{config, canvas}`.
  */
-export const NUMERIC_FONT = `var(--board-numeric-font, ${BOARD_FONTS.sefarim})`;
+export const NUMERIC_FONT = `var(--board-numeric-font, inherit)`;
 
 /**
  * Board colours, by name.
@@ -110,6 +138,7 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
     colorScheme: "only light",
     fontFamily: fontStack(font, theme.hebrewFont),
     ["--board-numeric-font" as string]: numericFace(font, theme.hebrewFont),
+    ...digitWidthVars(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,
     backgroundColor: BOARD_COLORS[background] ?? BOARD_COLORS.surface,
     ...(custom ? { background: `${custom}`, backgroundColor: undefined } : {}),
