@@ -52,6 +52,9 @@ export type NavRailProps = {
    * a row, which is what the reference sheet needs.
    */
   activeId?: string;
+  /** Where the rail sits: the app shell hides it on a phone and shows it in
+   *  a slide-over menu instead (components/AppShell.tsx). */
+  className?: string;
 };
 
 function ItemBody({ item }: { item: NavItem }) {
@@ -194,12 +197,13 @@ export function NavRail({
   footerItems = [],
   footer,
   activeId,
+  className = "flex w-54 shrink-0",
 }: NavRailProps) {
   const pathname = usePathname();
   const current = activeId ?? currentItemId([...items, ...footerItems], pathname);
 
   return (
-    <nav aria-label="Sections" className="bg-paper flex w-54 shrink-0 flex-col px-3 py-4">
+    <nav aria-label="Sections" className={`bg-paper flex-col px-3 py-4 ${className}`}>
       <OrgSwitcher orgs={orgs} activeOrgId={activeOrgId} switchAction={switchAction} />
 
       <ul className="flex flex-col gap-0.5">

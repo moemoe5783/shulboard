@@ -55,7 +55,7 @@ export default async function BoardsPage() {
 
   return (
     <>
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div>
           <h1 className="text-title">Boards</h1>
           {rows.length > 0 && (

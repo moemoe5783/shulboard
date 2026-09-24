@@ -43,16 +43,18 @@ const COLUMNS: Column<AttentionRow>[] = [
         {screen.location && (
           <span className="text-min text-ink-soft block truncate">{screen.location}</span>
         )}
+        {/* On a phone the "What to check" column is left out; it goes here. */}
+        <span className="text-meta text-ink block py-1 whitespace-normal sm:hidden">{screen.todo}</span>
       </span>
     ),
   },
-  { key: "todo", label: "What to check", cell: (screen) => screen.todo },
+  { key: "todo", label: "What to check", hideBelow: "sm", cell: (screen) => screen.todo },
   {
     key: "lastSeen",
     label: "Last seen",
-    width: "w-44",
+    width: "sm:w-44",
     cell: (screen) => (
-      <span className="numeric flex items-center gap-2">
+      <span className="numeric flex items-center gap-2 whitespace-nowrap">
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[screen.status]}`}
           role="img"

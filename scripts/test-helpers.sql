@@ -97,6 +97,17 @@ create function tests.authenticate_as(uid uuid) returns void language sql as $$
   );
 $$;
 
+-- A signed-in user whose token carries an email and an assurance level, like
+-- the access tokens Supabase Auth really issues (aal2 after an authenticator
+-- code, aal1 after only a password).
+create function tests.authenticate_with(uid uuid, email text, aal text default 'aal1') returns void language sql as $$
+  select set_config(
+    'request.jwt.claims',
+    json_build_object('sub', uid, 'role', 'authenticated', 'email', email, 'aal', aal)::text,
+    true
+  );
+$$;
+
 -- A screen's Realtime credential -- no `sub`, because there is no Supabase
 -- Auth user behind it. Mirrors exactly what
 -- POST /api/screen/[token]/realtime-auth mints.

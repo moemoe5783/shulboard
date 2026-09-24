@@ -38,7 +38,7 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
 
   return (
     <>
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div>
           <h1 className="text-title">Media</h1>
           <p className="text-body text-ink-soft mt-1">Albums of photos your boards can show.</p>

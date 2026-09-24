@@ -51,7 +51,7 @@ const COLUMNS: Column<ScreenRow>[] = [
             exist yet, and a gradient or an icon standing in for it would be a
             lie about what the product can do. An empty frame is honest and
             holds the row geometry. */}
-        <span className="bg-paper border-rule rounded-control h-9 w-16 shrink-0 border" />
+        <span className="bg-paper border-rule rounded-control hidden h-9 w-16 shrink-0 border sm:block" />
         <span className="min-w-0">
           <span className="block truncate">{screen.name}</span>
           {screen.location && (
@@ -65,12 +65,12 @@ const COLUMNS: Column<ScreenRow>[] = [
   {
     key: "lastSeen",
     label: "Last seen",
-    width: "w-44",
+    width: "sm:w-44",
     // Plain language, so it stays in Assistant — "3 days", not "72h ago". The
     // numeric utility is a no-op on that face today and correct anyway; it
     // starts working the day the chrome face gains tnum. See design.md §3.
     cell: (screen) => (
-      <span className="numeric flex items-center gap-2">
+      <span className="numeric flex items-center gap-2 whitespace-nowrap">
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[screen.status]}`}
           role="img"
@@ -84,6 +84,7 @@ const COLUMNS: Column<ScreenRow>[] = [
     key: "size",
     label: "Size",
     width: "w-36",
+    hideBelow: "sm",
     cell: (screen) => <span className="numeric">{screen.size}</span>,
   },
 ];

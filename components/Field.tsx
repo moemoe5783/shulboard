@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes } from "react";
 
 /*
  * A labelled input. 32px high, 5px radius, 1px --rule — the same control
@@ -38,6 +38,7 @@ export type FieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   id: string;
   hint?: string;
+  ref?: Ref<HTMLInputElement>;
 };
 
 export function Field({ label, id, hint, className = "", ...props }: FieldProps) {

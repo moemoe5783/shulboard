@@ -2,6 +2,7 @@ import { isGeocodingConfigured } from "@/lib/geocoding/locationiq";
 import { hasRoleAtLeast, requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { OrgSettingsForm } from "./OrgSettingsForm";
+import { SettingsTabs } from "./SettingsTabs";
 
 /*
  * The shul's own settings — name, timezone, location. Reachable by everyone
@@ -34,7 +35,8 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-title">Settings</h1>
-      <p className="text-body text-ink-soft mt-1">
+      <SettingsTabs />
+      <p className="text-body text-ink-soft mt-4">
         Every time-based widget on every board is calculated from these.
       </p>
 

@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SIGN_IN_PATH } from "@/lib/routes";
+import { SIGN_IN_PATH, safeNext } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Where both sign-in methods land: the magic link and the Google redirect.
+ * Where Google's redirect lands (account emails land on /auth/confirm).
  *
  * Exchanges the one-time code for a session and writes the cookie. Anon key, like
  * everything else in the dashboard.
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
   const from = searchParams.get("from");
-  const next = from && from.startsWith("/") && !from.startsWith("//") ? from : "/";
+  const next = safeNext(from);
 
   if (!code) {
     const target = new URL(SIGN_IN_PATH, origin);
