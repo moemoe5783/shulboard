@@ -14,9 +14,14 @@ Environment variables: @docs/environment.md
 - `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
   `app/m/[id]/[file]/`, `app/api/cron/build-bundles/`,
   `app/api/cron/warm-zmanim/`, `app/api/pair/start/`, `app/api/pair/poll/`,
-  and `publishBoard` in
-  `app/(editor)/boards/[id]/actions.ts`, and `lib/zmanim/warm.ts` — the
-  ten places holding the service-role key. The two `pair` routes are TV
+  `publishBoard` in
+  `app/(editor)/boards/[id]/actions.ts`, `assignBoard` in
+  `app/(app)/screens/actions.ts`, and `lib/zmanim/warm.ts` — the
+  eleven places holding the service-role key. `assignBoard` earns it exactly
+  as `publishBoard` does: it calls the same `buildScreenBundle`, for the one
+  screen whose board was just chosen, so the TV switches in seconds rather
+  than at the next cron sweep; the screen id is a row it read under the
+  admin's own session. The two `pair` routes are TV
   pairing (supabase/migrations/20260925090200_screen_pairing.sql): a TV at
   `/pair` has no session, and `pairing_requests` deliberately has no
   policies, so asking for a code and checking whether it was entered can only
