@@ -5,7 +5,7 @@ import { OrgSettingsForm } from "./OrgSettingsForm";
 import { SettingsTabs } from "./SettingsTabs";
 
 /*
- * The shul's own settings — name, timezone, location. Reachable by everyone
+ * The shul's own settings — name and location (the timezone comes with it). Reachable by everyone
  * in the org (design.md's rail is the map of the product; a viewer should
  * still be able to see what a screen's candle lighting is computed against),
  * editable only by an admin or owner — OrgSettingsForm shows why when it
@@ -27,10 +27,6 @@ export default async function SettingsPage() {
   if (error || !data) {
     throw new Error(`Couldn't load the shul's settings: ${error?.message ?? "not found"}`);
   }
-
-  // Intl.supportedValuesOf is the whole IANA list — same source orgs/new/
-  // page.tsx uses, so the two forms never disagree about what's offered.
-  const timezones = Intl.supportedValuesOf("timeZone");
 
   return (
     <div className="max-w-3xl">
@@ -54,7 +50,6 @@ export default async function SettingsPage() {
           // it AddressSetup says a location can't be set here, rather than
           // offering a lookup that can only fail.
           geocodingConfigured={isGeocodingConfigured()}
-          timezones={timezones}
           canEdit={hasRoleAtLeast(org.role, "admin")}
         />
       </div>

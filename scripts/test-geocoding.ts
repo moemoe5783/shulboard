@@ -24,6 +24,7 @@
 
 import { geocodeAddress, geocodePostalCode, reverseGeocode } from "../lib/geocoding/locationiq.ts";
 import { describeMiles, milesBetween } from "../lib/geocoding/distance.ts";
+import { timezoneAt } from "../lib/geocoding/timezone.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail: string | null | undefined = "") {
@@ -322,6 +323,13 @@ check(milesBetween(CROWN_HEIGHTS, CROWN_HEIGHTS) === 0, "a point is zero miles f
 check(describeMiles(farApart).includes(","), "a long distance reads with a thousands separator", describeMiles(farApart));
 check(describeMiles(nearby).startsWith("about 3.6"), "a short one keeps one decimal rather than rounding to a whole number",
   describeMiles(nearby));
+
+console.log("\nTimezone from the address");
+check(timezoneAt(40.6694, -73.9422) === "America/New_York", "Crown Heights is in New York's zone", timezoneAt(40.6694, -73.9422));
+check(timezoneAt(33.4484, -112.074) === "America/Phoenix", "Phoenix gets its own zone, which skips daylight saving", timezoneAt(33.4484, -112.074));
+check(timezoneAt(41.8781, -87.6298) === "America/Chicago", "Chicago is central", timezoneAt(41.8781, -87.6298));
+check(timezoneAt(31.7683, 35.2137) === "Asia/Jerusalem", "Yerushalayim is Israel's zone", timezoneAt(31.7683, 35.2137));
+check(timezoneAt(200, 500) === null, "coordinates that aren't on Earth get no zone rather than a guess");
 
 console.log("");
 const failed = results.filter((r) => !r.ok).length;

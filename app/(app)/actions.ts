@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { geocodeAddress } from "@/lib/geocoding/locationiq";
+import { timezoneAt } from "@/lib/geocoding/timezone";
 import { upcomingCandleLighting } from "@/lib/hebrew/candle-times";
 import { formatTimeOfDay } from "@/lib/hebrew/format";
 import { ACTIVE_ORG_COOKIE, getMemberships, hasRoleAtLeast, requireActiveOrg, requireUser } from "@/lib/orgs";
@@ -85,14 +86,17 @@ export async function createOrg(
   const user = await requireUser();
 
   const name = String(formData.get("name") ?? "").trim();
-  const timezone = String(formData.get("timezone") ?? "").trim();
-
   if (!name) return { error: "Give the shul a name." };
-  if (!timezone) return { error: "Pick a timezone." };
 
   const location = parseLocationFields(formData);
   if ("error" in location) return { error: location.error };
   const { latitude, longitude } = location;
+
+  // Read off where the shul is (lib/geocoding/timezone.ts), never asked for.
+  // A shul set up without a location gets the schema's default until it has
+  // one — setting the address in settings sets the zone with it.
+  const timezone =
+    (latitude !== null && longitude !== null ? timezoneAt(latitude, longitude) : null) ?? "America/New_York";
 
   // The location lookup derives this from its result (LocationLookup.tsx),
   // so the new-shul form posts it too. Persisted here rather than dropped:
@@ -182,6 +186,9 @@ export type LocationLookupState =
       /** ISO country code, lowercased. Lets the settings preview say "US
        *  only" before the confirm rather than only on the save. */
       countryCode: string | null;
+      /** The zone the place is in (lib/geocoding/timezone.ts) — what saving
+       *  it sets the shul's timezone to, and what the preview is shown in. */
+      timezone: string | null;
       candleLighting: string | null;
       candleLightingWhen: string | null;
     }
@@ -201,20 +208,14 @@ export type LocationLookupState =
  * (lib/hebrew/candle-times.ts), not a second approximation, so the preview
  * and the screen can't disagree.
  *
- * `timezone` comes from the form's own currently-selected value rather
- * than from the geocoder (which doesn't return one) or from the saved row
- * (which the gabbai may be in the middle of changing). That makes the
- * preview a check on the timezone too: pick the wrong zone and the
- * previewed time is off by hours, which is exactly as visible as it should
- * be.
+ * The timezone comes from the place itself (lib/geocoding/timezone.ts), the
+ * same zone saving it will set — so the preview is in the zone the board
+ * will use, and nobody has to pick one.
  *
  * Nothing is written here. This is a read, and the coordinate fields fill
  * only when the gabbai confirms the result in the form.
  */
-export async function lookupShulLocation(
-  query: string,
-  timezone: string,
-): Promise<LocationLookupState> {
+export async function lookupShulLocation(query: string): Promise<LocationLookupState> {
   // A signed-in user and nothing more. Deliberately NOT the save's own
   // admin-of-the-active-org check: this same lookup runs on the new-shul
   // form, where the user has no org yet and there is no role to have, so
@@ -231,13 +232,14 @@ export async function lookupShulLocation(
 
   const { label, latitude, longitude, postcode, countryCode } = outcome.place;
 
-  // A timezone the gabbai hasn't picked yet, or a hand-posted junk value:
-  // the preview is worth less without it but the coordinates are still
-  // good, so this degrades to showing the place alone rather than failing
-  // the whole lookup.
-  const preview = previewCandleLighting({ latitude, longitude, timeZone: timezone });
+  const timezone = timezoneAt(latitude, longitude);
+  // No zone for the place: the coordinates are still good, so this degrades
+  // to showing the place alone rather than failing the whole lookup.
+  const preview = timezone
+    ? previewCandleLighting({ latitude, longitude, timeZone: timezone })
+    : { candleLighting: null, candleLightingWhen: null };
 
-  return { status: "found", label, latitude, longitude, postcode, countryCode, ...preview };
+  return { status: "found", label, latitude, longitude, postcode, countryCode, timezone, ...preview };
 }
 
 /** Non-throwing on a bad timezone (`Intl` throws on an unknown zone) and on
@@ -412,7 +414,8 @@ export async function checkChabadCity(
 export type UpdateOrgSettingsState = { error?: string; saved?: boolean };
 
 /**
- * Updates the active org's name and timezone — nothing else.
+ * Updates the active org's name — nothing else. The timezone is set with the
+ * address (saveShulAddress), from where the shul is.
  *
  * LOCATION IS NOT HERE ANY MORE. It is set by `saveShulAddress` below, from
  * one address field, which geocodes and warms in the same step. So this form
@@ -435,21 +438,18 @@ export async function updateOrgSettings(
   }
 
   const name = String(formData.get("name") ?? "").trim();
-  const timezone = String(formData.get("timezone") ?? "").trim();
-
   if (!name) return { error: "Give the shul a name." };
-  if (!timezone) return { error: "Pick a timezone." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("orgs").update({ name, timezone }).eq("id", org.orgId);
+  const { error } = await supabase.from("orgs").update({ name }).eq("id", org.orgId);
 
   if (error) {
     return { error: `That didn't save: ${error.message}. Check the fields and try again.` };
   }
 
   // The nav rail shows the org's name and every page under this layout reads
-  // its own fresh copy of the row, so a rename or a timezone change should
-  // not need a hard reload to show up.
+  // its own fresh copy of the row, so a rename should not need a hard reload
+  // to show up.
   revalidatePath("/", "layout");
 
   return { saved: true };
@@ -502,7 +502,9 @@ export async function saveShulAddress(query: string): Promise<SaveShulAddressSta
 
   const supabase = await createClient();
   const { data: existing } = await supabase.from("orgs").select("timezone").eq("id", org.orgId).single();
-  const timezone = existing?.timezone ?? "UTC";
+  // The zone comes with the place (lib/geocoding/timezone.ts). Every board
+  // time and the zmanim fetch below are in it.
+  const timezone = timezoneAt(latitude, longitude) ?? existing?.timezone ?? "America/New_York";
 
   // Location is written; the label is the place the coordinates came from, for
   // the settings page to show back. The Chabad location columns for the
@@ -514,6 +516,7 @@ export async function saveShulAddress(query: string): Promise<SaveShulAddressSta
       longitude,
       postal_code: postcode,
       location_label: label,
+      timezone,
       zmanim_location_id: null,
       zmanim_location_type: null,
       zmanim_location_name: null,

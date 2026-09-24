@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { timeZoneName } from "@/lib/time-zone-name";
 import { lookupShulLocation, saveShulAddress, type LocationLookupState, type SaveShulAddressState } from "../actions";
 
 /*
@@ -34,8 +35,7 @@ export function AddressSetup({
 }: {
   locationLabel: string | null;
   postalCode: string | null;
-  /** The form's currently-selected timezone, so the previewed candle lighting
-   *  is computed in the zone the gabbai is about to save. */
+  /** The shul's saved timezone, shown back beside the address it came from. */
   timezone: string;
   chabadEnabled: boolean;
   geocodingConfigured: boolean;
@@ -52,7 +52,7 @@ export function AddressSetup({
   const lookUp = () => {
     if (!query.trim() || busy || !canEdit) return;
     setSaved({ status: "idle" });
-    startLookup(async () => setPreview(await lookupShulLocation(query, timezone)));
+    startLookup(async () => setPreview(await lookupShulLocation(query)));
   };
 
   const use = () => {
@@ -85,6 +85,7 @@ export function AddressSetup({
           <>
             <p className="text-body text-ink">{locationLabel}</p>
             {postalCode && <p className="text-meta text-ink-soft numeric mt-1">ZIP {postalCode}</p>}
+            <p className="text-meta text-ink-soft mt-1">Times are shown in {timeZoneName(timezone)}.</p>
           </>
         ) : (
           <p className="text-body text-ink-soft">No location set yet.</p>
@@ -117,7 +118,7 @@ export function AddressSetup({
                 disabled={!canEdit}
               />
             </div>
-            <Button onClick={lookUp} disabled={busy || !canEdit || !query.trim()}>
+            <Button onClick={lookUp} busy={lookingUp} disabled={saving || !canEdit || !query.trim()}>
               {lookingUp ? "Looking up" : "Look up"}
             </Button>
           </div>
@@ -140,6 +141,9 @@ export function AddressSetup({
           {/* The full, properly formatted address — the whole point of the
               lookup step. */}
           <p className="text-body text-ink">{preview.label}</p>
+          {preview.timezone && (
+            <p className="text-meta text-ink-soft">Times will be shown in {timeZoneName(preview.timezone)}.</p>
+          )}
           {preview.candleLighting && preview.candleLightingWhen ? (
             <p className="text-body text-ink-soft">
               Candle lighting there on {preview.candleLightingWhen}:{" "}
@@ -149,13 +153,13 @@ export function AddressSetup({
             </p>
           ) : (
             <p className="text-body text-ink-soft">
-              No candle lighting for that place. Check the timezone above before you use it.
+              No candle lighting for that place. Check it&rsquo;s the right address before you use it.
             </p>
           )}
 
           {previewIsUs ? (
             <div className="flex items-center gap-3 pt-1">
-              <Button variant="primary" onClick={use} disabled={busy}>
+              <Button variant="primary" onClick={use} busy={saving} disabled={lookingUp}>
                 {saving ? "Saving" : "Use this address"}
               </Button>
               <Button variant="tertiary" onClick={() => setPreview({ status: "idle" })} disabled={busy}>

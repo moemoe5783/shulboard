@@ -1,15 +1,16 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { Button } from "@/components/Button";
-import { Field, SelectField } from "@/components/Field";
+import { Field } from "@/components/Field";
 import { updateOrgSettings, type UpdateOrgSettingsState } from "../actions";
 import { AddressSetup } from "./AddressSetup";
 
 /*
- * The shul's settings: name and timezone (saved by the form's own Save), and
- * the location (set by AddressSetup, which geocodes, saves and warms in one
- * step from a single address field).
+ * The shul's settings: its name (saved by the form's own Save), and the
+ * location (set by AddressSetup, which geocodes, saves and warms in one step
+ * from a single address field). The timezone is not asked for: it comes with
+ * the address (lib/geocoding/timezone.ts), and AddressSetup shows it back.
  *
  * LOCATION IS NO LONGER PART OF THIS FORM'S SAVE. It used to carry a
  * coordinate disclosure, a ZIP field, a Chabad city search and a "Fetch now"
@@ -24,7 +25,6 @@ export function OrgSettingsForm({
   postalCode,
   chabadEnabled,
   geocodingConfigured,
-  timezones,
   canEdit,
 }: {
   name: string;
@@ -33,11 +33,9 @@ export function OrgSettingsForm({
   postalCode: string | null;
   chabadEnabled: boolean;
   geocodingConfigured: boolean;
-  timezones: string[];
   canEdit: boolean;
 }) {
   const [state, formAction, pending] = useActionState<UpdateOrgSettingsState, FormData>(updateOrgSettings, {});
-  const [zone, setZone] = useState(timezone);
 
   return (
     <div className="flex flex-col gap-4">
@@ -53,26 +51,11 @@ export function OrgSettingsForm({
             autoComplete="organization"
           />
 
-          <SelectField
-            id="timezone"
-            name="timezone"
-            label="Timezone"
-            required
-            value={zone}
-            onChange={(event) => setZone(event.target.value)}
-            hint="Every time on every board is shown in this zone. Set it before adding an address so zmanim are fetched in the right zone."
-          >
-            {timezones.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </SelectField>
         </fieldset>
 
         {canEdit ? (
           <div className="flex items-center gap-3">
-            <Button type="submit" variant="primary" disabled={pending}>
+            <Button type="submit" variant="primary" busy={pending}>
               {pending ? "Saving" : "Save"}
             </Button>
             {state.saved && <span className="text-body text-ink-soft">Saved</span>}
@@ -93,7 +76,7 @@ export function OrgSettingsForm({
       <AddressSetup
         locationLabel={locationLabel}
         postalCode={postalCode}
-        timezone={zone}
+        timezone={timezone}
         chabadEnabled={chabadEnabled}
         geocodingConfigured={geocodingConfigured}
         canEdit={canEdit}

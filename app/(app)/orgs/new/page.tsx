@@ -11,10 +11,6 @@ export default async function NewOrgPage() {
   await requireUser();
   const memberships = await getMemberships();
 
-  // Intl.supportedValuesOf is the whole IANA list, which is the right answer for
-  // a product where the timezone decides when candle lighting is.
-  const timezones = Intl.supportedValuesOf("timeZone");
-
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
@@ -27,7 +23,7 @@ export default async function NewOrgPage() {
         </p>
 
         <div className="rounded-panel border-rule bg-surface mt-6 border p-6">
-          <NewOrgForm timezones={timezones} geocodingConfigured={isGeocodingConfigured()} />
+          <NewOrgForm geocodingConfigured={isGeocodingConfigured()} />
         </div>
       </div>
     </main>
