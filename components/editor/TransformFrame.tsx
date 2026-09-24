@@ -14,6 +14,7 @@ import Moveable, {
 } from "react-moveable";
 import Selecto from "react-selecto";
 import { useEditor } from "@/lib/editor/store";
+import { matchPresets } from "@/lib/editor/size-presets";
 import { widgetRect, type Rect } from "@/lib/editor/geometry";
 import "./transform-frame.css";
 
@@ -82,8 +83,11 @@ type CornerResizeInfo = {
    *  diagonal, as a vector, is what a proportional drag stays parallel to. */
   startW: number;
   startH: number;
-  /** Image defaults to proportional and never leaves it, so its gesture skips
-   *  the angle check entirely rather than being "near" a permissive cone. */
+  /** A photo element (Image, Gallery, Collage) is proportional at a corner
+   *  and never leaves it, so its gesture skips the angle check entirely
+   *  rather than being "near" a permissive cone. Its box is usually a
+   *  placeholder for a photo or flyer of a set shape (lib/editor/
+   *  size-presets.ts); a corner keeps that shape, an edge changes it. */
   isImage: boolean;
 };
 
@@ -137,6 +141,9 @@ function isNearDiagonal(
 }
 
 const SNAP_THRESHOLD_PX = 6;
+
+/** Elements whose box is a photo's frame, so a corner drag keeps its shape. */
+const PHOTO_TYPES = new Set(["image", "gallery", "collage"]);
 
 export function TransformFrame({
   canvasRef,
@@ -541,8 +548,36 @@ export function TransformFrame({
     if (el && el.dataset.locked !== "true") selectWidgets([top]);
   };
 
+  /*
+   * The size tag: the box's size, and its preset shape if it's on one, beside
+   * the element while it's being resized. Written straight to the DOM like the
+   * resize itself (paint, above) — a React render per pointer move is what
+   * this layer exists to avoid. It floats, which is what earns it a shadow.
+   */
+  const sizeTagRef = useRef<HTMLDivElement>(null);
+  const showSizeTag = useCallback((el: HTMLElement, w: number, h: number) => {
+    const tag = sizeTagRef.current;
+    if (!tag) return;
+    const preset = matchPresets(w, h)[0];
+    tag.textContent = `${Math.round(w)} × ${Math.round(h)}${preset ? `, ${preset.label}` : ""}`;
+    const box = el.getBoundingClientRect();
+    tag.style.left = `${box.left + box.width / 2}px`;
+    tag.style.top = `${box.bottom + 8}px`;
+    tag.hidden = false;
+  }, []);
+  const hideSizeTag = useCallback(() => {
+    if (sizeTagRef.current) sizeTagRef.current.hidden = true;
+  }, []);
+
   return (
     <>
+      <div
+        ref={sizeTagRef}
+        hidden
+        aria-hidden
+        data-size-tag
+        className="bg-ink text-paper text-meta numeric shadow-menu rounded-control pointer-events-none fixed z-50 -translate-x-1/2 px-2 py-1 whitespace-nowrap"
+      />
       <Moveable
         ref={moveableRef}
         target={targets}
@@ -611,7 +646,7 @@ export function TransformFrame({
           diagonalActiveRef.current = false;
 
           if (frame && isCorner) {
-            const isImage = widgetsById.get(id ?? "")?.type === "image";
+            const isImage = PHOTO_TYPES.has(widgetsById.get(id ?? "")?.type ?? "");
             cornerResizeRef.current = {
               clientX,
               clientY,
@@ -621,8 +656,8 @@ export function TransformFrame({
               startH: frame.start.h,
               isImage,
             };
-            // For Image, corner drags are proportional by default — no angle
-            // to check, it never leaves this mode for the gesture.
+            // For a photo element, corner drags are proportional by default —
+            // no angle to check, it never leaves this mode for the gesture.
             setCornerRatioActive(isImage);
           } else {
             cornerResizeRef.current = null;
@@ -638,6 +673,7 @@ export function TransformFrame({
           frame.tx = drag.beforeTranslate[0];
           frame.ty = drag.beforeTranslate[1];
           paint(el);
+          showSizeTag(el, width / zoom, height / zoom);
 
           const info = cornerResizeRef.current;
           if (info && !info.isImage) {
@@ -649,6 +685,7 @@ export function TransformFrame({
           }
         }}
         onResizeEnd={({ target }) => {
+          hideSizeTag();
           endGesture([target as HTMLElement], "resize");
           cornerResizeRef.current = null;
           diagonalActiveRef.current = false;
