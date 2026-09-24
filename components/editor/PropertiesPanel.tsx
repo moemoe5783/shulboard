@@ -391,7 +391,10 @@ function SizingToggle({
  * Still worth promoting the day a widget really does want a size per part.
  */
 function isTextSized(manifest: WidgetManifest<never>): boolean {
-  return manifest.category === "text" || manifest.category === "time" || manifest.category === "content";
+  // A widget with text to size declares its type-size bounds; one in these
+  // categories without them (the QR code) has nothing for the Size tab to set.
+  const textCategory = manifest.category === "text" || manifest.category === "time" || manifest.category === "content";
+  return textCategory && manifest.sizing.minFontSize !== undefined;
 }
 
 /**

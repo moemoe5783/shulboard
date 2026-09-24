@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { albumSelectionFields, albumSelectionNeeds } from "@/lib/media/selection";
+import { COLLAGE_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "../collage/transitions";
 import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
@@ -22,6 +23,18 @@ export const galleryConfigSchema = z.object({
   order: z.enum(["album", "shuffle"]).default("album"),
   /** Show the photo's caption over the image. */
   showCaption: z.boolean().default(false),
+  /** How one photo gives way to the next — the collage's effects
+   *  (../collage/transitions.ts), applied to a single photo. A gallery saved
+   *  before this crossfades. */
+  transition: z.enum(COLLAGE_TRANSITIONS).default("crossfade").catch("crossfade"),
+  /** A multiplier on every duration: 2 is twice as fast, 0.5 half as fast. */
+  transitionSpeed: z
+    .preprocess(
+      (value) => (typeof value === "number" ? Math.min(TRANSITION_SPEED_MAX, Math.max(TRANSITION_SPEED_MIN, value)) : value),
+      z.number(),
+    )
+    .default(1)
+    .catch(1),
   // Background, colour, font, padding, radius, border, shadow, header — shared
   // appearance for every widget (../style.ts).
   ...widgetStyleFields,
