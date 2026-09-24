@@ -92,4 +92,16 @@ select tests.allowed($$
           'image', 'z', 'image/webp', 'second-file', 'pending')
 $$, 'reupload: a file whose upload failed can be tried again');
 
+-- ---------------------------------------------------------------------------
+-- The bucket's own limits (20260927090200_assets_bucket_limits.sql)
+-- ---------------------------------------------------------------------------
+
+reset role;
+select tests.ok(
+  (select allowed_mime_types = array['image/webp', 'image/jpeg'] from storage.buckets where id = 'assets'),
+  'bucket: assets accepts WebP and JPEG only');
+select tests.eq(
+  (select file_size_limit from storage.buckets where id = 'assets'),
+  8388608, 'bucket: assets caps a file at 8 MB');
+
 rollback;

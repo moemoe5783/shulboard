@@ -30,6 +30,8 @@ export type LabScenario = {
   insertErrorCode?: string;
   /** Make the canvas report this type instead of WebP. */
   encodeAs?: string;
+  /** …and this one instead of JPEG. */
+  jpegAs?: string;
 };
 
 function fakeClient(scenario: LabScenario, calls: Call[]) {
@@ -115,11 +117,11 @@ async function run(scenario: LabScenario): Promise<{ result: UploadResult; calls
   const calls: Call[] = [];
   const file = await samplePhoto(scenario.width, scenario.height);
   const restore = HTMLCanvasElement.prototype.toBlob;
-  if (scenario.encodeAs) {
+  if (scenario.encodeAs || scenario.jpegAs) {
     // Old Safari: asked for WebP, it quietly hands back a PNG.
-    const forced = scenario.encodeAs;
+    const swap: Record<string, string | undefined> = { "image/webp": scenario.encodeAs, "image/jpeg": scenario.jpegAs };
     HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
-      return restore.call(this, callback, type === "image/webp" ? forced : type, quality);
+      return restore.call(this, callback, (type && swap[type]) || type, quality);
     };
   }
   try {

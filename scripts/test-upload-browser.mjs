@@ -93,6 +93,44 @@ try {
   }
 
   {
+    const { result, calls } = await run({ width: 3000, height: 2000 });
+    const up = uploads(calls);
+    check(
+      up.every((c) => c.detail.type === "image/webp" && c.detail.options.contentType === "image/webp" && c.detail.path.endsWith(".webp")),
+      "sizes are stored as WebP where the browser makes it",
+    );
+    check(up.every((c) => c.detail.bytes <= 8 * 1024 * 1024), "every size is under the bucket's 8 MB", up.map((c) => c.detail.bytes).join(", "));
+  }
+
+  {
+    // Old Safari: asked for WebP, the canvas answers with a PNG.
+    const { result, calls } = await run({ width: 3000, height: 2000, encodeAs: "image/png" });
+    const up = uploads(calls);
+    const ready = assetWrites(calls).find((w) => w.op === "update" && w.detail.payload.status === "ready");
+    const recorded = ready ? Object.values(ready.detail.payload.variants) : [];
+    check(result.ok, "a browser that can't make WebP still uploads", JSON.stringify(result));
+    check(
+      up.length > 0 && up.every((c) => c.detail.type === "image/jpeg" && c.detail.options.contentType === "image/jpeg" && c.detail.path.endsWith(".jpg")),
+      "its sizes are re-encoded as JPEG, never stored as PNG",
+      up.map((c) => `${c.detail.type} ${c.detail.path.split("/").pop()}`).join(", "),
+    );
+    check(
+      recorded.length > 0 && recorded.every((v) => v.content_type === "image/jpeg" && v.extension === "jpg"),
+      "and the row records JPEG, so the proxy serves the right type",
+    );
+    check(ready?.detail.payload.mime_type === "image/jpeg", "the row's own type is JPEG too", ready?.detail.payload.mime_type);
+  }
+
+  {
+    const { result, calls } = await run({ width: 1000, height: 750, encodeAs: "image/png", jpegAs: "image/png" });
+    check(!result.ok && uploads(calls).length === 0, "a browser that can make neither refuses before uploading anything", result.error);
+    check(
+      assetWrites(calls).some((w) => w.op === "update" && w.detail.payload.status === "failed"),
+      "and marks the row failed",
+    );
+  }
+
+  {
     const { result, calls } = await run({ width: 3000, height: 2000, failUploadAt: 1 });
     const up = uploads(calls);
     const failed = assetWrites(calls).find((w) => w.op === "update" && w.detail.payload.status === "failed");

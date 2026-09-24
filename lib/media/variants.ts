@@ -59,6 +59,23 @@ export const VARIANT_CONTENT_TYPE = "image/webp";
 export const VARIANT_EXTENSION = "webp";
 export const VARIANT_QUALITY = 0.85;
 
+/**
+ * JPEG, for the browser that can't make WebP. Asked for WebP, a canvas that
+ * doesn't support it hands back a PNG without a word (older Safari), and a
+ * 2160px PNG photo can be tens of megabytes — so the upload re-encodes to
+ * JPEG instead. JPEG has no transparency, so a transparent picture is laid on
+ * white first; WebP keeps it.
+ */
+export const FALLBACK_CONTENT_TYPE = "image/jpeg";
+export const FALLBACK_EXTENSION = "jpg";
+
+/** The only types the `assets` bucket accepts, and the largest file —
+ *  enforced by Storage itself (20260927090200_assets_bucket_limits.sql) and
+ *  checked here first, so a gabbai gets a reason rather than a refusal. Keep
+ *  the two in step. */
+export const STORED_CONTENT_TYPES = [VARIANT_CONTENT_TYPE, FALLBACK_CONTENT_TYPE];
+export const MAX_STORED_BYTES = 8 * 1024 * 1024;
+
 /** The image types a browser decodes itself. HEIC/HEIF (iPhone photos) is
  *  accepted too, but converted first — see `isHeicFile` and lib/media/heic.ts. */
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
