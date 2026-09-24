@@ -36,6 +36,8 @@ select tests.eq((select count(*) from public.boards), 0::bigint, 'with an app on
 select tests.eq((select count(*) from public.orgs), 0::bigint, 'not even its own shul');
 select tests.denied($$insert into public.boards (org_id, name) values ('0d000000-0000-4000-8000-000000000001', 'Sneaky')$$,
   'and writes nothing');
+select tests.eq((select count(*) from public.org_member_directory('0d000000-0000-4000-8000-000000000001')), 0::bigint,
+  'nor lists the shul''s members through the directory function');
 reset role;
 
 -- After the code.

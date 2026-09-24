@@ -142,6 +142,12 @@ begin
   if actor is null then
     raise exception 'sign in to accept this invitation' using errcode = '42501';
   end if;
+  -- SECURITY DEFINER skips the table policies, including the two-step one
+  -- (20260925090000), so it's checked here: a password-only session of an
+  -- account with an authenticator app can't join anything.
+  if not public.mfa_satisfied() then
+    raise exception 'finish two-step sign-in first' using errcode = '42501';
+  end if;
 
   select * into invite from public.org_invites where token = p_token and length(p_token) >= 24 for update;
   if not found then
@@ -214,8 +220,10 @@ as $$
   from public.org_members m
   join auth.users u on u.id = m.user_id
   where m.org_id = p_org
-    -- Only the shul's own members see its list.
+    -- Only the shul's own members see its list — and, as SECURITY DEFINER
+    -- skips the table policies, only once two-step sign-in is satisfied.
     and public.is_org_member(p_org)
+    and public.mfa_satisfied()
   order by m.created_at;
 $$;
 

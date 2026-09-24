@@ -9,6 +9,10 @@
 -- the lock: AND-ed with every permissive policy, they refuse a signed-in
 -- request unless it is aal2 or its account has no verified factor.
 --
+-- SECURITY DEFINER functions skip these policies, so any that reads or writes
+-- tenant data on a user's behalf calls mfa_satisfied() itself
+-- (accept_org_invite, org_member_directory in 20260925090100).
+--
 -- Anon requests and the service role are unaffected: anon has no uid (so no
 -- factors), and the service role bypasses RLS.
 --
