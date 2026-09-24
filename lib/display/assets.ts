@@ -1,6 +1,8 @@
 "use client";
 
 import type { BundleEnvelope } from "@/lib/bundle/types";
+import { selectPhotos, type AlbumSelection } from "@/lib/media/selection";
+import { todayIn } from "@/lib/media/visibility";
 
 /*
  * The atomic swap — docs/plan.md §3c.
@@ -30,39 +32,76 @@ export type AssetProgress = { done: number; total: number };
  *  lobby connection and never does. */
 const CONCURRENCY = 6;
 
-/** How many photos of each album are downloaded before a board goes up. Enough
- *  that a gallery or collage has something to cycle through; the rest follow
- *  while the board is already on the wall. */
+/** How many photos each gallery or collage gets before a board goes up.
+ *  Enough to have something to cycle through; the rest follow while the board
+ *  is already on the wall. Per widget, not per album: a gallery showing "every
+ *  album" of a shul with forty albums still waits for eight photos, not 320. */
 export const HEAD_START = 8;
+
+/** A widget config that picks photos from albums (lib/media/selection.ts) —
+ *  Gallery and Collage today, and whatever binds an album next. */
+function albumSelectionOf(config: unknown): AlbumSelection | null {
+  if (!config || typeof config !== "object") return null;
+  const c = config as Record<string, unknown>;
+  if (!("albumId" in c) && !("albumIds" in c) && !("albumMode" in c)) return null;
+  return c as unknown as AlbumSelection;
+}
 
 /**
  * Which files a board needs before it can go up, and which can follow.
  *
  * Everything that isn't an album photo — an Image widget's picture, a photo
  * background — is needed first, since it is on screen from the first second.
- * So are the first HEAD_START photos of each album. The rest are taken a photo
- * from each album in turn, so every gallery gains variety at the same pace.
+ * So are the first HEAD_START photos each gallery or collage would show. The
+ * rest are taken a photo from each album in turn, so every gallery gains
+ * variety at the same pace.
  */
 export function warmOrder(bundle: BundleEnvelope): { first: string[]; rest: string[] } {
   const all = [...new Set(bundle.assets.map((asset) => asset.url))];
-  const albums = Object.values(bundle.content.albums ?? {});
+  const albumMap = bundle.content.albums ?? {};
+  const albums = Object.values(albumMap);
   const inAlbum = new Set(albums.flatMap((photos) => photos.map((photo) => photo.src)));
+  const wanted = new Set(all);
 
   const first = all.filter((url) => !inAlbum.has(url));
-  const rest: string[] = [];
-  const wanted = new Set(all);
   const seen = new Set(first);
+  const take = (url: string | undefined, into: string[]) => {
+    if (!url || seen.has(url) || !wanted.has(url)) return false;
+    seen.add(url);
+    into.push(url);
+    return true;
+  };
+
+  const today = todayIn(bundle.screen.timezone);
+  for (const board of bundle.boards) {
+    for (const widget of board.doc.widgets ?? []) {
+      const selection = albumSelectionOf(widget.config);
+      if (!selection) continue;
+      let taken = 0;
+      for (const photo of selectPhotos(selection, albumMap, today) ?? []) {
+        if (taken >= HEAD_START) break;
+        if (take(photo.src, first) || seen.has(photo.src)) taken += 1;
+      }
+    }
+  }
+
+  const rest: string[] = [];
   const longest = Math.max(0, ...albums.map((photos) => photos.length));
   for (let i = 0; i < longest; i += 1) {
-    for (const photos of albums) {
-      const url = photos[i]?.src;
-      if (!url || seen.has(url) || !wanted.has(url)) continue;
-      seen.add(url);
-      (i < HEAD_START ? first : rest).push(url);
-    }
+    for (const photos of albums) take(photos[i]?.src, rest);
   }
   return { first, rest };
 }
+
+/** Everything in the asset cache, as absolute URLs — one call, rather than a
+ *  lookup per file. On a TV's browser each lookup can take tens of
+ *  milliseconds, and six hundred of them one after another is half a minute
+ *  of a dark screen. */
+async function cachedUrls(cache: Cache): Promise<Set<string>> {
+  return new Set((await cache.keys()).map((request) => request.url));
+}
+
+const absolute = (url: string) => new URL(url, location.origin).href;
 
 /**
  * Put these files in the cache, and say whether they all made it.
@@ -98,9 +137,10 @@ export async function warmUrls(
 
   // What's already here doesn't need fetching — on an update that's usually
   // most of it — so it counts as done before any download starts.
+  const have = await cachedUrls(cache);
   const toFetch: string[] = [];
   for (const url of urls) {
-    if (await cache.match(url)) done += 1;
+    if (have.has(absolute(url))) done += 1;
     else toFetch.push(url);
   }
   report();
@@ -140,7 +180,7 @@ export async function cachedView(bundle: BundleEnvelope): Promise<BundleEnvelope
   if (typeof caches === "undefined") return bundle;
   const albums = bundle.content.albums ?? {};
   const wanted = new Set(bundle.assets.map((asset) => asset.url));
-  const cache = await caches.open(ASSET_CACHE);
+  const have = await cachedUrls(await caches.open(ASSET_CACHE));
 
   let trimmed = false;
   const view: typeof albums = {};
@@ -148,7 +188,7 @@ export async function cachedView(bundle: BundleEnvelope): Promise<BundleEnvelope
     const kept = [];
     for (const photo of photos) {
       // A photo whose file the bundle doesn't list isn't this gate's to hold.
-      if (!wanted.has(photo.src) || (await cache.match(photo.src))) kept.push(photo);
+      if (!wanted.has(photo.src) || have.has(absolute(photo.src))) kept.push(photo);
     }
     if (kept.length !== photos.length) trimmed = true;
     view[id] = kept;
@@ -167,7 +207,13 @@ export async function evictUnusedAssets(bundle: BundleEnvelope): Promise<number>
   if (typeof caches === "undefined") return 0;
 
   const cache = await caches.open(ASSET_CACHE);
-  const keep = new Set(bundle.assets.map((asset) => new URL(asset.url, location.origin).href));
+  const keep = new Set(bundle.assets.map((asset) => absolute(asset.url)));
+  // A collage shows whichever stored size fits its cells, fetched (and cached
+  // by the service worker) as it goes — keep those too, or every eviction
+  // would send them back to the network.
+  for (const photos of Object.values(bundle.content.albums ?? {})) {
+    for (const photo of photos) for (const variant of photo.variants) keep.add(absolute(variant.src));
+  }
   const stored = await cache.keys();
 
   let removed = 0;
