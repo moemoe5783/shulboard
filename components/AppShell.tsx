@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavRail, type NavRailProps } from "./NavRail";
 
 /*
- * The signed-in shell: the rail beside the content on a desk, and on a phone
- * a top bar with the shul's name and a Menu button that opens the same rail
- * as a panel over the page. One rail component in both, so a phone never has
+ * The signed-in shell: the rail beside the content on a desk (the `desk`
+ * variant, app/globals.css — wide and tall enough), and on a phone, upright or
+ * sideways, a top bar with the shul's name and a Menu button that opens the
+ * same rail as a panel over the page. One rail component in both, so a phone never has
  * a different map of the product.
  *
  * The panel floats over the page, which is what earns it a shadow (design.md
@@ -35,8 +36,8 @@ export function AppShell({ rail, children }: { rail: NavRailProps; children: Rea
   }, [open]);
 
   return (
-    <div className="bg-paper font-ui flex min-h-screen flex-col md:flex-row">
-      <header className="border-rule bg-paper sticky top-0 z-30 flex h-12 items-center justify-between gap-3 border-b px-4 md:hidden">
+    <div className="bg-paper font-ui desk:flex-row flex min-h-screen flex-col">
+      <header className="border-rule bg-paper desk:hidden sticky top-0 z-30 flex h-12 items-center justify-between gap-3 border-b px-4">
         <span className="text-body min-w-0 truncate font-semibold">{shulName}</span>
         <button
           ref={menuButton}
@@ -50,10 +51,13 @@ export function AppShell({ rail, children }: { rail: NavRailProps; children: Rea
         </button>
       </header>
 
-      <NavRail {...rail} className="hidden w-54 shrink-0 md:flex" />
+      {/* Stays put while the page scrolls: pinned to the top of the window,
+          as tall as it, scrolling itself only if the window is shorter than
+          the rail. */}
+      <NavRail {...rail} className="desk:flex desk:sticky desk:top-0 desk:h-screen desk:overflow-y-auto hidden w-54 shrink-0" />
 
       {open && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="desk:hidden fixed inset-0 z-40">
           <div aria-hidden className="bg-ink/40 absolute inset-0" onClick={() => setOpen(false)} />
           <div
             id="app-menu"
