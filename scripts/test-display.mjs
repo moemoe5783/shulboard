@@ -542,11 +542,13 @@ try {
 
     await page.goto(DISPLAY, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    check(await page.locator("[data-loading-progress]").isVisible().catch(() => false), "the loading screen stays up while the gallery's opening photos arrive");
+    await page.waitForFunction(() => !document.querySelector("[data-loading-progress]"), null, { timeout: 20000 }).catch(() => {});
     const servedAtStart = served;
-    check((await marker(page, "version")) === "1" && servedAtStart < count / 2, "the board goes up after the first few photos", `${servedAtStart} of ${count} downloaded`);
-    const shown = await page.locator("[data-gallery-layer=entering]").getAttribute("data-photo-id").catch(() => null);
-    const shownIndex = Number((shown ?? "al-99").slice(3));
-    check(shownIndex < 8, "and the gallery shows a photo that's already here", shown ?? "no photo");
+    check(servedAtStart >= 1 && servedAtStart < count / 2, "then the board comes into view after the first few photos", `${servedAtStart} of ${count} downloaded`);
+    const shownSrc = await page.locator("[data-gallery-layer=entering] img").getAttribute("src").catch(() => null);
+    const shownCached = shownSrc ? await page.evaluate(async (src) => Boolean(await (await caches.open("shulboard-assets-v1")).match(src)), shownSrc) : false;
+    check(shownCached, "and the gallery shows a photo that's already here", shownSrc ?? "no photo");
 
     const tag = page.locator("[data-updating-badge]");
     await tag.waitFor({ timeout: 8000 }).catch(() => {});
@@ -598,9 +600,176 @@ try {
     });
     await page.goto(DISPLAY, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
-    check((await marker(page, "version")) === "1" && served <= 16, "a gallery of thirty albums waits for a handful of photos, not a few from each album",
+    await page.waitForFunction(() => !document.querySelector("[data-loading-progress]"), null, { timeout: 20000 }).catch(() => {});
+    check(served >= 1 && served <= 16, "a gallery of thirty albums waits for a handful of photos, not a few from each album",
       `${served} of ${assets.length} downloaded`);
     await manyAlbums.close();
+  }
+
+  // ---- E. A collage downloads exactly the sizes it shows, and then nothing ---
+  console.log("\nE. A collage downloads exactly the sizes its pages use, then nothing more");
+  const SIZES = [
+    { name: "thumb", width: 400, height: 267 },
+    { name: "display", width: 1080, height: 720 },
+    { name: "large", width: 2160, height: 1440 },
+  ];
+  const collagePhotos = Array.from({ length: 24 }, (_, i) => {
+    const variants = SIZES.map((size) => ({
+      name: size.name,
+      src: `/m/cp-${i}/${size.name}-cp${i}.svg`,
+      width: size.width,
+      height: size.height,
+      contentType: "image/svg+xml",
+      bytes: 200,
+    }));
+    return { assetId: `cp-${i}`, src: variants[1].src, width: 3000, height: 2000, caption: null, addedAt: null, displayUntil: null, variants };
+  });
+  const collageBundle = (hash) => {
+    const base = bundleFixture({ version: 1, hash, title: "Siyum" });
+    base.boards[0].doc.widgets.push({
+      id: "66666666-6666-4666-8666-666666666666",
+      type: "collage",
+      x: 45, y: 5, w: 50, h: 90, rotation: 0, z: 2,
+      locked: false, hidden: false, opacity: 1, groupId: null,
+      styleOverrides: {},
+      config: { albumId: "", albumMode: "selected", albumIds: ["cp"], excludedAlbumIds: [], intervalSeconds: 2, transition: "none", density: "few" },
+    });
+    return { ...base, content: { ...base.content, albums: { cp: collagePhotos } }, assets: [] };
+  };
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"/>';
+  const photoOf = (url) => url.split("/")[2];
+
+  // E1. Worker out of the way, requests counted.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    const bundle = collageBundle("collage-e1");
+    const requested = new Set();
+    await context.route("**/api/screen/*/bundle", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", headers: { etag: '"collage-e1"' }, body: JSON.stringify(bundle) }),
+    );
+    await context.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await context.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+    await context.route("**/m/**", async (route) => {
+      requested.add(new URL(route.request().url()).pathname);
+      await route.fulfill({ status: 200, contentType: "image/svg+xml", body: svg });
+    });
+    await page.goto(`${DISPLAY}?debug`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(
+      () => /^([1-9]\d*) of \1 here$/.test(document.querySelector("[data-debug='Album files wanted']")?.textContent ?? ""),
+      null,
+      { timeout: 30000 },
+    ).catch(() => {});
+    const wanted = (await page.locator("[data-debug='Album files wanted']").textContent().catch(() => "")) ?? "";
+    check(/^24 of 24 here$/.test(wanted), "the collage declares one file per photo, and all of them arrive", wanted);
+    const perPhoto = new Map();
+    for (const url of requested) perPhoto.set(photoOf(url), [...(perPhoto.get(photoOf(url)) ?? []), url]);
+    check(perPhoto.size === 24 && [...perPhoto.values()].every((urls) => urls.length === 1), "exactly one size of each photo is downloaded, never all three",
+      `${requested.size} files for ${perPhoto.size} photos`);
+    check(![...requested].some((url) => url.includes("/large-")), "and not the 4K size, which no cell on a 1280px screen needs",
+      [...new Set([...requested].map((url) => url.split("/")[3].split("-")[0]))].join(", "));
+    await context.close();
+  }
+
+  // E2. Worker on, everything already on the device.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    await page.goto(DISPLAY, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).catch(() => {});
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).catch(() => {});
+
+    // A screen that has every size of every photo — say, from before this
+    // change — and last-known-good for a collage board.
+    await page.evaluate(async ({ bundle, token, urls, body }) => {
+      const open = indexedDB.open("shulboard", 1);
+      await new Promise((resolve, reject) => {
+        open.onupgradeneeded = () => open.result.createObjectStore("bundles");
+        open.onsuccess = () => resolve();
+        open.onerror = () => reject(open.error);
+      });
+      await new Promise((resolve, reject) => {
+        const tx = open.result.transaction("bundles", "readwrite");
+        tx.objectStore("bundles").put(bundle, token);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      const cache = await caches.open("shulboard-assets-v1");
+      for (const url of urls) await cache.put(url, new Response(body, { headers: { "content-type": "image/svg+xml" } }));
+    }, { bundle: collageBundle("collage-e2"), token: TOKEN, urls: collagePhotos.flatMap((p) => p.variants.map((v) => v.src)), body: svg });
+
+    const mediaStats = () =>
+      page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = (event) => resolve(event.data);
+            navigator.serviceWorker.controller?.postMessage({ type: "media-stats" }, [channel.port2]);
+            setTimeout(() => resolve(null), 2000);
+          }),
+      );
+    const cachedList = () => page.evaluate(async () => (await (await caches.open("shulboard-assets-v1")).keys()).map((r) => new URL(r.url).pathname));
+    // Every photo drawn right now, and whether each is on the device.
+    const onScreen = () =>
+      page.evaluate(async () => {
+        const cache = await caches.open("shulboard-assets-v1");
+        const out = [];
+        for (const img of document.querySelectorAll("[data-collage] img")) {
+          const src = new URL(img.getAttribute("src"), location.origin).pathname;
+          out.push({ src, cached: Boolean(await cache.match(src)) });
+        }
+        return { page: document.querySelector("[data-collage]")?.getAttribute("data-collage-page") ?? null, photos: out };
+      });
+    /** Watch for `ms`: the pages shown, and any photo drawn that isn't here. */
+    const watch = async (ms) => {
+      const pages = new Set();
+      const uncached = new Set();
+      const seen = new Set();
+      for (let t = 0; t < ms; t += 400) {
+        const now = await onScreen();
+        if (now.page) pages.add(now.page);
+        for (const photo of now.photos) {
+          seen.add(photoOf(photo.src));
+          if (!photo.cached) uncached.add(photo.src);
+        }
+        await page.waitForTimeout(400);
+      }
+      return { pages, uncached, seen };
+    };
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const firstRun = await watch(34000);
+    check(firstRun.pages.size >= 5, "the collage cycles its pages from the device", `${firstRun.pages.size} pages seen`);
+    check(firstRun.uncached.size === 0, "and never draws a photo that isn't on the device", [...firstRun.uncached].join(", "));
+    const kept = await cachedList();
+    const keptPerPhoto = new Map();
+    for (const url of kept) keptPerPhoto.set(photoOf(url), (keptPerPhoto.get(photoOf(url)) ?? 0) + 1);
+    check(kept.length === 24 && [...keptPerPhoto.values()].every((n) => n === 1),
+      "once the board has settled, only the size each photo is shown at is kept", `${kept.length} files kept of 72`);
+    const stats = await mediaStats();
+    check(stats !== null && stats.network === 0 && stats.hits > 0, "after a full cycle, no photo came from the network", JSON.stringify(stats));
+
+    // Reboot.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const afterReboot = await watch(18000);
+    const rebootStats = await mediaStats();
+    check(afterReboot.pages.size >= 4 && rebootStats?.network === 0,
+      "after a reboot it cycles again with nothing from the network", `${afterReboot.pages.size} pages, ${JSON.stringify(rebootStats)}`);
+
+    // Offline, with one photo's file gone: its page never shows with a hole.
+    const missing = kept[0];
+    await page.evaluate(async (url) => (await caches.open("shulboard-assets-v1")).delete(url), missing);
+    await context.setOffline(true);
+    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => {});
+    const offline = await watch(20000);
+    check(!offline.seen.has(photoOf(missing)), "offline, a page whose photo is missing is never shown", photoOf(missing));
+    check(offline.uncached.size === 0, "nothing is drawn that isn't on the device", [...offline.uncached].join(", "));
+    check(offline.pages.size >= 3, "and the collage skips past it rather than stopping", `${offline.pages.size} pages seen`);
+    await context.setOffline(false);
+    await context.close();
   }
   console.log("");
 } finally {

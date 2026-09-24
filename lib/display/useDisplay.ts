@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { BundleEnvelope } from "@/lib/bundle/types";
-import { cachedView, evictUnusedAssets, warmOrder, warmUrls, type AssetProgress } from "./assets";
+import { boardPictureUrls, DeviceFiles, type AssetProgress } from "./assets";
+import { resetMediaStats } from "./debug";
 import { forgetBundle, readBundle, writeBundle } from "./store";
 import { deviceHeaders } from "./device";
 
@@ -27,9 +28,9 @@ const HEARTBEAT_MS = 60_000;
  *  thundering herd. */
 const RELOAD_HOUR = 3;
 const RELOAD_JITTER_MS = 20 * 60 * 1000;
-/** How often albums on screen grow while photos download behind a board. Not
- *  on every photo: each growth can re-order a shuffled gallery. */
-const GROW_MS = 15_000;
+/** How long a board is up before files it no longer uses are cleared out —
+ *  long enough for every widget on it to have declared its whole cycle. */
+const EVICT_AFTER_MS = 30_000;
 
 export type DisplayStatus = {
   /** Where what you are looking at came from. */
@@ -47,12 +48,15 @@ export type DisplayStatus = {
   waitingForAssets: boolean;
   /** While a bundle's files are downloading: how many of how many. Null otherwise. */
   assetProgress: AssetProgress | null;
-  /** What that download is for: "board" is what a board needs before it goes
-   *  up; "photos" is the rest of its albums, arriving behind a board already
-   *  showing. */
-  assetPhase: "board" | "photos" | null;
+  /** What that download is for: a board's own pictures, before it goes up.
+   *  (Album photos arrive behind a board already showing; the widgets' own
+   *  progress is `files.wantedProgress()`.) */
+  assetPhase: "board" | null;
   errorCount: number;
 };
+
+/** What the browser says about this device's storage — for the debug view. */
+export type DisplayStorage = { persisted: boolean | null; usage: number | null; quota: number | null };
 
 const startedAt = Date.now();
 
@@ -75,66 +79,32 @@ export function useDisplay(token: string) {
   // right now, not whatever it was when the callback was created.
   const currentRef = useRef<BundleEnvelope | null>(null);
   const inFlightRef = useRef(false);
-  /** Bumped whenever a different bundle is adopted, so a background download
-   *  for the one before stops rather than filling the cache with its photos. */
-  const generationRef = useRef(0);
 
-  /** Put a bundle on screen, with its albums cut to the photos this device
-   *  already holds (assets.ts, cachedView). `currentRef` keeps the whole
-   *  bundle — it is what the next poll's ETag and comparison are about. */
-  const adopt = useCallback(async (next: BundleEnvelope, source: "cache" | "network") => {
-    generationRef.current += 1;
+  /** The files on this device, and the album photos the board's widgets want
+   *  downloaded (assets.ts). One for the life of the page. */
+  const [files] = useState(() => new DeviceFiles());
+  const filesSnapshot = useSyncExternalStore(files.subscribe, files.getSnapshot, files.getSnapshot);
+  const loadedRef = useRef<Promise<void> | null>(null);
+  const loadFiles = useCallback(() => (loadedRef.current ??= files.load()), [files]);
+
+  /** Put a bundle on screen. */
+  const adopt = useCallback((next: BundleEnvelope, source: "cache" | "network") => {
     currentRef.current = next;
-    const view = await cachedView(next).catch(() => next);
-    if (currentRef.current !== next) return;
-    setBundle(view);
+    setBundle(next);
     setStatus((s) => ({ ...s, source, waitingForAssets: false }));
   }, []);
 
   /** Progress for the screen to show, at most four times a second — a board
-   *  with hundreds of photos would otherwise re-render for every one. */
+   *  with hundreds of pictures would otherwise re-render for every one. */
   const lastReportRef = useRef(0);
   const reporter = useCallback(
-    (phase: "board" | "photos") => (progress: AssetProgress) => {
+    (progress: AssetProgress) => {
       const now = Date.now();
       if (now - lastReportRef.current < 250 && progress.done < progress.total) return;
       lastReportRef.current = now;
-      setStatus((s) => ({ ...s, assetProgress: progress, assetPhase: phase }));
+      setStatus((s) => ({ ...s, assetProgress: progress, assetPhase: "board" }));
     },
     [],
-  );
-
-  /** Re-cut the albums on screen as more photos land. */
-  const regrow = useCallback(async (whole: BundleEnvelope) => {
-    const view = await cachedView(whole).catch(() => whole);
-    if (currentRef.current === whole) setBundle(view);
-  }, []);
-
-  /** Download the rest of a board's photos behind it, growing its albums on
-   *  screen every so often and once more at the end. Stops if another board
-   *  is adopted meanwhile. */
-  const fillIn = useCallback(
-    async (whole: BundleEnvelope, urls: string[], generation: number, onProgress: (p: AssetProgress) => void) => {
-      const stale = () => generationRef.current !== generation;
-      let lastGrow = Date.now();
-      await warmUrls(
-        urls,
-        (progress) => {
-          if (stale()) return;
-          onProgress(progress);
-          if (Date.now() - lastGrow > GROW_MS) {
-            lastGrow = Date.now();
-            void regrow(whole);
-          }
-        },
-        stale,
-      );
-      if (stale()) return;
-      setStatus((s) => ({ ...s, assetProgress: null, assetPhase: null }));
-      await regrow(whole);
-      void evictUnusedAssets(whole);
-    },
-    [regrow],
   );
 
   /*
@@ -194,29 +164,24 @@ export function useDisplay(token: string) {
 
       setStatus((s) => ({ ...s, online: true, lastFetchAt: Date.now(), waitingForAssets: true }));
 
-      // First what the board needs to go up: its pictures and the first few
-      // photos of each album (assets.ts, warmOrder).
-      const { first, rest } = warmOrder(next);
-      const head = await warmUrls(first, reporter("board"));
+      // The board's own pictures first — on screen from its first second. Album
+      // photos aren't waited for here: each Gallery and Collage asks for its own
+      // (assets.ts) and shows a page only once all of it has arrived.
+      await loadFiles();
+      const pictures = await files.warmUrls(boardPictureUrls(next), reporter);
       setStatus((s) => ({ ...s, assetProgress: null, assetPhase: null }));
       // Held back deliberately when a board is already showing: it keeps running
       // and the next poll tries again — a partially-cached bundle would show grey
       // holes where pictures belong the moment the network drops. With nothing
       // on screen yet, though, the board goes up anyway: a few pictures short
       // beats a black screen, and the next poll fetches the rest.
-      if (!head.ready && held) {
+      if (!pictures.ready && held) {
         setStatus((s) => ({ ...s, waitingForAssets: true }));
         return;
       }
 
       await writeBundle(token, next);
-      await adopt(next, "network");
-      const generation = generationRef.current;
-      // The board is up and polling carries on; the rest of the photos
-      // download behind it, and the albums on screen grow as they land.
-      inFlightRef.current = false;
-      // Anything the head start missed is tried again with them.
-      void fillIn(next, [...head.missing, ...rest], generation, reporter("photos"));
+      adopt(next, "network");
     } catch {
       setStatus((s) => ({
         ...s,
@@ -226,7 +191,7 @@ export function useDisplay(token: string) {
     } finally {
       inFlightRef.current = false;
     }
-  }, [token, adopt, fillIn, reporter]);
+  }, [token, adopt, files, loadFiles, reporter]);
 
   // ---- boot: cache first, then network ------------------------------------
 
@@ -234,21 +199,50 @@ export function useDisplay(token: string) {
     let cancelled = false;
 
     void (async () => {
-      const cached = await readBundle(token);
-      if (!cancelled && cached) {
-        await adopt(cached, "cache");
-        // A reboot in the middle of a download: pick it up where it stopped.
-        // What's already cached counts as done straight away.
-        const { first, rest } = warmOrder(cached);
-        void fillIn(cached, [...first, ...rest], generationRef.current, reporter("photos"));
-      }
+      const [cached] = await Promise.all([readBundle(token), loadFiles()]);
+      // What's already here counts as ready straight away; the widgets ask for
+      // anything else when they mount.
+      if (!cancelled && cached) adopt(cached, "cache");
       if (!cancelled) void refresh();
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [token, adopt, refresh, fillIn, reporter]);
+  }, [token, adopt, refresh, loadFiles]);
+
+  // ---- clearing out what the board no longer uses --------------------------
+
+  useEffect(() => {
+    if (!bundle) return;
+    // Once per board, after its widgets have had time to declare their whole
+    // cycles (assets.ts, evict); again on the next board, or after a reload.
+    const timer = setTimeout(() => {
+      if (currentRef.current === bundle) void files.evict(boardPictureUrls(bundle));
+    }, EVICT_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [bundle, files]);
+
+  // ---- storage the browser should keep --------------------------------------
+
+  const [storage, setStorage] = useState<DisplayStorage>({ persisted: null, usage: null, quota: null });
+  useEffect(() => {
+    void (async () => {
+      // Ask the browser not to clear this device's photos under storage
+      // pressure. Some grant it outright, some decide by engagement, some
+      // refuse; the answer is logged either way.
+      const persisted = (await navigator.storage?.persist?.().catch(() => false)) ?? null;
+      const estimate = (await navigator.storage?.estimate?.().catch(() => null)) ?? null;
+      const mb = (bytes: number | undefined) => (bytes === undefined ? "?" : `${Math.round(bytes / 1048576)} MB`);
+      console.info(
+        `[display] persistent storage ${persisted ? "granted" : persisted === false ? "not granted" : "unavailable"}; ` +
+          `using ${mb(estimate?.usage)} of ${mb(estimate?.quota)}`,
+      );
+      setStorage({ persisted, usage: estimate?.usage ?? null, quota: estimate?.quota ?? null });
+    })();
+    // Count /m requests from this boot on (public/sw.js), for the debug view.
+    resetMediaStats();
+  }, []);
 
   // ---- the service worker, which is what makes a cold offline boot work ----
 
@@ -339,5 +333,5 @@ export function useDisplay(token: string) {
     return () => clearTimeout(timer);
   }, []);
 
-  return { bundle, status, refresh };
+  return { bundle, status, refresh, files, filesSnapshot, storage };
 }

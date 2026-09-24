@@ -8,7 +8,9 @@ import {
   type CollagePhoto,
 } from "@/lib/collage";
 import { ARTSY_PAGINATION, artsyEngine, type ArtsyLayout, type Fastener, type ItemFrameStyle } from "@/lib/collage/artsy";
+import type { BoardFiles } from "@/lib/board-assets";
 import type { BoardPhoto, BoardPhotoVariant } from "@/lib/media/album-photos";
+import { photoVariants, pickVariant, readyVariant } from "@/lib/media/variant-choice";
 import type { CollageConfig } from "./manifest";
 import { enterOffset, transitionTotal } from "./transitions";
 
@@ -17,15 +19,22 @@ import { enterOffset, transitionTotal } from "./transitions";
  * swap — kept outside React as a tiny store the Renderer subscribes to.
  *
  * WHAT IT GUARANTEES (the collage spec, §4):
- *  - Every photo once per cycle: a page is built from the album's photos NOT
- *    yet shown this cycle, so a cycle ends exactly when they're used up.
+ *  - Every photo once per cycle: page N is built from the album's photos not on
+ *    pages 0..N-1, so a cycle ends exactly when they're used up.
+ *  - THE WHOLE ALBUM, ALWAYS. Pages are planned against the full album, never
+ *    the part of it a screen happens to hold, so every screen shows identical
+ *    pages — and, planned ahead through the cycle, every file each page will
+ *    use is known up front. Those are declared to the board (`files.want`,
+ *    lib/board-assets.tsx) in the order they'll be shown, which is what the
+ *    display downloads.
+ *  - A PAGE SHOWS ONLY WHEN ALL OF IT IS HERE. At a boundary, if the next page
+ *    has a photo whose file isn't on the device yet, the current page stays.
+ *    Once it has been up for three intervals, the collage moves on to the next
+ *    page that is fully here instead of holding one page forever. Never a
+ *    grey hole where a photo should be, including offline.
  *  - Album changes land at the next page boundary. The page on screen is never
- *    re-laid out; the NEXT page is re-planned from the latest album, so a new
- *    photo appears within the cycle and a deleted one simply isn't picked — the
- *    current page keeps it until it ends.
- *  - A transition never shows a half-loaded page: the next page's images are
- *    fully loaded before the swap, and if they aren't ready at the boundary the
- *    current page stays.
+ *    re-laid out; the pages after it are re-planned from the latest album, so a
+ *    new photo appears within the cycle and a deleted one simply isn't picked.
  *  - Deterministic: page N of cycle C for the same album, box and settings is
  *    the same layout in the editor and on every screen (lib/collage's seeds).
  *
@@ -43,7 +52,12 @@ import { enterOffset, transitionTotal } from "./transitions";
 export function artsyCells(
   layout: ArtsyLayout,
   box: CollageBox,
-  source: (item: ArtsyLayout["items"][number]) => { src: string; alt: string },
+  source: (item: ArtsyLayout["items"][number]) => {
+    src: string;
+    alt: string;
+    variants?: readonly BoardPhotoVariant[];
+    needed?: number;
+  },
 ): PlannedCell[] {
   const order = layout.items.map((item, i) => ({ i, z: item.zIndex })).sort((a, b) => a.z - b.z || a.i - b.i);
   const zOrder = new Array<number>(layout.items.length);
@@ -58,6 +72,8 @@ export function artsyCells(
   });
   return layout.items.map((item, i) => ({
     id: item.photoId,
+    variants: [],
+    needed: 0,
     left: ((item.cx - item.outer.w / 2) / box.width) * 100,
     top: ((item.cy - item.outer.h / 2) / box.height) * 100,
     width: (item.outer.w / box.width) * 100,
@@ -116,8 +132,14 @@ export type PlannedCell = {
   top: number;
   width: number;
   height: number;
+  /** The file drawn. Planned as the size this cell needs; swapped for a
+   *  bigger copy already on the device when the page is shown. */
   src: string;
   alt: string;
+  /** The photo's stored sizes, and how wide it draws here in real pixels —
+   *  what picks the file (lib/media/variant-choice.ts). */
+  variants: readonly BoardPhotoVariant[];
+  needed: number;
   artsy?: PlannedArtsy;
 };
 
@@ -153,30 +175,32 @@ export type PlayerInputs = {
   /** Which albums, as a stable string (widgets/media/albums.ts) — part of the
    *  layout key and the shuffle seed. */
   albumKey: string;
+  /** Which files are on the device, and where to say which ones this collage
+   *  will use. Null in the editor: everything is ready. */
+  files: BoardFiles | null;
 };
-
 
 function usable(photos: readonly BoardPhoto[]): EnginePhoto[] {
   const out: EnginePhoto[] = [];
   for (const photo of photos) {
     if (!photo.width || !photo.height) continue;
-    const variants = photo.variants?.length
-      ? photo.variants
-      : [{ name: "display", src: photo.src, width: photo.width, height: photo.height, contentType: "", bytes: 0 }];
-    out.push({ id: photo.assetId, width: photo.width, height: photo.height, addedAt: photo.addedAt ?? null, photo, variants });
+    out.push({
+      id: photo.assetId,
+      width: photo.width,
+      height: photo.height,
+      addedAt: photo.addedAt ?? null,
+      photo,
+      variants: photoVariants(photo),
+    });
   }
   return out;
-}
-
-/** The smallest stored size that is at least as wide as it renders. */
-function pickVariant(variants: readonly BoardPhotoVariant[], neededWidth: number): BoardPhotoVariant {
-  return variants.find((variant) => variant.width >= neededWidth) ?? variants[variants.length - 1];
 }
 
 const loaded = new Map<string, Promise<void>>();
 
 /** Resolve once every image is decoded (or has failed — a broken photo must not
- *  hold the cycle forever; the display has it cached, so that is rare). */
+ *  hold the cycle forever; on a display the file is already on the device, so
+ *  that is rare). */
 function preload(urls: readonly string[]): Promise<void> {
   return Promise.all(
     urls.map((url) => {
@@ -201,14 +225,36 @@ function preload(urls: readonly string[]): Promise<void> {
   ).then(() => undefined);
 }
 
-type Upcoming = {
-  page: PlannedPage;
-  cycle: number;
-  index: number;
-  /** The album version it was planned from — stale once the album changes. */
-  version: number;
-  ready: boolean;
-};
+/** A page whose every photo has a file on the device, with each cell's `src`
+ *  set to that file; null when any is missing. */
+function readyPage(page: PlannedPage, files: BoardFiles | null): PlannedPage | null {
+  if (!files) return page;
+  const cells: PlannedCell[] = [];
+  for (const cell of page.cells) {
+    const variant = readyVariant(cell.variants, cell.needed, files.isReady);
+    if (!variant) return null;
+    cells.push(variant.src === cell.src ? cell : { ...cell, src: variant.src });
+  }
+  return { ...page, cells };
+}
+
+/** How many cycles are planned ahead. A fixed order repeats the same pages
+ *  every cycle, so one is all of it. Shuffle deals a new arrangement each
+ *  cycle; planning the next one too means a photo that lands in a bigger cell
+ *  next time is fetched at that size before it's needed. */
+const CYCLES_AHEAD_SHUFFLED = 2;
+
+/** Between two pages of background planning — lets a TV's single slow core
+ *  draw the board in between. */
+const PLAN_STEP_MS = 40;
+
+/** A page is held at most this many intervals waiting for the next one's
+ *  files, then the collage skips to the next page that's fully here. */
+const HOLD_INTERVALS = 3;
+
+let owners = 0;
+
+type Cycle = { pages: PlannedPage[]; done: boolean };
 
 export class CollagePlayer {
   private listeners = new Set<() => void>();
@@ -217,17 +263,22 @@ export class CollagePlayer {
   private layoutKey = "";
   private version = 0;
   private photos: EnginePhoto[] = [];
+  /** Who this collage is when it tells the board which files it wants. */
+  private readonly owner = `collage-${(owners += 1)}`;
 
+  /** Every page planned so far, by cycle. A cycle's pages are fixed once
+   *  planned: the same on every screen, and what was declared. */
+  private cycles = new Map<number, Cycle>();
   /** Where the cycle stands: the next page to show is `index` of `cycle`. */
   private cycle = 0;
   private index = 0;
-  private shown = new Set<string>();
-  private upcoming: Upcoming | null = null;
   private shownAt: number | null = null;
   private lastSecond: number | null = null;
-  private advanceWhenReady = false;
+  /** A swap is decoding its images; don't start another. */
+  private swapping = false;
   /** Bumped on every reset, so work started for an older layout is dropped. */
   private generation = 0;
+  private planning = false;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private disposed = false;
 
@@ -253,12 +304,13 @@ export class CollagePlayer {
 
   dispose() {
     this.disposed = true;
+    this.inputs?.files?.want(this.owner, [], true);
     for (const id of this.timers) clearTimeout(id);
     this.timers.clear();
     this.listeners.clear();
   }
 
-  /** The latest album, box and settings. Cheap to call on every render. */
+  /** The latest album, box, settings and files. Cheap to call on every render. */
   setInputs(inputs: PlayerInputs) {
     const photos = usable(inputs.photos);
     const version = albumVersion(photos);
@@ -273,9 +325,13 @@ export class CollagePlayer {
       config.style === "artsy" ? [config.artsyFrame, config.artsyTilt, config.artsyOverlap, config.artsyFasteners].join(",") : "",
       Math.round(box.width),
       Math.round(box.height),
+      // The real pixels and pixel ratio pick the files, not the layout, but
+      // a different size means different files to declare.
+      Math.round(inputs.boxPx.width * inputs.dpr),
       photos.length > 0,
     ].join("|");
 
+    const filesChanged = inputs.files !== this.inputs?.files;
     this.inputs = inputs;
     this.photos = photos;
     const albumChanged = version !== this.version;
@@ -288,39 +344,80 @@ export class CollagePlayer {
       this.layoutKey = layoutKey;
       this.reset();
     } else if (albumChanged) {
-      // Not a reset: the page on screen stays until its boundary, and the next
-      // page is re-planned from the album as it is now.
-      this.upcoming = null;
-      this.later(() => this.planUpcoming(), 0);
+      // Not a reset: the page on screen stays until its boundary, and every
+      // page after it is re-planned from the album as it is now.
+      this.replanFrom(this.cycle, this.index);
+    } else if (filesChanged && !this.snapshot.current) {
+      // Waiting for a first page, and more files have landed.
+      this.later(() => this.showFirst(), 0);
     }
   }
 
   private reset() {
     this.generation += 1;
+    this.cycles = new Map();
     this.cycle = 0;
     this.index = 0;
-    this.shown = new Set();
-    this.upcoming = null;
     this.shownAt = null;
-    this.advanceWhenReady = false;
+    this.swapping = false;
+    this.planning = false;
     if (this.photos.length === 0) {
+      this.inputs?.files?.want(this.owner, [], true);
       this.emit({ current: null, previous: null });
       return;
     }
     const generation = this.generation;
     this.later(() => {
       if (generation !== this.generation) return;
-      const planned = this.plan(0, 0, new Set());
-      if (!planned) return;
-      preload(planned.cells.map((cell) => cell.src)).then(() => {
-        if (generation !== this.generation || this.disposed) return;
-        this.show({ page: planned, cycle: 0, index: 0, version: this.version, ready: true }, false);
-      });
+      this.planStep();
+      this.showFirst();
     }, 0);
   }
 
-  /** Build page `index` of `cycle`, excluding what that cycle already showed.
-   *  Null when those photos are used up (the cycle is over). */
+  /** Drop every planned page from `index` of `cycle` on, and plan them again. */
+  private replanFrom(cycle: number, index: number) {
+    for (const key of [...this.cycles.keys()]) if (key > cycle) this.cycles.delete(key);
+    const kept = this.cycles.get(cycle);
+    if (kept) this.cycles.set(cycle, { pages: kept.pages.slice(0, index), done: false });
+    this.generation += 1;
+    this.planning = false;
+    this.planStep();
+  }
+
+  /** The cycles to plan: this one, and the next when shuffled. */
+  private cyclesWanted(): number[] {
+    const ahead = this.inputs?.config.order === "shuffle" ? CYCLES_AHEAD_SHUFFLED : 1;
+    return Array.from({ length: ahead }, (_, i) => this.cycle + i);
+  }
+
+  /** Plan one more page, then schedule the next step until every wanted
+   *  cycle is planned. Declares the files after each. */
+  private planStep() {
+    // Only a display plans ahead — it has files to fetch. The editor plans
+    // each page as it's reached (pageAt), which is all a preview needs.
+    if (this.planning || this.disposed || !this.inputs?.files) return;
+    const pending = this.cyclesWanted().find((cycle) => !this.cycles.get(cycle)?.done);
+    if (pending === undefined) {
+      this.announce(true);
+      return;
+    }
+    this.planning = true;
+    const generation = this.generation;
+    const entry = this.entry(pending);
+    const shown = new Set(entry.pages.flatMap((page) => page.photoIds));
+    const page = this.plan(pending, entry.pages.length, shown);
+    if (page) entry.pages.push(page);
+    else entry.done = true;
+    this.announce(false);
+    this.later(() => {
+      if (generation !== this.generation) return;
+      this.planning = false;
+      this.planStep();
+    }, PLAN_STEP_MS);
+  }
+
+  /** Build page `index` of `cycle` from the photos not on that cycle's earlier
+   *  pages. Null when those are used up (the cycle is over). */
   private plan(cycle: number, index: number, shown: ReadonlySet<string>): PlannedPage | null {
     const inputs = this.inputs;
     if (!inputs || this.photos.length === 0) return null;
@@ -350,152 +447,237 @@ export class CollagePlayer {
       pageSeed(this.version, index, box),
     );
     const byId = new Map(page.photos.map((photo) => [photo.id, photo]));
-    if (artsy) {
-      const cells = artsyCells(page.layout as ArtsyLayout, box, (item) => {
-        const photo = byId.get(item.photoId)!;
-        const needed = (item.image.w / box.width) * boxPx.width * dpr;
-        return { src: pickVariant(photo.variants, needed).src, alt: photo.photo.caption ?? "" };
-      });
-      return {
-        key: `${cycle}:${index}:${this.version}:${this.layoutKey}`,
-        cycle,
-        index,
-        photoIds: page.photos.map((photo) => photo.id),
-        cells,
-      };
-    }
-    const cells: PlannedCell[] = page.layout.cells.map((cell) => {
-      const photo = byId.get(cell.photoId)!;
-      const needed = (cell.w / box.width) * boxPx.width * dpr;
-      return {
-        id: cell.photoId,
-        left: (cell.x / box.width) * 100,
-        top: (cell.y / box.height) * 100,
-        width: (cell.w / box.width) * 100,
-        height: (cell.h / box.height) * 100,
-        src: pickVariant(photo.variants, needed).src,
-        alt: photo.photo.caption ?? "",
-      };
-    });
-    return {
-      key: `${cycle}:${index}:${this.version}:${this.layoutKey}`,
-      cycle,
-      index,
-      photoIds: page.photos.map((photo) => photo.id),
-      cells,
+    const key = `${cycle}:${index}:${this.version}:${this.layoutKey}`;
+    const photoIds = page.photos.map((photo) => photo.id);
+    const source = (photoId: string, widthUnits: number) => {
+      const photo = byId.get(photoId)!;
+      const needed = (widthUnits / box.width) * boxPx.width * dpr;
+      return { src: pickVariant(photo.variants, needed).src, alt: photo.photo.caption ?? "", variants: photo.variants, needed };
     };
+    if (artsy) {
+      const cells = artsyCells(page.layout as ArtsyLayout, box, (item) => source(item.photoId, item.image.w));
+      return { key, cycle, index, photoIds, cells };
+    }
+    const cells: PlannedCell[] = page.layout.cells.map((cell) => ({
+      id: cell.photoId,
+      left: (cell.x / box.width) * 100,
+      top: (cell.y / box.height) * 100,
+      width: (cell.w / box.width) * 100,
+      height: (cell.h / box.height) * 100,
+      ...source(cell.photoId, cell.w),
+    }));
+    return { key, cycle, index, photoIds, cells };
   }
 
-  /** Plan the page after the current one (rolling into a new cycle when this
-   *  one is used up) and start loading its images. */
-  private planUpcoming() {
-    if (!this.snapshot.current || this.upcoming) return;
-    const generation = this.generation;
-    const version = this.version;
+  /**
+   * Tell the board which files this collage will use, in the order it will
+   * show them: from the page after this one, through the planned cycles, and
+   * round to the start again. One file per photo — the biggest size any of
+   * its planned cells needs, which serves every smaller one too
+   * (lib/media/variant-choice.ts).
+   */
+  private announce(complete: boolean) {
+    const files = this.inputs?.files;
+    if (!files) return;
+    const pages: PlannedPage[] = [];
+    const cycles = [...this.cycles.keys()].sort((a, b) => a - b);
+    for (const cycle of cycles) {
+      const entry = this.cycles.get(cycle)!;
+      pages.push(...(cycle === this.cycle ? entry.pages.slice(this.index) : entry.pages));
+    }
+    // Then the pages of this cycle already passed, which come round again.
+    pages.push(...(this.cycles.get(this.cycle)?.pages.slice(0, this.index) ?? []));
 
-    let cycle = this.cycle;
-    let index = this.index;
-    let page = this.plan(cycle, index, this.shown);
-    if (!page) {
+    const largest = new Map<string, BoardPhotoVariant>();
+    const order: string[] = [];
+    for (const page of pages) {
+      for (const cell of page.cells) {
+        const planned = pickVariant(cell.variants, cell.needed);
+        const best = largest.get(cell.id);
+        if (!best) order.push(cell.id);
+        if (!best || planned.width > best.width) largest.set(cell.id, planned);
+      }
+    }
+    files.want(
+      this.owner,
+      order.map((id) => largest.get(id)!.src),
+      complete,
+    );
+  }
+
+  /**
+   * A cycle's pages. In a fixed order every cycle is the same pages — same
+   * order, same seeds — so a cycle already planned in full is reused rather
+   * than planned again; only a shuffle deals new ones.
+   */
+  private entry(cycle: number): Cycle {
+    let entry = this.cycles.get(cycle);
+    if (!entry && this.inputs?.config.order !== "shuffle") {
+      const source = [...this.cycles.values()].find((planned) => planned.done);
+      if (source) {
+        entry = {
+          done: true,
+          pages: source.pages.map((page) => ({ ...page, cycle, key: page.key.replace(/^\d+:/, `${cycle}:`) })),
+        };
+      }
+    }
+    entry ??= { pages: [], done: false };
+    this.cycles.set(cycle, entry);
+    return entry;
+  }
+
+  /** The page at a position, planning it now if the background hasn't yet;
+   *  rolls into the next cycle when this one is used up. */
+  private pageAt(cycle: number, index: number): PlannedPage | null {
+    for (let guard = 0; guard < 2; guard += 1) {
+      const entry = this.entry(cycle);
+      while (entry.pages.length <= index && !entry.done) {
+        const shown = new Set(entry.pages.flatMap((page) => page.photoIds));
+        const page = this.plan(cycle, entry.pages.length, shown);
+        if (page) entry.pages.push(page);
+        else entry.done = true;
+      }
+      if (entry.pages[index]) return entry.pages[index];
       cycle += 1;
       index = 0;
-      page = this.plan(cycle, index, new Set());
     }
-    if (!page) return;
+    return null;
+  }
 
-    const upcoming: Upcoming = { page, cycle, index, version, ready: false };
-    this.upcoming = upcoming;
-    preload(page.cells.map((cell) => cell.src)).then(() => {
-      if (generation !== this.generation || this.upcoming !== upcoming) return;
-      upcoming.ready = true;
-      if (this.advanceWhenReady) this.advance();
+  /** The position after one. */
+  private after(cycle: number, index: number): { cycle: number; index: number } {
+    const entry = this.cycles.get(cycle);
+    if (entry && entry.done && index + 1 >= entry.pages.length) return { cycle: cycle + 1, index: 0 };
+    return { cycle, index: index + 1 };
+  }
+
+  /** The first page that's fully on the device, starting at a position and
+   *  looking at most one cycle ahead. */
+  private firstReady(from: { cycle: number; index: number }): { page: PlannedPage; shown: PlannedPage } | null {
+    const files = this.inputs?.files ?? null;
+    let at = from;
+    const limit = Math.max(1, this.photos.length) + 1;
+    for (let i = 0; i < limit; i += 1) {
+      const page = this.pageAt(at.cycle, at.index);
+      if (!page) return null;
+      const ready = readyPage(page, files);
+      if (ready) return { page, shown: ready };
+      at = this.after(page.cycle, page.index);
+      if (at.cycle > from.cycle + 1) return null;
+    }
+    return null;
+  }
+
+  /** Put up the first page that's here — at boot, or once one has arrived. */
+  private showFirst() {
+    if (this.snapshot.current || this.swapping || this.photos.length === 0) return;
+    const found = this.firstReady({ cycle: this.cycle, index: this.index });
+    if (!found) return;
+    this.swap(found.page, found.shown, false);
+  }
+
+  /** Decode a page's images, then put it on screen. */
+  private swap(page: PlannedPage, shown: PlannedPage, transition: boolean) {
+    this.swapping = true;
+    const generation = this.generation;
+    preload(shown.cells.map((cell) => cell.src)).then(() => {
+      if (this.disposed) return;
+      this.swapping = false;
+      if (generation !== this.generation && this.snapshot.current) return;
+      this.show(page, shown, transition);
     });
   }
 
-  private show(next: Upcoming, transition: boolean) {
-    if (next.cycle !== this.cycle) {
-      this.cycle = next.cycle;
-      this.shown = new Set();
-    }
-    for (const id of next.page.photoIds) this.shown.add(id);
-    this.index = next.index + 1;
-    this.upcoming = null;
+  private show(page: PlannedPage, shown: PlannedPage, transition: boolean) {
+    const cycleChanged = page.cycle !== this.cycle;
+    this.cycle = page.cycle;
+    this.index = page.index + 1;
     this.shownAt = this.lastSecond;
-    this.advanceWhenReady = false;
+    if (cycleChanged) {
+      // A new cycle: the one before is done with, and the one after that is
+      // planned (and declared) when shuffled.
+      for (const key of [...this.cycles.keys()]) if (key < this.cycle) this.cycles.delete(key);
+      this.planStep();
+    }
+    this.announce(this.cyclesWanted().every((cycle) => this.cycles.get(cycle)?.done));
 
     const mode = this.inputs?.config.transition ?? "none";
     const speed = this.inputs?.config.transitionSpeed ?? 1;
     const leaving = this.snapshot.current;
     const keepPrevious = transition && mode !== "none" && leaving !== null;
-    const total = keepPrevious ? transitionTotal(mode, leaving.cells.length, next.page.cells.length, speed) : 0;
+    const total = keepPrevious ? transitionTotal(mode, leaving.cells.length, shown.cells.length, speed) : 0;
     this.emit({
-      current: next.page,
+      current: shown,
       previous: keepPrevious ? leaving : null,
       currentOffset: keepPrevious ? enterOffset(mode, leaving.cells.length, speed) : 0,
     });
 
     if (keepPrevious) {
       // Removed only once its last photo has finished leaving (./transitions.ts).
-      const shownKey = next.page.key;
+      const shownKey = shown.key;
       this.later(() => {
         if (this.snapshot.current?.key === shownKey) this.emit({ previous: null });
       }, total + 50);
     }
-    // Plan the next page once the transition has settled, so the search never
-    // competes with the animation for a TV's single slow core.
-    this.later(() => this.planUpcoming(), total + 100);
   }
 
-  private advance() {
-    const upcoming = this.upcoming;
-    if (!upcoming || !upcoming.ready) {
-      this.advanceWhenReady = true;
-      if (!upcoming) this.planUpcoming();
+  /** Move to the next page if it's here; hold, or skip ahead, if not. */
+  private advance(force = false) {
+    if (this.swapping) return;
+    const current = this.snapshot.current;
+    if (!current) {
+      this.showFirst();
       return;
     }
-    if (upcoming.version !== this.version) {
-      // Planned from an album that has since changed — plan again from the
-      // album as it is now, and swap as soon as that's loaded.
-      this.upcoming = null;
-      this.advanceWhenReady = true;
-      this.planUpcoming();
-      return;
+    const next = this.pageAt(this.cycle, this.index);
+    if (!next) return;
+    const files = this.inputs?.files ?? null;
+    let target: { page: PlannedPage; shown: PlannedPage } | null = null;
+    const ready = readyPage(next, files);
+    if (ready) {
+      target = { page: next, shown: ready };
+    } else {
+      const interval = this.inputs?.config.intervalSeconds ?? 10;
+      const held = this.shownAt === null || this.lastSecond === null ? 0 : this.lastSecond - this.shownAt;
+      // Waited long enough: the next page that IS here, rather than this one
+      // forever.
+      if (force || held >= HOLD_INTERVALS * interval) target = this.firstReady(this.after(next.cycle, next.index));
     }
+    if (!target) return;
+
     // A one-page album replays the same arrangement every cycle — nothing to
     // transition to, so just start the next interval.
-    const current = this.snapshot.current;
     const same =
-      current !== null &&
-      current.cells.length === upcoming.page.cells.length &&
+      current.cells.length === target.shown.cells.length &&
       current.cells.every((cell, i) => {
-        const other = upcoming.page.cells[i];
+        const other = target.shown.cells[i];
         return cell.id === other.id && cell.left === other.left && cell.top === other.top && cell.width === other.width;
       });
     if (same) {
-      this.cycle = upcoming.cycle;
-      this.shown = new Set(upcoming.page.photoIds);
-      this.index = upcoming.index + 1;
-      this.upcoming = null;
+      this.cycle = target.page.cycle;
+      this.index = target.page.index + 1;
       this.shownAt = this.lastSecond;
-      this.advanceWhenReady = false;
-      this.later(() => this.planUpcoming(), 100);
       return;
     }
-    this.show(upcoming, true);
+    this.swap(target.page, target.shown, true);
   }
 
   /** Called once a second from the master tick (lib/tick.ts). */
   tick(second: number) {
     this.lastSecond = second;
-    if (this.shownAt === null && this.snapshot.current) this.shownAt = second;
+    if (!this.snapshot.current) {
+      this.showFirst();
+      return;
+    }
+    if (this.shownAt === null) this.shownAt = second;
     const interval = this.inputs?.config.intervalSeconds ?? 10;
-    if (!this.snapshot.playing || this.shownAt === null || second - this.shownAt < interval) return;
+    if (!this.snapshot.playing || second - this.shownAt < interval) return;
     this.advance();
   }
 
   /** Show the next page now (the editor's "Next page"). */
   next() {
-    this.advance();
+    this.advance(true);
   }
 
   /** Pause or resume the cycle (the editor's "Pause" / "Play"). */

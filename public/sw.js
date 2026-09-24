@@ -48,11 +48,30 @@ const isAsset = (url) =>
   url.pathname.startsWith("/m/") || url.pathname.startsWith("/demo/") || url.pathname.startsWith("/backgrounds/");
 const isBuildOutput = (url) => url.pathname.startsWith("/_next/static/");
 
+/*
+ * /m counters for the display's debug view (lib/display/debug.ts): answered
+ * from the device, or fetched from the network. Kept in memory — a worker the
+ * browser stops and starts again begins from zero — and reset by the page at
+ * each boot, so they read "since this screen last started".
+ */
+let mediaStats = { hits: 0, network: 0, since: Date.now() };
+
+self.addEventListener("message", (event) => {
+  const type = event.data && event.data.type;
+  if (type === "media-stats-reset") mediaStats = { hits: 0, network: 0, since: Date.now() };
+  if (type === "media-stats" && event.ports[0]) event.ports[0].postMessage(mediaStats);
+});
+
 async function cacheFirst(request, cacheName) {
+  const media = new URL(request.url).pathname.startsWith("/m/");
   const cache = await caches.open(cacheName);
   const hit = await cache.match(request);
-  if (hit) return hit;
+  if (hit) {
+    if (media) mediaStats.hits += 1;
+    return hit;
+  }
 
+  if (media) mediaStats.network += 1;
   const response = await fetch(request);
   if (response.ok) cache.put(request, response.clone());
   return response;

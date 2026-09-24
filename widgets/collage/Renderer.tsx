@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from "react";
 import { boardLength } from "@/lib/board-theme";
+import { useBoardFiles } from "@/lib/board-assets";
 import { useSecond } from "@/lib/tick";
 import type { WidgetRendererProps } from "../types";
 import { albumSelectionKey, hasAlbumSelection, useSelectedPhotos } from "../media/albums";
@@ -104,6 +105,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
   const transition = reducedMotion ? "none" : transitionFor(stored.style, stored.transition);
   const config: CollageConfig = { ...stored, transition };
   const album = useSelectedPhotos(config);
+  const files = useBoardFiles();
   const second = useSecond();
   const rootRef = useRef<HTMLDivElement>(null);
   const measured = useCollageBox(rootRef, canvas.width);
@@ -122,11 +124,12 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
       dpr: typeof window === "undefined" ? 1 : window.devicePixelRatio || 1,
       config,
       albumKey: albumSelectionKey(config),
+      files,
     });
     // `config` is re-read from `raw` each render; key the effect on what it is
     // made of so a render with the same settings doesn't re-feed the player.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, measured, album, JSON.stringify(config)]);
+  }, [player, measured, album, files, JSON.stringify(config)]);
 
   useEffect(() => {
     if (second !== null) player.tick(second);

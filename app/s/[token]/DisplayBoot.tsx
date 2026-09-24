@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useDisplay } from "@/lib/display/useDisplay";
+import { DebugView } from "./DebugView";
 import { DisplayBoard, LoadingProgress, UpdatingBadge, WaitingForBoard } from "./DisplayBoard";
 
 /*
@@ -24,6 +25,12 @@ import { DisplayBoard, LoadingProgress, UpdatingBadge, WaitingForBoard } from ".
  */
 
 const STORAGE_KEY = "shulboard.screen.token";
+
+/** How long the loading screen may stay over a first board waiting for its
+ *  opening photos — past this the board shows what it has. */
+const OPENING_PAGES_MAX_MS = 60_000;
+/** A board whose widgets haven't declared any photos by now has none to wait for. */
+const OPENING_PAGES_MIN_MS = 1_500;
 const CHANGED_EVENT = "shulboard:screen-token";
 
 function readStoredToken(): string | null {
@@ -47,11 +54,54 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
   const stored = useSyncExternalStore(subscribeToStorage, readStoredToken, () => null);
   const token = stored ?? urlToken;
 
-  const { bundle, status } = useDisplay(token);
+  const { bundle, status, files, filesSnapshot, storage } = useDisplay(token);
+
+  // Album photos the board's galleries and collages are waiting on. Read off
+  // the snapshot so this re-renders as they land.
+  const photos = files.wantedProgress();
+  const head = files.headProgress();
+
+  // The first board of this boot stays under the loading screen until its
+  // galleries' and collages' opening pages are here — drawn underneath, so
+  // they can measure themselves and say what they need. Once it's up, later
+  // downloads only ever show the small tag.
+  const [boardUpAt, setBoardUpAt] = useState<number | null>(null);
+  const [openingDone, setOpeningDone] = useState(false);
+  // Only a board with a gallery or collage has opening photos to wait for.
+  const hasAlbums = Boolean(
+    bundle?.boards.some((board) =>
+      (board.doc.widgets ?? []).some((widget) => {
+        const config = widget.config as Record<string, unknown> | null;
+        return Boolean(config && ("albumIds" in config || "albumId" in config || "albumMode" in config));
+      }),
+    ),
+  );
+  useEffect(() => {
+    if (bundle && boardUpAt === null) {
+      const mark = setTimeout(() => setBoardUpAt(Date.now()), 0);
+      return () => clearTimeout(mark);
+    }
+  }, [bundle, boardUpAt]);
+  useEffect(() => {
+    if (openingDone || boardUpAt === null) return;
+    const check = () => {
+      if (!hasAlbums) return setOpeningDone(true);
+      const elapsed = Date.now() - boardUpAt;
+      const progress = files.headProgress();
+      if ((progress.total > 0 && progress.done >= progress.total) || (progress.total === 0 && elapsed > OPENING_PAGES_MIN_MS) || elapsed > OPENING_PAGES_MAX_MS) {
+        setOpeningDone(true);
+      }
+    };
+    check();
+    const timer = setInterval(check, 250);
+    return () => clearInterval(timer);
+  }, [openingDone, boardUpAt, hasAlbums, files, filesSnapshot]);
 
   // An update, or the rest of this board's photos, downloading behind a board
   // that's showing: say so only once it has taken a few seconds.
-  const updating = Boolean(bundle && status.assetProgress && status.assetProgress.done < status.assetProgress.total);
+  const boardUpdate = Boolean(bundle && status.assetProgress && status.assetProgress.done < status.assetProgress.total);
+  const photosArriving = Boolean(bundle && openingDone && photos.done < photos.total);
+  const updating = boardUpdate || photosArriving;
   const [slowUpdate, setSlowUpdate] = useState(false);
   useEffect(() => {
     if (!updating) {
@@ -136,14 +186,17 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
         Token {token}, bundle {bundle.bundleVersion}, from{" "}
         {status.source === "cache" ? "this device" : "the server"}
       </span>
-      <DisplayBoard bundle={bundle} />
-      {updating && slowUpdate && status.assetProgress && (
+      <DisplayBoard bundle={bundle} files={filesSnapshot} />
+      {/* From the first frame, so the board is never seen without its photos. */}
+      {!openingDone && hasAlbums && <LoadingProgress done={head.done} total={head.total} over />}
+      {updating && slowUpdate && (
         <UpdatingBadge
-          done={status.assetProgress.done}
-          total={status.assetProgress.total}
-          label={status.assetPhase === "photos" ? "Loading" : "Updating board"}
+          done={boardUpdate ? status.assetProgress!.done : photos.done}
+          total={boardUpdate ? status.assetProgress!.total : photos.total}
+          label={boardUpdate ? "Updating board" : "Loading"}
         />
       )}
+      <DebugView files={files} snapshot={filesSnapshot} storage={storage} bundleVersion={bundle.bundleVersion} />
     </>
   );
 }

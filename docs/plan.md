@@ -96,6 +96,18 @@ Only human-entered content (announcements, events, photos) can go stale, and the
 - **Atomic swap** — never apply bundle v(n+1) until every asset it references is
   cached. Prevents "new board, missing photos." Prefetch assets for the *next*
   board in the playlist too.
+- **Album photos are fetched by page, not by bundle — built.** A Gallery or
+  Collage lays out the FULL album on this screen's real size (identical on
+  every screen), declares the one file per photo its pages use, in display
+  order (`lib/board-assets.tsx`, `BoardFiles.want`), and shows a page only
+  once every file on it is here; otherwise it holds the page it has, and after
+  three intervals skips to the next page that is complete. The display
+  (`lib/display/assets.ts`, `DeviceFiles`) downloads exactly those files,
+  every widget's next page first, and evicts everything else. It asks for
+  persistent storage at boot. `/s/<token>?debug` shows the storage estimate
+  and the service worker's /m counts, from this device versus the network —
+  after one full cycle the network count stops moving, and after a reboot it
+  stays at zero.
 
 ### 3d. Live updates without refresh
 - Supabase Realtime broadcast on channel `screen:<id>`. `buildScreenBundle`
