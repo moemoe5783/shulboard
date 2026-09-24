@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { NumberField } from "@/components/editor/NumberField";
+import { SliderField } from "@/components/editor/SliderField";
 import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { MediaPicker } from "../media/MediaPicker";
@@ -90,7 +90,14 @@ function ImageLook({ config, onChange }: WidgetSettingsProps<ImageConfig>) {
         </select>
       </label>
 
-      <NumberField label="Corner radius" value={config.radius} onChange={(radius) => onChange({ radius })} min={0} max={200} />
+      <SliderField
+        label="Rounded corners"
+        hint="How round the picture's corners are."
+        value={config.radius}
+        onChange={(radius) => onChange({ radius })}
+        min={0}
+        max={200}
+      />
     </div>
   );
 }

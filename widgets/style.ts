@@ -78,6 +78,9 @@ export const widgetStyleFields = {
    *  content, so design.md's "shadows only on chrome that floats" does not
    *  apply — a shul may give its own panel a shadow. */
   shadow: z.boolean().default(false),
+  /** How strong that shadow is, 0–100: 50 is the soft shadow every frame had
+   *  before this was adjustable. */
+  shadowStrength: z.number().min(0).max(100).default(50),
   /** An optional header shown above the widget — "" for none. */
   title: z.string().max(120).default(""),
   /** The header's size, as a MULTIPLE of the widget's own text size (like
@@ -98,6 +101,7 @@ export type WidgetStyleConfig = {
   borderWidth: number;
   borderColor: string;
   shadow: boolean;
+  shadowStrength: number;
   title: string;
   titleSize: number;
 };
@@ -249,6 +253,7 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
     borderWidth: num("borderWidth", 0),
     borderColor: str("borderColor"),
     shadow: config.shadow === true,
+    shadowStrength: clamp(num("shadowStrength", 50), 0, 100),
     title: str("title"),
     titleSize: clamp(num("titleSize", 1.3), 0.3, 4),
   };
@@ -382,8 +387,17 @@ export function widgetStyle(
 export function widgetBoxStyle(config: WidgetStyleConfig, canvasWidth: number): CSSProperties {
   const style: CSSProperties = {};
   if (config.radius > 0) style.borderRadius = boardLength(config.radius, canvasWidth);
-  if (config.shadow) style.boxShadow = "0 0.4cqw 1.6cqw rgba(0, 0, 0, 0.28)";
+  const shadow = config.shadow ? frameShadow(config.shadowStrength) : undefined;
+  if (shadow) style.boxShadow = shadow;
   return style;
+}
+
+/** The frame's shadow at a strength, 0–100. 50 is the original soft shadow;
+ *  100 is twice as far, twice as soft and darker; 0 is none. */
+export function frameShadow(strength: number): string | undefined {
+  const s = Math.max(0, Math.min(100, strength)) / 50;
+  if (s <= 0) return undefined;
+  return `0 ${(0.4 * s).toFixed(3)}cqw ${(1.6 * s).toFixed(3)}cqw rgba(0, 0, 0, ${Math.min(0.6, 0.28 * s).toFixed(3)})`;
 }
 
 /**
