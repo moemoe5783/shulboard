@@ -3,6 +3,7 @@ import { AuthShell } from "../AuthShell";
 import { SignInForm } from "./SignInForm";
 import { getUser } from "@/lib/orgs";
 import { safeNext } from "@/lib/routes";
+import { enabledSignInProviders } from "@/lib/supabase/auth-settings";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 export default async function SignInPage({ searchParams }: PageProps<"/sign-in">) {
@@ -21,7 +22,12 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
           values that were inlined into this bundle at build time, which are
           the ones the sign-in call will actually use — the server's view of
           process.env can differ and would mislead. */}
-      <SignInForm from={from} initialEmail={email} initialError={error} />
+      <SignInForm
+        from={from}
+        initialEmail={email}
+        initialError={error}
+        googleEnabled={(await enabledSignInProviders()).google}
+      />
     </AuthShell>
   );
 }

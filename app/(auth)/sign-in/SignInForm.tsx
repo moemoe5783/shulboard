@@ -13,17 +13,20 @@ import { callbackUrl, confirmUrl, describeAuthError } from "../shared";
  * Email and password, with an emailed link and Google as the alternatives.
  *
  * One primary action: sign in. The link is for whoever doesn't remember a
- * password (or has none yet — a Google account, a link-only account); Google
- * is the secondary.
+ * password (or has none yet — a Google account, a link-only account). Google
+ * is the secondary, shown only when the Supabase project has it turned on.
  */
 export function SignInForm({
   from,
   initialEmail = "",
   initialError,
+  googleEnabled = false,
 }: {
   from?: string;
   initialEmail?: string;
   initialError?: string;
+  /** Offered only once Google is turned on in Supabase (lib/supabase/auth-settings.ts). */
+  googleEnabled?: boolean;
 }) {
   const [mode, setMode] = useState<"password" | "link">("password");
   const [email, setEmail] = useState(initialEmail);
@@ -196,11 +199,13 @@ export function SignInForm({
         </form>
       )}
 
-      <div className="border-rule mt-6 border-t pt-6">
-        <Button variant="secondary" onClick={continueWithGoogle} disabled={working}>
-          Continue with Google
-        </Button>
-      </div>
+      {googleEnabled && (
+        <div className="border-rule mt-6 border-t pt-6">
+          <Button variant="secondary" onClick={continueWithGoogle} disabled={working}>
+            Continue with Google
+          </Button>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="text-body text-ink mt-4">
