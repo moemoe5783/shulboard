@@ -6,6 +6,19 @@
    and gets the phone layout (components/AppShell.tsx), not a rail it can't fit. */
 @custom-variant desk (@media (min-width: 768px) and (min-height: 540px));
 
+/*
+ * Light, and only light. Shulboard has no dark mode, and a TV or phone
+ * browser with its own forced dark mode (Chromium's auto-dark, Samsung's
+ * dark theme) otherwise recolours pages that don't say so — a white board
+ * went black on a TV, with its dark text on top. `only` is the word that
+ * tells the browser not to. Outside any @layer on purpose, so a browser
+ * too old for cascade layers still reads it. The editor's dark chrome sets
+ * its own scheme for its native controls below; that's unaffected.
+ */
+:root {
+  color-scheme: only light;
+}
+
 @layer base {
   /* Surface colors only. No font-family here on purpose — chrome opts into
    * Assistant with `font-ui`, and the board renderer must not inherit it.

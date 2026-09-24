@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Alef,
   Assistant,
@@ -87,6 +87,12 @@ const FONT_VARIABLES = [
 export const metadata: Metadata = {
   title: "Shulboard",
   description: "Digital bulletin boards for shuls",
+};
+
+/** The same light-only declaration as app/globals.css, as a meta tag — some
+ *  browsers decide on forced darkening before they read any CSS. */
+export const viewport: Viewport = {
+  colorScheme: "only light",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
