@@ -24,7 +24,26 @@ export function formatPairingCode(code: string): string {
 
 /** A short name for the device from its user agent, for "Connected: Samsung TV". */
 export function deviceLabel(userAgent: string | null | undefined): string {
-  const ua = userAgent ?? "";
+  const device = deviceKind(userAgent ?? "");
+  const browser = browserVersion(userAgent ?? "");
+  // The browser version rides along because a TV's browser is often years
+  // old, and "which Chrome" is the first question when a board looks wrong
+  // on one screen and right in the editor.
+  return browser ? `${device} (${browser})` : device;
+}
+
+/** "Chrome 94", "Safari 16", "Firefox 115" — or null when it can't tell. */
+export function browserVersion(ua: string): string | null {
+  const firefox = /Firefox\/(\d+)/.exec(ua);
+  if (firefox) return `Firefox ${firefox[1]}`;
+  const chrome = /(?:Chrome|Chromium|CriOS)\/(\d+)/.exec(ua);
+  if (chrome) return `Chrome ${chrome[1]}`;
+  const safari = /Version\/(\d+)[\d.]* (?:Mobile\/\S+ )?Safari\//.exec(ua);
+  if (safari) return `Safari ${safari[1]}`;
+  return null;
+}
+
+function deviceKind(ua: string): string {
   if (/Tizen/i.test(ua)) return "Samsung TV";
   if (/Web0S|webOS/i.test(ua)) return "LG TV";
   if (/CrKey/i.test(ua)) return "Chromecast";
