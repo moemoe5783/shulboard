@@ -8,23 +8,21 @@ import type { BundleEnvelope } from "@/lib/bundle/types";
  * "Never apply bundle v(n+1) until every asset it references is cached.
  * Prevents 'new board, missing photos.'"
  *
- * This is the gate. A new bundle arrives, every asset it names is fetched into
- * the Cache Storage the service worker reads from, and only if all of them land
+ * This is the gate. A new bundle arrives, what its board needs is fetched into
+ * the Cache Storage the service worker reads from, and only if all of it lands
  * does the bundle become the one being shown. Half a board is worse than an old
  * board: an old board is last week's kiddush photo, half a board is a grey
  * rectangle where a photo should be, on a wall, in front of people.
+ *
+ * "What its board needs" is not every photo in every album. A gallery of six
+ * hundred photos shows one at a time, so the board goes up once the first few
+ * of each album are here (warmOrder), and the rest download behind it. The
+ * promise still holds because of cachedView: the albums on screen only ever
+ * contain photos already cached, and grow as more arrive.
  */
 
 export const ASSET_CACHE = "shulboard-assets-v1";
 
-/**
- * Put every asset in the cache, and say whether they all made it.
- *
- * Deliberately not cache.addAll(): that rejects as a unit on the first failure
- * and tells you nothing about the rest, so one dead URL would keep a bundle out
- * forever with no way to see which one. Fetching each separately means a
- * fifty-photo board reports "49 of 50" and the log names the one.
- */
 export type AssetProgress = { done: number; total: number };
 
 /** How many downloads run at once. A TV browser handed hundreds of requests at
@@ -32,26 +30,65 @@ export type AssetProgress = { done: number; total: number };
  *  lobby connection and never does. */
 const CONCURRENCY = 6;
 
-export async function warmAssets(
-  bundle: BundleEnvelope,
+/** How many photos of each album are downloaded before a board goes up. Enough
+ *  that a gallery or collage has something to cycle through; the rest follow
+ *  while the board is already on the wall. */
+export const HEAD_START = 8;
+
+/**
+ * Which files a board needs before it can go up, and which can follow.
+ *
+ * Everything that isn't an album photo — an Image widget's picture, a photo
+ * background — is needed first, since it is on screen from the first second.
+ * So are the first HEAD_START photos of each album. The rest are taken a photo
+ * from each album in turn, so every gallery gains variety at the same pace.
+ */
+export function warmOrder(bundle: BundleEnvelope): { first: string[]; rest: string[] } {
+  const all = [...new Set(bundle.assets.map((asset) => asset.url))];
+  const albums = Object.values(bundle.content.albums ?? {});
+  const inAlbum = new Set(albums.flatMap((photos) => photos.map((photo) => photo.src)));
+
+  const first = all.filter((url) => !inAlbum.has(url));
+  const rest: string[] = [];
+  const wanted = new Set(all);
+  const seen = new Set(first);
+  const longest = Math.max(0, ...albums.map((photos) => photos.length));
+  for (let i = 0; i < longest; i += 1) {
+    for (const photos of albums) {
+      const url = photos[i]?.src;
+      if (!url || seen.has(url) || !wanted.has(url)) continue;
+      seen.add(url);
+      (i < HEAD_START ? first : rest).push(url);
+    }
+  }
+  return { first, rest };
+}
+
+/**
+ * Put these files in the cache, and say whether they all made it.
+ *
+ * Deliberately not cache.addAll(): that rejects as a unit on the first failure
+ * and tells you nothing about the rest, so one dead URL would keep a bundle out
+ * forever with no way to see which one. Fetching each separately means a
+ * fifty-photo board reports "49 of 50" and the log names the one.
+ */
+export async function warmUrls(
+  urls: readonly string[],
   /** Called as files land (already-cached ones count as done straight away),
    *  so the screen can say how far along it is. */
   onProgress?: (progress: AssetProgress) => void,
-): Promise<{
-  ready: boolean;
-  cached: number;
-  total: number;
-  missing: string[];
-}> {
-  const urls = [...new Set(bundle.assets.map((asset) => asset.url))];
-  if (urls.length === 0) return { ready: true, cached: 0, total: 0, missing: [] };
+  /** Checked between downloads; true stops the rest, because a newer board
+   *  has arrived and these files may not be wanted any more. */
+  stopped?: () => boolean,
+): Promise<{ ready: boolean; missing: string[] }> {
+  if (urls.length === 0) return { ready: true, missing: [] };
 
   if (typeof caches === "undefined") {
     // No Cache Storage — an old TV browser, or an insecure origin. The board
     // still renders and the images still load over the network; what is lost is
     // the offline guarantee, not the picture. Refusing the bundle here would
     // trade a real degradation for a hypothetical one.
-    return { ready: true, cached: 0, total: urls.length, missing: [] };
+    return { ready: true, missing: [] };
   }
 
   const cache = await caches.open(ASSET_CACHE);
@@ -70,7 +107,7 @@ export async function warmAssets(
 
   let next = 0;
   const worker = async () => {
-    while (next < toFetch.length) {
+    while (next < toFetch.length && !stopped?.()) {
       const url = toFetch[next++];
       try {
         const response = await fetch(url, { cache: "no-cache" });
@@ -85,7 +122,38 @@ export async function warmAssets(
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, toFetch.length) }, worker));
 
-  return { ready: missing.length === 0, cached: urls.length - missing.length, total: urls.length, missing };
+  return { ready: missing.length === 0 && done === urls.length, missing };
+}
+
+/**
+ * The bundle as the screen can show it right now: each album cut down to the
+ * photos already in the cache.
+ *
+ * This is what lets a board go up before all its photos have arrived without
+ * breaking the promise the atomic swap makes. A gallery only ever cycles through
+ * photos this device already holds, so if the network drops halfway through a
+ * download the board shows fewer photos, never a grey hole where one should be.
+ * As more arrive the albums grow; the widgets take a changed album in their
+ * stride (the collage re-plans at its next page, the gallery at its next photo).
+ */
+export async function cachedView(bundle: BundleEnvelope): Promise<BundleEnvelope> {
+  if (typeof caches === "undefined") return bundle;
+  const albums = bundle.content.albums ?? {};
+  const wanted = new Set(bundle.assets.map((asset) => asset.url));
+  const cache = await caches.open(ASSET_CACHE);
+
+  let trimmed = false;
+  const view: typeof albums = {};
+  for (const [id, photos] of Object.entries(albums)) {
+    const kept = [];
+    for (const photo of photos) {
+      // A photo whose file the bundle doesn't list isn't this gate's to hold.
+      if (!wanted.has(photo.src) || (await cache.match(photo.src))) kept.push(photo);
+    }
+    if (kept.length !== photos.length) trimmed = true;
+    view[id] = kept;
+  }
+  return trimmed ? { ...bundle, content: { ...bundle.content, albums: view } } : bundle;
 }
 
 /**
