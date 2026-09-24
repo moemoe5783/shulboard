@@ -53,11 +53,12 @@ export const manifest: WidgetManifest<ClockConfig> = {
    */
   dataNeeds: (config) => [{ kind: "timezone", timeZone: config.timeZone || null }],
   /**
-   * docs/sizing.md §2: defaults to `fixed` because a clock in `fit` mode would
-   * rescale its type every time the digit count changes (12:00 → 1:00,
-   * losing a character) — "the worst possible behavior for the single
-   * most-watched element on the board." All three modes are still
-   * defensible, so it's toggleable, unlike Title.
+   * docs/sizing.md §2: defaults to `fixed`. `fit` used to rescale the type
+   * every time the digit count changed (12:00 → 1:00); it now fits the
+   * widest time the format can show, so it holds still, but `fixed` stays the
+   * default. All three modes are defensible, so it's toggleable, unlike
+   * Title. `maxFontSize` is `fit`'s ceiling only — high enough that a clock
+   * filling a screen still follows its box.
    */
-  sizing: { mode: "fixed", userToggleable: true, minFontSize: 24, maxFontSize: 400 },
+  sizing: { mode: "fixed", userToggleable: true, minFontSize: 24, maxFontSize: 1080 },
 };

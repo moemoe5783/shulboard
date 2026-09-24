@@ -111,9 +111,23 @@ export function useFitFontSize(
     /** Anything that changes what is being measured — the text itself, the
      *  config that produced it — the same idea as a plain effect's deps. */
     deps: readonly unknown[];
+    /** The share of the box's height the content may take, 0–1 (default 1).
+     *  Below 1 leaves room for glyphs that overshoot a trimmed text box. */
+    heightFraction?: number;
+    /** What counts as the content's size: its scroll size (default — right for
+     *  wrapping text, which overflows its own box) or its rendered box, which
+     *  honours a trimmed text box (`text-box`) where the scroll size doesn't. */
+    measureBy?: "scroll" | "box";
+    /** Called with the fitted size, in px, after each search — for a widget
+     *  that measures one element (a stand-in) and shows another. */
+    onFit?: (px: number) => void;
   },
 ) {
-  const { minFontSize, maxFontSize, canvasWidth, enabled, deps } = options;
+  const { minFontSize, maxFontSize, canvasWidth, enabled, deps, heightFraction = 1, onFit, measureBy = "scroll" } = options;
+  const onFitRef = useRef(onFit);
+  useIsomorphicLayoutEffect(() => {
+    onFitRef.current = onFit;
+  });
   const pendingFrame = useRef<number | null>(null);
 
   useIsomorphicLayoutEffect(() => {
@@ -129,13 +143,21 @@ export function useFitFontSize(
 
       const fits = (px: number) => {
         content.style.fontSize = `${px}px`;
-        return content.scrollWidth <= box.clientWidth && content.scrollHeight <= box.clientHeight;
+        if (measureBy === "box") {
+          // Layout sizes, not rects: unaffected by the editor's zoom or a
+          // rotated widget, and they honour a trimmed text box.
+          return content.offsetWidth <= box.clientWidth && content.offsetHeight <= box.clientHeight * heightFraction;
+        }
+        return content.scrollWidth <= box.clientWidth && content.scrollHeight <= box.clientHeight * heightFraction;
       };
 
       // Doesn't fit even at the floor — docs/sizing.md §3's overflow case.
       // Settle there and no ellipsis; the shared clip in BoardRenderer's
       // WidgetFrame and its overflow flag take it from here.
-      if (!fits(floor)) return;
+      if (!fits(floor)) {
+        onFitRef.current?.(floor);
+        return;
+      }
 
       let lo = floor;
       let hi = ceiling;
@@ -145,6 +167,7 @@ export function useFitFontSize(
         else hi = mid;
       }
       content.style.fontSize = `${lo}px`;
+      onFitRef.current?.(lo);
 
       // docs/sizing.md: the properties panel shows an objective, read-only
       // type size in fit mode. Plain DOM state, not a prop back through
@@ -173,5 +196,5 @@ export function useFitFontSize(
     // `deps` is a caller-supplied list, the same idea as a plain effect's own
     // dependency array — its length just isn't static, which is what the
     // spread is for.
-  }, [enabled, minFontSize, maxFontSize, canvasWidth, boxRef, contentRef, ...deps]);
+  }, [enabled, minFontSize, maxFontSize, canvasWidth, heightFraction, measureBy, boxRef, contentRef, ...deps]);
 }
