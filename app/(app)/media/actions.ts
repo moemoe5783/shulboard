@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { readAssetVariant } from "@/lib/bundle/media";
 import { readImageSize } from "@/lib/media/image-size";
 import { hasRoleAtLeast, requireActiveOrg } from "@/lib/orgs";
+import { purgeAssetsFromCdn } from "@/lib/storage/cdn";
 import { createClient } from "@/lib/supabase/server";
 
 /*
@@ -124,6 +125,8 @@ export async function deleteAlbum(albumId: string): Promise<{ ok: true; photosDe
     .eq("org_id", org.orgId);
 
   if (error) return { ok: false, error: `Couldn't delete the album: ${error.message}` };
+  // Its photos' URLs stop answering from the CDN too (lib/storage/cdn.ts).
+  await purgeAssetsFromCdn(orphans);
   revalidatePath("/media");
   return { ok: true, photosDeleted: orphans.length };
 }
@@ -132,7 +135,8 @@ export async function deleteAlbum(albumId: string): Promise<{ ok: true; photosDe
  * Soft-delete an asset. The /m proxy 404s a soft-deleted asset and the bundle
  * excludes it (schema.md §6), so this pulls the photo off every board at once
  * without hunting down references — a board pointing at it shows the widget's
- * own empty state, not a broken image.
+ * own empty state, not a broken image. Its CDN copies are purged too, so the
+ * old URL is a 404 at once rather than answering from the edge.
  */
 export async function deleteAsset(assetId: string, albumId: string): Promise<ActionResult> {
   const { org, error: roleError } = await editorOrg();
@@ -146,6 +150,7 @@ export async function deleteAsset(assetId: string, albumId: string): Promise<Act
     .eq("org_id", org.orgId);
 
   if (error) return { ok: false, error: `Couldn't delete the photo: ${error.message}` };
+  await purgeAssetsFromCdn([assetId]);
   revalidatePath(`/media/${albumId}`);
   revalidatePath("/media");
   return { ok: true };
@@ -270,6 +275,7 @@ export async function deleteAssets(albumId: string, assetIds: string[]): Promise
       .eq("org_id", org.orgId);
     if (error) return { ok: false, error: `Couldn't delete the photos: ${error.message}` };
   }
+  await purgeAssetsFromCdn(assetIds);
   revalidatePath(`/media/${albumId}`);
   revalidatePath("/media");
   return { ok: true };

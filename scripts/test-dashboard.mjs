@@ -28,7 +28,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { EDITOR, GABBAI, INVITE_TOKEN, PHOTO, fixtures } from "./dashboard-fixtures.mjs";
@@ -38,6 +38,7 @@ const PORT = Number(process.env.PORT ?? 3231);
 const SUPABASE_PORT = 54399;
 const BASE = `http://127.0.0.1:${PORT}`;
 const DIST = ".next-mock";
+const PURGE_LOG = join(process.cwd(), DIST, "fake-vercel.log");
 const SHOTS = process.env.SHOTS;
 const results = [];
 const check = (ok, label, detail = "") => {
@@ -74,6 +75,8 @@ const env = {
   RESEND_API_KEY: "",
   // The media cleanup cron is checked on its default, a dry run.
   CRON_SECRET: "dashboard-test-cron-secret",
+  // Vercel's request context, faked, so CDN tags and purges are recorded.
+  FAKE_VERCEL_LOG: PURGE_LOG,
   MEDIA_CLEANUP_DRY_RUN: "",
   EMAIL_FROM_ADDRESS: "",
 };
@@ -87,8 +90,18 @@ if (!process.env.SKIP_BUILD) {
   }
 }
 
+rmSync(PURGE_LOG, { force: true });
 const mock = await startMockSupabase({ port: SUPABASE_PORT, users: [GABBAI, EDITOR], fixtures: fixtures() });
-const child = spawn("npx", ["next", "start", "-p", String(PORT)], { env, stdio: "ignore", detached: true });
+const child = spawn("npx", ["next", "start", "-p", String(PORT)], {
+  env: { ...env, NODE_OPTIONS: `${env.NODE_OPTIONS ?? ""} --import=${join(process.cwd(), "scripts/fake-vercel-context.mjs")}`.trim() },
+  stdio: "ignore",
+  detached: true,
+});
+/** What the faked Vercel context recorded: CDN tags and purges. */
+const vercelLog = () =>
+  existsSync(PURGE_LOG)
+    ? readFileSync(PURGE_LOG, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line))
+    : [];
 for (let i = 0; i < 60; i += 1) {
   await sleep(500);
   try {
@@ -525,6 +538,13 @@ try {
     const thumb = await row("purim-seudah.jpg").locator("img").getAttribute("src");
     check(Boolean(thumb?.includes("/object/sign/assets/")), "its thumbnail is a signed URL, since /m won't serve a deleted photo", thumb ?? "");
 
+    await page.getByRole("button", { name: "Select all" }).click();
+    const ticked = await page.locator("tbody input[type=checkbox]:checked").count();
+    const boxes = await page.locator("tbody input[type=checkbox]").count();
+    check(ticked === boxes && boxes >= 2, "Select all ticks every deleted photo", `${ticked} of ${boxes}`);
+    check(((await page.locator("[data-selection-bar]").textContent()) ?? "").includes(`${boxes} photos selected`), "and the bar counts them");
+    await page.locator("[data-selection-bar]").getByRole("button", { name: "Clear" }).click();
+
     let before = mock.state.writes.length;
     await row("purim-seudah.jpg").getByRole("button", { name: "Restore", exact: true }).click();
     await page.getByRole("status").filter({ hasText: "Restored 1 photo" }).waitFor({ timeout: 10000 }).catch(() => {});
@@ -551,6 +571,30 @@ try {
     const rowDelete = writes.findIndex((w) => w.table === "assets" && w.method === "DELETE" && w.query.includes(PHOTO.expired));
     check(rowDelete > removeAt && removeAt >= 0, "then its row is deleted, files first");
     check(await page.getByRole("status").filter({ hasText: "Deleted 1 photo for good." }).isVisible(), "and it says so");
+  }
+
+  console.log("\n-- the CDN hears about deletes -------------------------------");
+  {
+    check(vercelLog().some((e) => e.addCacheTag === `asset-${PHOTO.ready}`), "a served photo is tagged with its id");
+    check(
+      vercelLog().some((e) => e.purge?.includes(`asset-${PHOTO.expired}`)),
+      "deleting a photo for good purges its tag",
+    );
+    // Delete the ready photo from its album, the ordinary way.
+    await page.goto(`${BASE}/media/a1000000-0000-4000-8000-000000000001`, { waitUntil: "networkidle" });
+    await page.getByRole("checkbox", { name: "Select photo" }).first().check();
+    await page.locator("[data-selection-bar]").getByRole("button", { name: /^Delete 1 photo$/ }).click();
+    await page.locator("[data-selection-bar]").getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: "Deleted 1 photo" }).waitFor({ timeout: 10000 }).catch(() => {});
+    check(
+      mock.state.writes.some((w) => w.table === "assets" && w.method === "PATCH" && w.body.deleted_at && w.query.includes(PHOTO.ready)),
+      "deleting a photo in Media soft-deletes it",
+    );
+    check(
+      vercelLog().some((e) => e.purge?.includes(`asset-${PHOTO.ready}`)),
+      "and purges its CDN copies straight away",
+      JSON.stringify(vercelLog().filter((e) => e.purge)),
+    );
   }
 
   console.log("\n-- phones ----------------------------------------------------");
