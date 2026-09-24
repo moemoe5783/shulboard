@@ -444,6 +444,57 @@ try {
   );
 
   await netContext.close();
+
+  // =========================================================================
+  // C. A board with many photos: the screen says how far along it is.
+  // =========================================================================
+  console.log("\nC. Progress while photos download");
+  {
+    const manyContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: "block" });
+    const many = await manyContext.newPage();
+    many.on("pageerror", (e) => check(false, "no page errors", e.message));
+    const photos = (tag, n) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `${tag}-${i}`,
+        url: `/m/${tag}-${i}/display-${tag}${i}.svg`,
+        variant: "display",
+        contentType: "image/svg+xml",
+        bytes: 200,
+      }));
+    let current = { ...bundleFixture({ version: 1, hash: "many-one", title: "Sixty photos" }), assets: photos("first", 60) };
+    let delay = 250;
+    await manyContext.route("**/api/screen/*/bundle", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", headers: { etag: `"${current.contentHash}"` }, body: JSON.stringify(current) }),
+    );
+    await manyContext.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await manyContext.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+    await manyContext.route("**/m/**", async (route) => {
+      await new Promise((r) => setTimeout(r, delay));
+      await route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>' });
+    });
+
+    await many.goto(DISPLAY, { waitUntil: "domcontentloaded" });
+    const progress = many.locator("[data-loading-progress]");
+    await progress.waitFor({ timeout: 5000 }).catch(() => {});
+    const midway = await progress.getAttribute("data-loading-progress").catch(() => null);
+    const [done, total] = (midway ?? "0/0").split("/").map(Number);
+    check(total === 60 && done < 60, "a first load with many photos shows how far along it is", midway ?? "no progress shown");
+    check((await many.locator("body").innerText()).includes("Getting this screen’s photos ready"), "and says what it's doing");
+    await many.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    check((await marker(many, "version")) === "1", "then the board appears");
+
+    // An update with sixty new photos, slow enough to take several seconds.
+    current = { ...bundleFixture({ version: 2, hash: "many-two", title: "Sixty more" }), assets: photos("second", 60) };
+    delay = 400;
+    await many.reload({ waitUntil: "domcontentloaded" });
+    const badge = many.locator("[data-updating-badge]");
+    await badge.waitFor({ timeout: 8000 }).catch(() => {});
+    check(await badge.isVisible().catch(() => false), "a slow update shows a small updating tag", (await badge.textContent().catch(() => "")) ?? "");
+    check((await marker(many, "version")) === "1", "while the current board keeps showing");
+    await many.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "2", null, { timeout: 20000 }).catch(() => {});
+    check((await marker(many, "version")) === "2" && !(await badge.isVisible().catch(() => false)), "then the new board swaps in and the tag goes");
+    await manyContext.close();
+  }
   console.log("");
 } finally {
   await browser.close();

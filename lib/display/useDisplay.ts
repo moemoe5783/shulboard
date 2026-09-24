@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BundleEnvelope } from "@/lib/bundle/types";
-import { evictUnusedAssets, warmAssets } from "./assets";
+import { evictUnusedAssets, warmAssets, type AssetProgress } from "./assets";
 import { forgetBundle, readBundle, writeBundle } from "./store";
 import { deviceHeaders } from "./device";
 
@@ -42,6 +42,8 @@ export type DisplayStatus = {
   lastFetchAt: number | null;
   /** A new bundle is held back because not all of its assets are cached yet. */
   waitingForAssets: boolean;
+  /** While a bundle's photos are downloading: how many of how many. Null otherwise. */
+  assetProgress: AssetProgress | null;
   errorCount: number;
 };
 
@@ -56,6 +58,7 @@ export function useDisplay(token: string) {
     otherDevice: false,
     lastFetchAt: null,
     waitingForAssets: false,
+    assetProgress: null,
     errorCount: 0,
   });
 
@@ -128,11 +131,22 @@ export function useDisplay(token: string) {
 
       setStatus((s) => ({ ...s, online: true, lastFetchAt: Date.now(), waitingForAssets: true }));
 
-      const assets = await warmAssets(next);
-      if (!assets.ready) {
-        // Held back deliberately. The board on screen keeps running and the next
-        // poll tries again — a partially-cached bundle would show grey holes
-        // where photographs belong the moment the network drops.
+      // Progress for the screen to show, at most four times a second — a board
+      // with hundreds of photos would otherwise re-render for every one.
+      let lastReport = 0;
+      const assets = await warmAssets(next, (progress) => {
+        const now = Date.now();
+        if (now - lastReport < 250 && progress.done < progress.total) return;
+        lastReport = now;
+        setStatus((s) => ({ ...s, assetProgress: progress }));
+      });
+      setStatus((s) => ({ ...s, assetProgress: null }));
+      // Held back deliberately when a board is already showing: it keeps running
+      // and the next poll tries again — a partially-cached bundle would show grey
+      // holes where photographs belong the moment the network drops. With
+      // nothing on screen yet, though, the board goes up anyway: a few photos
+      // short beats a black screen, and the next poll fetches the rest.
+      if (!assets.ready && held) {
         setStatus((s) => ({ ...s, waitingForAssets: true }));
         return;
       }

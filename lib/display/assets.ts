@@ -25,7 +25,19 @@ export const ASSET_CACHE = "shulboard-assets-v1";
  * forever with no way to see which one. Fetching each separately means a
  * fifty-photo board reports "49 of 50" and the log names the one.
  */
-export async function warmAssets(bundle: BundleEnvelope): Promise<{
+export type AssetProgress = { done: number; total: number };
+
+/** How many downloads run at once. A TV browser handed hundreds of requests at
+ *  once can stall or run out of memory; a handful in flight is as fast on a
+ *  lobby connection and never does. */
+const CONCURRENCY = 6;
+
+export async function warmAssets(
+  bundle: BundleEnvelope,
+  /** Called as files land (already-cached ones count as done straight away),
+   *  so the screen can say how far along it is. */
+  onProgress?: (progress: AssetProgress) => void,
+): Promise<{
   ready: boolean;
   cached: number;
   total: number;
@@ -44,24 +56,34 @@ export async function warmAssets(bundle: BundleEnvelope): Promise<{
 
   const cache = await caches.open(ASSET_CACHE);
   const missing: string[] = [];
+  let done = 0;
+  const report = () => onProgress?.({ done, total: urls.length });
 
-  await Promise.all(
-    urls.map(async (url) => {
-      const already = await cache.match(url);
-      if (already) return;
+  // What's already here doesn't need fetching — on an update that's usually
+  // most of it — so it counts as done before any download starts.
+  const toFetch: string[] = [];
+  for (const url of urls) {
+    if (await cache.match(url)) done += 1;
+    else toFetch.push(url);
+  }
+  report();
 
+  let next = 0;
+  const worker = async () => {
+    while (next < toFetch.length) {
+      const url = toFetch[next++];
       try {
         const response = await fetch(url, { cache: "no-cache" });
-        if (!response.ok) {
-          missing.push(url);
-          return;
-        }
-        await cache.put(url, response);
+        if (response.ok) await cache.put(url, response);
+        else missing.push(url);
       } catch {
         missing.push(url);
       }
-    }),
-  );
+      done += 1;
+      report();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, toFetch.length) }, worker));
 
   return { ready: missing.length === 0, cached: urls.length - missing.length, total: urls.length, missing };
 }
