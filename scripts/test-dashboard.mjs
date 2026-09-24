@@ -11,7 +11,8 @@
  *  - INVITATIONS: a signed-out visitor sees who's inviting them and can
  *    create an account; the invited account joins with one button.
  *  - TV PAIRING: a TV at /pair shows a code; entering it on the screen's page
- *    connects that TV, which opens the board by itself; the same link on a
+ *    connects that TV (scanned with the camera, from a fake capture device
+ *    playing the TV's own QR code), which opens the board by itself; the same link on a
  *    second device is refused and sent to pairing; the phone's Connect page
  *    (the TV's QR code) arrives with the code filled in; disconnecting sends
  *    the TV back to showing a code.
@@ -228,11 +229,47 @@ try {
     await page.getByRole("button", { name: "Connect TV" }).click();
     await page.locator("p[role=alert]").waitFor({ timeout: 5000 }).catch(() => {});
     check(/wrong or has expired/.test((await page.locator("p[role=alert]").textContent().catch(() => "")) ?? ""), "a wrong code is refused");
-    await page.fill(`#code-${HALL}`, code ?? "");
-    await page.getByRole("button", { name: "Connect TV" }).click();
-    // The page refreshes into its connected state.
-    await page.getByText(/^Connected to a/).waitFor({ timeout: 5000 }).catch(() => {});
-    check(await page.getByText(/^Connected to a/).isVisible(), "entering it on the screen's page connects the TV", await page.getByText(/^Connected to a/).textContent().catch(() => ""));
+    // Scanning the TV's QR code from the screen's page, with a camera whose
+    // picture is that QR code (a fake capture device playing a .y4m file).
+    const { encode } = await import("uqr");
+    const { tmpdir } = await import("node:os");
+    const y4m = join(tmpdir(), `shulboard-tv-qr-${process.pid}.y4m`);
+    {
+      const { size, data } = encode(`${BASE}/connect?code=${code}`, { ecc: "M", border: 4 });
+      const W = 640;
+      const H = 480;
+      const scale = Math.floor(420 / size);
+      const x0 = Math.floor((W - size * scale) / 2);
+      const y0 = Math.floor((H - size * scale) / 2);
+      const yPlane = Buffer.alloc(W * H, 235);
+      for (let y = 0; y < size; y += 1)
+        for (let x = 0; x < size; x += 1)
+          if (data[y][x])
+            for (let dy = 0; dy < scale; dy += 1) yPlane.fill(16, (y0 + y * scale + dy) * W + x0 + x * scale, (y0 + y * scale + dy) * W + x0 + (x + 1) * scale);
+      const chroma = Buffer.alloc((W / 2) * (H / 2), 128);
+      const frame = Buffer.concat([Buffer.from("FRAME\n"), yPlane, chroma, chroma]);
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(y4m, Buffer.concat([Buffer.from(`YUV4MPEG2 W${W} H${H} F10:1 Ip A1:1 C420jpeg\n`), frame, frame]));
+    }
+    const cameraBrowser = await chromium.launch({
+      executablePath,
+      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-video-capture=${y4m}`],
+    });
+    try {
+      const cameraContext = await cameraBrowser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, storageState: await context.storageState() });
+      await cameraContext.grantPermissions(["camera"], { origin: BASE });
+      const scanner = await cameraContext.newPage();
+      scanner.on("pageerror", (error) => check(false, "no page errors (scanner)", error.message));
+      await scanner.goto(`${BASE}/screens/${HALL}`, { waitUntil: "networkidle" });
+      await scanner.getByRole("button", { name: "Scan the TV’s QR code" }).click();
+      check(await scanner.locator("[data-qr-scanner] video").isVisible().catch(() => false), "the screen's page opens the camera to scan the TV's QR code");
+      if (SHOTS) await scanner.waitForTimeout(800).then(() => scanner.screenshot({ path: join(SHOTS, "phone-scanner.png") }));
+      await scanner.getByText(/^Connected to a/).waitFor({ timeout: 15000 }).catch(() => {});
+      check(await scanner.getByText(/^Connected to a/).isVisible(), "scanning it connects the TV, nothing typed", await scanner.getByText(/^Connected to a/).textContent().catch(() => ""));
+      check(!(await scanner.locator("[data-qr-scanner]").isVisible().catch(() => false)), "and the camera is off again");
+    } finally {
+      await cameraBrowser.close();
+    }
 
     await tv.waitForURL(/\/s\//, { timeout: 15000 }).catch(() => {});
     const tvUrl = tv.url();

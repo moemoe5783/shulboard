@@ -117,7 +117,7 @@ export default async function ScreenPage({ params, searchParams }: PageProps<"/s
               {disconnected && <p className="text-body mt-1">TV disconnected. Connect the new one below.</p>}
               <p className="text-body text-ink-soft mt-1 max-w-prose">
                 No TV is connected yet. On the TV, open <span className="text-ink">{origin.replace(/^https?:\/\//, "")}/pair</span>{" "}
-                and it will show a code. Enter it here, or scan the TV&rsquo;s QR code with your phone.
+                and it will show a code and a QR code. Scan the QR code here, or type the code.
               </p>
               {canManage ? (
                 <div className="mt-4">
