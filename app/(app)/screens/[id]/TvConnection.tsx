@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useCallback, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { pairingCodeFrom, QrScanner } from "@/components/QrScanner";
 import { connectTv, disconnectTv, type ConnectTvState } from "../actions";
 
 /*
@@ -13,6 +14,27 @@ import { connectTv, disconnectTv, type ConnectTvState } from "../actions";
 
 export function ConnectTvForm({ screenId, initialCode = "" }: { screenId: string; initialCode?: string }) {
   const [state, action, pending] = useActionState<ConnectTvState, FormData>(connectTv, {});
+  const [code, setCode] = useState(initialCode);
+  const [scanning, setScanning] = useState(false);
+  const [scanProblem, setScanProblem] = useState<string>();
+
+  // A scan fills the code in and connects straight away — the whole point is
+  // not having to type anything.
+  const onScan = useCallback((value: string) => {
+    setScanning(false);
+    const scanned = pairingCodeFrom(value);
+    if (!scanned) {
+      setScanProblem("That QR code isn't a Shulboard TV code. Scan the code on the TV's pairing screen.");
+      return;
+    }
+    setScanProblem(undefined);
+    setCode(scanned);
+    const form = new FormData();
+    form.set("screenId", screenId);
+    form.set("code", scanned);
+    startTransition(() => action(form));
+  }, [action, screenId]);
+
   if (state.connected) {
     return (
       <p role="status" className="text-body">
@@ -21,33 +43,52 @@ export function ConnectTvForm({ screenId, initialCode = "" }: { screenId: string
     );
   }
   return (
-    <form action={action} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <input type="hidden" name="screenId" value={screenId} />
-      <div className="sm:w-44">
-        <Field
-          id={`code-${screenId}`}
-          name="code"
-          label="Code on the TV"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="482 915"
-          defaultValue={initialCode}
-          maxLength={7}
-          required
-          className="numeric tracking-widest"
-        />
-      </div>
-      <div>
-        <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? "Connecting" : "Connect TV"}
-        </Button>
-      </div>
-      {state.error && (
-        <p role="alert" className="text-body text-ink sm:basis-full">
-          {state.error}
-        </p>
+    <div className="flex flex-col gap-4">
+      {scanning ? (
+        <QrScanner onScan={onScan} onClose={() => setScanning(false)} />
+      ) : (
+        <div className="flex flex-col gap-1">
+          <div>
+            <Button variant="secondary" onClick={() => setScanning(true)}>
+              Scan the TV&rsquo;s QR code
+            </Button>
+          </div>
+          {scanProblem && (
+            <p role="alert" className="text-body text-ink">
+              {scanProblem}
+            </p>
+          )}
+        </div>
       )}
-    </form>
+      <form action={action} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <input type="hidden" name="screenId" value={screenId} />
+        <div className="sm:w-44">
+          <Field
+            id={`code-${screenId}`}
+            name="code"
+            label="Or type the code on the TV"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="482 915"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            maxLength={7}
+            required
+            className="numeric tracking-widest"
+          />
+        </div>
+        <div>
+          <Button type="submit" variant="primary" disabled={pending}>
+            {pending ? "Connecting" : "Connect TV"}
+          </Button>
+        </div>
+        {state.error && (
+          <p role="alert" className="text-body text-ink sm:basis-full">
+            {state.error}
+          </p>
+        )}
+      </form>
+    </div>
   );
 }
 
