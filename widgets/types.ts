@@ -214,3 +214,19 @@ export type WidgetSettingsProps<TConfig = Record<string, unknown>> = {
 export type WidgetSettingsComponent<TConfig = Record<string, unknown>> = ComponentType<
   WidgetSettingsProps<TConfig>
 >;
+
+/**
+ * A widget's contribution to the properties panel's Appearance tab — its own
+ * look settings, next to the shared ones (components/editor/AppearanceControls
+ * .tsx) rather than mixed in with what the widget shows on its Options tab.
+ *
+ * `id` either names a section of the widget's own (a tab with `label`), or one
+ * of the shared sections — `"background"`, `"shape"`, `"text"` — to add
+ * controls at the top of, as the collage adds its backdrop to Background.
+ * Exported from a widget's Settings.tsx as `appearance`.
+ */
+export type AppearanceSection<TConfig = Record<string, unknown>> = {
+  id: string;
+  label: string;
+  Component: WidgetSettingsComponent<TConfig>;
+};

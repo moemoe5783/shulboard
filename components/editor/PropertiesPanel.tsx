@@ -16,7 +16,7 @@ import { widgetRect } from "@/lib/editor/geometry";
 import { matchPresets } from "@/lib/editor/size-presets";
 import { GROUP_TYPE, useEditor, type EditorState } from "@/lib/editor/store";
 import { getManifest } from "@/widgets/manifests";
-import { getSettings } from "@/widgets/settings";
+import { getAppearanceSections, getSettings } from "@/widgets/settings";
 import { normalizeWidgetStyle, type WidgetStyleConfig } from "@/widgets/style";
 import type { SizingMode, WidgetManifest } from "@/widgets/types";
 
@@ -71,6 +71,8 @@ function Body({
   // purpose — a gabbai restyling several widgets in a row stays on the
   // Appearance tab rather than being thrown back to Options each click.
   const [tab, setTab] = useState<PanelTab>("options");
+  // Which Appearance section is showing — kept across selections like `tab`.
+  const [appearanceSection, setAppearanceSection] = useState<string | null>(null);
 
   /*
    * Resize a fit-mode widget's BOX so its content renders at `target` design
@@ -188,6 +190,20 @@ function Body({
           <AppearanceControls
             config={styleConfig}
             onChange={(patch: Partial<WidgetStyleConfig>) => setWidgetConfig(ids, patch)}
+            section={appearanceSection}
+            onSection={setAppearanceSection}
+            // The widget's own look settings (its Settings.tsx `appearance`),
+            // rendered the same way its Options form is — createElement for
+            // the reason given there.
+            extras={getAppearanceSections(type).map((extra) => ({
+              id: extra.id,
+              label: extra.label,
+              node: createElement(extra.Component, {
+                config: config as never,
+                onChange: (patch: Record<string, unknown>) => setWidgetConfig(ids, patch),
+                widgetIds: ids,
+              }),
+            }))}
           />
         )}
 

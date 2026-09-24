@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { CHROME_BUTTON, CHROME_BUTTON_ON } from "@/app/(dev)/editor-lab/chrome";
 import { BOARD_FONT_OPTIONS } from "@/lib/board-theme";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
@@ -21,7 +23,25 @@ import { SliderField } from "./SliderField";
  * at the top mean most boards never touch an individual control at all. The
  * VALUES chosen here are board content and may be any colour (design.md §1b);
  * the controls themselves are chrome and follow the dark-panel geometry.
+ *
+ * IN SECTIONS, one showing at a time, with every section's name in a row of
+ * tabs at the top — so what else there is to set is visible at a glance
+ * rather than found by scrolling. A widget adds its own look settings
+ * (widgets/types.ts, AppearanceSection): a section of its own, listed first,
+ * or controls at the top of a shared one.
  */
+
+/** The shared sections, in tab order. */
+export const SHARED_APPEARANCE_SECTIONS = [
+  { id: "presets", label: "Presets" },
+  { id: "background", label: "Background" },
+  { id: "shape", label: "Shape" },
+  { id: "text", label: "Text" },
+  { id: "header", label: "Header" },
+] as const;
+
+/** A widget's contribution, ready to render. */
+export type AppearanceExtra = { id: string; label: string; node: ReactNode };
 
 /** Where a freshly-enabled colour starts, before the gabbai edits it — values,
  *  not tokens, because this is board content. */
@@ -31,15 +51,50 @@ const DEFAULT_BORDER_COLOR = "#1b2a2e";
 export function AppearanceControls({
   config,
   onChange,
+  extras = [],
+  section,
+  onSection,
 }: {
   config: WidgetStyleConfig;
   onChange: (patch: Partial<WidgetStyleConfig>) => void;
+  /** The widget's own look settings (see AppearanceExtra above). */
+  extras?: readonly AppearanceExtra[];
+  /** Which section is showing — owned by the panel, so it stays put as the
+   *  selection changes. Null or unknown falls back to the first. */
+  section: string | null;
+  onSection: (id: string) => void;
 }) {
   const hasTextColor = config.textColor !== "";
   const hasBorder = config.borderWidth > 0;
+  const shared = new Set<string>(SHARED_APPEARANCE_SECTIONS.map((one) => one.id));
+  const own = extras.filter((extra) => !shared.has(extra.id));
+  const tabs = [...own.map(({ id, label }) => ({ id, label })), ...SHARED_APPEARANCE_SECTIONS];
+  const active = tabs.some((tab) => tab.id === section) ? section! : tabs[0].id;
+  const addedTo = (id: string) => extras.filter((extra) => extra.id === id).map((extra) => <div key={extra.label}>{extra.node}</div>);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-1.5" role="tablist" aria-label="Appearance sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active === tab.id}
+            onClick={() => onSection(tab.id)}
+            className={`${CHROME_BUTTON} border px-1 ${active === tab.id ? `${CHROME_BUTTON_ON} border-transparent` : "border-paper/20"}`}
+            data-appearance-tab={tab.id}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-5" data-appearance-section={active}>
+        {own.find((extra) => extra.id === active)?.node}
+
+        {active === "presets" && (
+          <>
       {/* Ready-made frames — pick one, then adjust anything below. */}
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Frame</span>
@@ -59,31 +114,12 @@ export function AppearanceControls({
         </div>
       </div>
 
-      {/* Header — the title above the widget, like "Zmanim" over the table. */}
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className={PANEL_LABEL}>Header</span>
-          <input
-            type="text"
-            value={config.title}
-            placeholder="No header"
-            onChange={(event) => onChange({ title: event.target.value })}
-            className={PANEL_CONTROL}
-          />
-        </label>
-        {config.title !== "" && (
-          <SliderField
-            label="Header size"
-            value={Math.round(config.titleSize * 100)}
-            min={50}
-            max={300}
-            step={5}
-            onChange={(pct) => onChange({ titleSize: pct / 100 })}
-            format={(v) => `${v}%`}
-          />
+          </>
         )}
-      </div>
 
+        {active === "background" && (
+          <>
+            {addedTo("background")}
       {/* Background — a colour or a gradient — and, for a plain colour, its
           transparency. */}
       <div className="flex flex-col gap-2">
@@ -101,6 +137,12 @@ export function AppearanceControls({
         )}
       </div>
 
+          </>
+        )}
+
+        {active === "shape" && (
+          <>
+            {addedTo("shape")}
       {/* Corner radius (absolute) + padding (relative to the text size). */}
       <SliderField
         label="Corner radius"
@@ -165,6 +207,12 @@ export function AppearanceControls({
         <span className="text-cell text-paper">Drop shadow</span>
       </label>
 
+          </>
+        )}
+
+        {active === "text" && (
+          <>
+            {addedTo("text")}
       {/* Text colour. */}
       <div className="flex flex-col gap-2">
         <label className="flex items-center gap-2">
@@ -199,6 +247,39 @@ export function AppearanceControls({
           ))}
         </select>
       </label>
+          </>
+        )}
+
+        {active === "header" && (
+          <>
+      {/* Header — the title above the widget, like "Zmanim" over the table. */}
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={PANEL_LABEL}>Header</span>
+          <input
+            type="text"
+            value={config.title}
+            placeholder="No header"
+            onChange={(event) => onChange({ title: event.target.value })}
+            className={PANEL_CONTROL}
+          />
+        </label>
+        {config.title !== "" && (
+          <SliderField
+            label="Header size"
+            value={Math.round(config.titleSize * 100)}
+            min={50}
+            max={300}
+            step={5}
+            onChange={(pct) => onChange({ titleSize: pct / 100 })}
+            format={(v) => `${v}%`}
+          />
+        )}
+      </div>
+
+          </>
+        )}
+      </div>
     </div>
   );
 }
