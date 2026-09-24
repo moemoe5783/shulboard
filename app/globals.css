@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "../lib/tokens.css";
 
+/* The dashboard's desk layout — the rail beside the page. Wide AND tall
+   enough: a phone held sideways is wider than 768px but only ~390px tall,
+   and gets the phone layout (components/AppShell.tsx), not a rail it can't fit. */
+@custom-variant desk (@media (min-width: 768px) and (min-height: 540px));
+
 @layer base {
   /* Surface colors only. No font-family here on purpose — chrome opts into
    * Assistant with `font-ui`, and the board renderer must not inherit it.

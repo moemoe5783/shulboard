@@ -290,6 +290,26 @@ try {
     check(mobile.url() === `${BASE}/boards`, "and the menu reaches the other pages", mobile.url());
     check(!(await mobile.getByRole("navigation", { name: "Sections" }).isVisible()), "then closes");
   }
+  {
+    // A phone held sideways is wider than a tablet but only ~390px tall.
+    const sideways = await (await browser.newContext({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, storageState: await context.storageState() })).newPage();
+    await sideways.goto(`${BASE}/screens`, { waitUntil: "networkidle" });
+    check(await sideways.getByRole("button", { name: "Menu" }).isVisible(), "a phone held sideways gets the phone layout too");
+    const overflow = await sideways.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check(overflow <= 1, "and fits", `${overflow}px too wide`);
+    if (SHOTS) await sideways.screenshot({ path: join(SHOTS, "phone-sideways.png") });
+  }
+  {
+    // On a desk the rail stays put while the page scrolls.
+    const desk = await (await browser.newContext({ viewport: { width: 1280, height: 600 }, storageState: await context.storageState() })).newPage();
+    await desk.goto(`${BASE}/settings/members`, { waitUntil: "networkidle" });
+    await desk.mouse.wheel(0, 800);
+    await desk.waitForTimeout(300);
+    const scrolled = await desk.evaluate(() => window.scrollY);
+    const railTop = await desk.getByRole("navigation", { name: "Sections" }).evaluate((el) => el.getBoundingClientRect().top);
+    const signOut = await desk.getByRole("button", { name: "Sign out" }).isVisible();
+    check(scrolled > 100 && Math.abs(railTop) < 1 && signOut, "on a desk the rail stays put while the page scrolls", `scrolled ${scrolled}px, rail top ${railTop}px`);
+  }
   const signedOut = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
   for (const [name, path] of [
     ["sign-in", "/sign-in"],
