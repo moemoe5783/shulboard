@@ -68,8 +68,12 @@ export function fixtures() {
               org_id: o.id, name: o.name, slug: o.slug, created_at: ago(40 * 864e5), deleted_at: null,
               plan: o.plan ?? "trial", trial_ends_at: o.plan && o.plan !== "trial" ? null : (o.trial_ends_at ?? new Date(now + 12 * 864e5).toISOString()),
               stripe_customer_id: null, stripe_subscription_id: null, owner_email: GABBAI.email,
-              member_count: 2, screen_count: f.screens.length, screens_live: 1, board_count: f.boards.length, photo_count: 3, storage_bytes: 4_200_000,
+              member_count: 2, screen_count: f.screens.length, screens_live: 1, board_count: f.boards.length, photo_count: 3, storage_bytes: 6_400_000, file_count: 12, recorded_bytes: 4_200_000,
             }))
+          : [],
+      platform_usage: (_args, who) =>
+        f.platform_admins.includes(who?.userId)
+          ? [{ storage_bytes: 7_100_000, file_count: 14, unattributed_bytes: 700_000, database_bytes: 12_300_000 }]
           : [],
       platform_set_org_plan: ({ p_org, p_plan, p_trial_ends_at }) => {
         const o = f.orgs.find((one) => one.id === p_org);

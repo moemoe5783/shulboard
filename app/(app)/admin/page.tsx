@@ -15,14 +15,14 @@ export const dynamic = "force-dynamic";
 export default async function AdminShulsPage() {
   await requirePlatformAdmin();
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("platform_orgs");
+  const [{ data, error }, { data: usageRows }] = await Promise.all([supabase.rpc("platform_orgs"), supabase.rpc("platform_usage")]);
   if (error) throw new Error(`Couldn't load the shuls: ${error.message}`);
+  const usage = usageRows?.[0];
   const shuls = (data ?? []).filter((shul) => !shul.deleted_at);
   type Shul = (typeof shuls)[number];
 
   const screens = shuls.reduce((sum, shul) => sum + Number(shul.screen_count), 0);
   const live = shuls.reduce((sum, shul) => sum + Number(shul.screens_live), 0);
-  const storage = shuls.reduce((sum, shul) => sum + Number(shul.storage_bytes), 0);
   const byPlan = (plan: string) => shuls.filter((shul) => shul.plan === plan).length;
 
   return (
@@ -31,9 +31,19 @@ export default async function AdminShulsPage() {
       <AdminTabs />
       <p className="text-body text-ink-soft mt-4" data-admin-summary>
         {shuls.length} {shuls.length === 1 ? "shul" : "shuls"}: {byPlan("trial")} on a free trial, {byPlan("basic")} on
-        Basic, {byPlan("pro")} on Pro. {screens} {screens === 1 ? "screen" : "screens"}, {live} live now, and{" "}
-        {formatBytes(storage)} of photos stored.
+        Basic, {byPlan("pro")} on Pro. {screens} {screens === 1 ? "screen" : "screens"}, {live} live now.
       </p>
+      {usage && (
+        // What Supabase meters by size, live. Supabase bills storage as an
+        // average over the month, so this won't match an invoice to the byte.
+        <p className="text-body text-ink-soft mt-1" data-admin-usage>
+          Storage holds {formatBytes(Number(usage.storage_bytes))} in {Number(usage.file_count).toLocaleString("en-US")}{" "}
+          {Number(usage.file_count) === 1 ? "file" : "files"}
+          {Number(usage.unattributed_bytes) > 0 && <>, {formatBytes(Number(usage.unattributed_bytes))} of it belonging to no shul</>}
+          . The database is {formatBytes(Number(usage.database_bytes))}. Supabase bills storage as a monthly average, so
+          the invoice won&rsquo;t match this exactly.
+        </p>
+      )}
 
       <section className="rounded-panel border-rule bg-surface mt-6 overflow-x-auto border">
         <Table<Shul>

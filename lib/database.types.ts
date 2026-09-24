@@ -1431,12 +1431,14 @@ export type Database = {
           board_count: number
           created_at: string
           deleted_at: string
+          file_count: number
           member_count: number
           name: string
           org_id: string
           owner_email: string
           photo_count: number
           plan: string
+          recorded_bytes: number
           screen_count: number
           screens_live: number
           slug: string
@@ -1453,6 +1455,15 @@ export type Database = {
       platform_set_org_plan: {
         Args: { p_org: string; p_plan: string; p_trial_ends_at: string }
         Returns: undefined
+      }
+      platform_usage: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          database_bytes: number
+          file_count: number
+          storage_bytes: number
+          unattributed_bytes: number
+        }[]
       }
       platform_users: {
         Args: { p_search?: string }

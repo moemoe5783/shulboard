@@ -140,7 +140,10 @@ create table if not exists storage.objects (
   bucket_id text references storage.buckets (id),
   name text not null,
   owner uuid,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- What Storage records about the file; `size` is its bytes. Read by the
+  -- platform admin's storage totals (20260926100000).
+  metadata jsonb
 );
 
 -- Real Supabase's storage.foldername(): the path's folder segments.

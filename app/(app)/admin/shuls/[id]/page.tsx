@@ -28,8 +28,11 @@ export default async function AdminShulPage({ params }: PageProps<"/admin/shuls/
     ["Members", String(shul.member_count)],
     ["Boards", String(shul.board_count)],
     ["Photos", String(shul.photo_count)],
-    ["Storage", formatBytes(Number(shul.storage_bytes))],
+    ["Storage", `${formatBytes(Number(shul.storage_bytes))} in ${Number(shul.file_count).toLocaleString("en-US")} ${Number(shul.file_count) === 1 ? "file" : "files"}`],
   ];
+  // Files Storage holds that no photo record accounts for — left behind by a
+  // failed upload or a deletion. Worth a line when there's much of it.
+  const leftover = Number(shul.storage_bytes) - Number(shul.recorded_bytes);
 
   return (
     <div className="max-w-4xl">
@@ -55,6 +58,12 @@ export default async function AdminShulPage({ params }: PageProps<"/admin/shuls/
             </div>
           ))}
         </dl>
+        {leftover > 1_000_000 && (
+          <p className="text-meta text-ink-soft mt-3 max-w-prose" data-admin-leftover>
+            {formatBytes(leftover)} of that is files no photo in Media accounts for — left behind by uploads that
+            didn&rsquo;t finish or photos since deleted.
+          </p>
+        )}
       </section>
 
       <section className="rounded-panel border-rule bg-surface mt-6 border p-4 sm:p-6">
