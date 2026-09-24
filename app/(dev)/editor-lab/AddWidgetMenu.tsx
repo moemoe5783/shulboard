@@ -32,6 +32,21 @@ const MENU_ITEM =
 export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: number } }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDetailsElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+  /** The room below the button, so a list longer than the window scrolls
+   *  inside the menu rather than running off the bottom of the screen. */
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const bottom = summaryRef.current?.getBoundingClientRect().bottom ?? 0;
+      setMaxHeight(Math.max(160, window.innerHeight - bottom - 4 - 12));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -90,10 +105,16 @@ export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: num
       {/* "Add element" — docs/sizing.md §6: "element" is the editor UI's word
           for this; "widget" stays the word in code (folders, manifests,
           WIDGET_MANIFESTS below), unchanged. */}
-      <summary className={`${CHROME_BUTTON} cursor-pointer list-none`}>Add element</summary>
+      <summary ref={summaryRef} className={`${CHROME_BUTTON} cursor-pointer list-none`}>
+        Add element
+      </summary>
 
       {/* A menu floats, which is what earns it the one shadow in the product. */}
-      <div className="rounded-panel border-rule bg-surface absolute top-9 left-0 z-30 w-64 border p-1 shadow-menu">
+      <div
+        data-add-menu
+        className="rounded-panel border-rule bg-surface absolute top-9 left-0 z-30 w-64 overflow-y-auto overscroll-contain border p-1 shadow-menu"
+        style={{ maxHeight }}
+      >
         {grouped.map((group, index) => (
           <div
             key={group.category}
