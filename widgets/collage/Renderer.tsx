@@ -18,7 +18,7 @@ import { cellAnimation, sequenceOrder, transitionFor, type CollageTransition } f
  * The collage on the board. The layout comes from lib/collage — the same
  * module the editor, every screen and the tests run — and the cycle from
  * ./player.ts. This file only measures the box, feeds the player, and draws
- * what it says: each photo at exactly its cell, `object-fit: contain`, so
+ * what it says: each photo centred in its cell at its own shape, so
  * nothing is ever cropped, with the cells in percentages of the box so the
  * layout scales with whatever resolution the screen really is.
  *
@@ -173,7 +173,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
       ) : (
         <>
           {snapshot.previous && (
-            <Layer key={snapshot.previous.key} page={snapshot.previous} config={config} canvas={canvas} role="leaving" offset={0} />
+            <Layer key={snapshot.previous.key} page={snapshot.previous} config={config} canvas={canvas} box={measured?.design} role="leaving" offset={0} />
           )}
           {snapshot.current && (
             <Layer
@@ -181,6 +181,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
               page={snapshot.current}
               config={config}
               canvas={canvas}
+              box={measured?.design}
               role="entering"
               offset={snapshot.currentOffset}
             />
@@ -210,6 +211,8 @@ function Layer(props: {
   page: PlannedPage;
   config: CollageConfig;
   canvas: { width: number };
+  /** The collage box in design units — what a cell's shape is read against. */
+  box?: { width: number; height: number };
   role: "entering" | "leaving";
   offset: number;
 }) {
@@ -221,12 +224,14 @@ function CleanLayer({
   page,
   config,
   canvas,
+  box,
   role,
   offset,
 }: {
   page: PlannedPage;
   config: CollageConfig;
   canvas: { width: number };
+  box?: { width: number; height: number };
   role: "entering" | "leaving";
   /** For an entering page: when it starts, after the old page has made room. */
   offset: number;
@@ -235,11 +240,13 @@ function CleanLayer({
   // Seeded by the page, so "random" plays the same order on every screen.
   const order = sequenceOrder(page.cells, config.transitionOrder, page.key);
 
+  // Each photo's own proportions, read off its file once it loads (CellPhoto).
+  const [aspects, setAspects] = useState<Record<string, number>>({});
+  const onAspect = (id: string, aspect: number) =>
+    setAspects((prev) => (prev[id] === aspect ? prev : { ...prev, [id]: aspect }));
+
   const radius = config.photoRadius > 0 ? boardLength(config.photoRadius, canvas.width) : undefined;
   const photoStyle: CSSProperties = {
-    width: "100%",
-    height: "100%",
-    objectFit: "contain",
     display: "block",
     borderRadius: radius,
     boxSizing: "border-box",
@@ -247,29 +254,109 @@ function CleanLayer({
   if (config.photoFrame === "border") {
     photoStyle.border = `${boardLength(2, canvas.width)} solid color-mix(in srgb, currentColor 35%, transparent)`;
   }
-  if (config.photoFrame === "shadow") photoStyle.boxShadow = "0 0.3cqw 1.2cqw rgba(0, 0, 0, 0.3)";
+  const shadow = config.photoFrame === "shadow" ? photoShadow(config.photoShadowStrength, canvas.width) : undefined;
+
+  const cellStyle = (cell: PlannedPage["cells"][number], i: number): CSSProperties => ({
+    left: `${cell.left}%`,
+    top: `${cell.top}%`,
+    width: `${cell.width}%`,
+    height: `${cell.height}%`,
+    animation: cellAnimation(mode, role, order[i], page.cells.length, offset, config.transitionSpeed),
+    willChange: mode === "none" ? undefined : "opacity, transform",
+  });
+  const cellAspect = (cell: PlannedPage["cells"][number]) =>
+    box && cell.height > 0 ? (cell.width * box.width) / (cell.height * box.height) : null;
 
   return (
     <div data-collage-layer={role} className="absolute inset-0" style={{ zIndex: role === "entering" ? 1 : 0 }}>
+      {/* Every shadow first, then every photo over them: the gap between
+          photos is narrower than a shadow, so a shadow drawn with its own
+          photo would fall across the neighbour painted before it. This way a
+          shadow only ever shows in the gaps and around the edge. Each shadow
+          moves with its photo (same box, same animation). */}
+      {shadow &&
+        page.cells.map((cell, i) => (
+          <div key={`shadow-${cell.id}`} aria-hidden className="absolute" style={cellStyle(cell, i)}>
+            <div className="flex h-full w-full items-center justify-center">
+              <div
+                data-photo-shadow
+                style={{ ...photoBox(aspects[cell.id] ?? null, cellAspect(cell)), borderRadius: radius, boxShadow: shadow }}
+              />
+            </div>
+          </div>
+        ))}
       {page.cells.map((cell, i) => (
-        <div
-          key={cell.id}
-          data-photo-id={cell.id}
-          className="absolute"
-          style={{
-            left: `${cell.left}%`,
-            top: `${cell.top}%`,
-            width: `${cell.width}%`,
-            height: `${cell.height}%`,
-            animation: cellAnimation(mode, role, order[i], page.cells.length, offset, config.transitionSpeed),
-            willChange: mode === "none" ? undefined : "opacity, transform",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- a media-proxy
-              path, preloaded by the player, the same <img> Image and Gallery use. */}
-          <img src={cell.src} alt={cell.alt} style={photoStyle} draggable={false} />
+        <div key={cell.id} data-photo-id={cell.id} className="absolute" style={cellStyle(cell, i)}>
+          <CellPhoto
+            src={cell.src}
+            alt={cell.alt}
+            style={{ ...photoStyle, ...photoBox(aspects[cell.id] ?? null, cellAspect(cell)) }}
+            onAspect={(aspect) => onAspect(cell.id, aspect)}
+          />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The shadow on each photo, 0–100: none to heavy. 50 is the soft shadow a
+ * collage had before the strength was adjustable. In board units, so it scales
+ * with the board like everything else.
+ */
+export function photoShadow(strength: number, canvasWidth: number): string | undefined {
+  const s = Math.max(0, Math.min(100, strength)) / 50;
+  if (s <= 0) return undefined;
+  const alpha = Math.min(0.6, 0.3 * s).toFixed(3);
+  return `0 ${boardLength(6 * s, canvasWidth)} ${boardLength(23 * s, canvasWidth)} rgba(0, 0, 0, ${alpha})`;
+}
+
+/**
+ * A photo's box in its cell, at EXACTLY the photo's own shape — so a shadow, a
+ * border and rounded corners follow the picture rather than the cell. The cell
+ * is laid out from the stored size, which can differ from the file (rounding
+ * in the layout, a size recorded before orientation); an image stretched over
+ * the whole cell and `contain`ed put its shadow on the cell's rectangle, around
+ * empty bands. So the photo is centred in its cell and sized, from its own
+ * proportions, to the largest box of that shape that fits. Until the file has
+ * loaded, the whole cell, `contain`ed.
+ */
+function photoBox(aspect: number | null, cellAspect: number | null): CSSProperties {
+  if (!aspect || !cellAspect) return { width: "100%", height: "100%", objectFit: "contain" };
+  return aspect >= cellAspect
+    ? { width: "100%", height: `${(cellAspect / aspect) * 100}%`, objectFit: "cover" }
+    : { width: `${(aspect / cellAspect) * 100}%`, height: "100%", objectFit: "cover" };
+}
+
+/** One photo, centred in its cell; reports its own proportions once loaded. */
+function CellPhoto({
+  src,
+  alt,
+  style,
+  onAspect,
+}: {
+  src: string;
+  alt: string;
+  style: CSSProperties;
+  onAspect: (aspect: number) => void;
+}) {
+  const read = (img: HTMLImageElement | null) => {
+    if (img?.complete && img.naturalWidth > 0 && img.naturalHeight > 0) onAspect(img.naturalWidth / img.naturalHeight);
+  };
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      {/* eslint-disable-next-line @next/next/no-img-element -- a media-proxy
+          path, preloaded by the player, the same <img> Image and Gallery use. */}
+      <img
+        src={src}
+        alt={alt}
+        style={style}
+        draggable={false}
+        // A file already in the cache can finish before React listens for
+        // load, so the ref reads it too. The same number twice changes nothing.
+        ref={read}
+        onLoad={(event) => read(event.currentTarget)}
+      />
     </div>
   );
 }

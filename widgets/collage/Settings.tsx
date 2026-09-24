@@ -306,16 +306,6 @@ function CollageLook({ config: raw, onChange }: WidgetSettingsProps<CollageConfi
           {config.artsyTilt === "none" && config.artsyOverlap === "none" && (
             <span className={PANEL_LABEL}>Straight and apart: a gallery wall.</span>
           )}
-          <Choice
-            label="Shadow"
-            value={config.artsyShadow}
-            options={[
-              ["soft", "Soft"],
-              ["medium", "Medium"],
-              ["strong", "Strong"],
-            ]}
-            onChange={(artsyShadow) => onChange({ artsyShadow })}
-          />
           {fastenable && (
             <label className="flex items-center gap-2">
               <input
@@ -330,31 +320,77 @@ function CollageLook({ config: raw, onChange }: WidgetSettingsProps<CollageConfi
         </>
       )}
 
-      {/* Clean only: Artsy spaces its prints itself and dresses them in frames. */}
-      {!artsy && (
-        <>
-          <SliderField label="Gap" value={config.gutter} min={0} max={60} onChange={(gutter) => onChange({ gutter })} />
-          <SliderField
-            label="Photo corner radius"
-            value={config.photoRadius}
-            min={0}
-            max={80}
-            onChange={(photoRadius) => onChange({ photoRadius })}
-          />
+    </div>
+  );
+}
 
-          <label className="flex flex-col gap-1">
-            <span className={PANEL_LABEL}>Photo edge</span>
-            <select
-              value={config.photoFrame}
-              onChange={(event) => onChange({ photoFrame: event.target.value as CollageConfig["photoFrame"] })}
-              className={PANEL_CONTROL}
-            >
-              <option value="none">None</option>
-              <option value="border">Thin border</option>
-              <option value="shadow">Soft shadow</option>
-            </select>
-          </label>
-        </>
+/**
+ * Settings for EACH photo, on the Appearance tab's own Photos section — kept
+ * apart from the frame around the whole collage (the shared Shape section),
+ * so the space between photos and the space inside the collage's edge, or a
+ * shadow under every photo and one under the whole collage, are never side by
+ * side under the same name.
+ */
+function CollagePhotos({ config: raw, onChange }: WidgetSettingsProps<CollageConfig>) {
+  const config = readCollageConfig(raw);
+  if (config.style === "artsy") {
+    // Artsy spaces its prints itself and dresses them in frames; the shadow
+    // under each print is the one thing to set here.
+    return (
+      <div className="flex flex-col gap-4">
+        <Choice
+          label="Shadow under each photo"
+          value={config.artsyShadow}
+          options={[
+            ["soft", "Soft"],
+            ["medium", "Medium"],
+            ["strong", "Strong"],
+          ]}
+          onChange={(artsyShadow) => onChange({ artsyShadow })}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <SliderField
+        label="Space between photos"
+        value={config.gutter}
+        min={0}
+        max={60}
+        onChange={(gutter) => onChange({ gutter })}
+      />
+      <SliderField
+        label="Rounded photo corners"
+        hint="How round each photo's corners are."
+        value={config.photoRadius}
+        min={0}
+        max={80}
+        onChange={(photoRadius) => onChange({ photoRadius })}
+      />
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Edge of each photo</span>
+        <select
+          value={config.photoFrame}
+          onChange={(event) => onChange({ photoFrame: event.target.value as CollageConfig["photoFrame"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="none">None</option>
+          <option value="border">Thin border</option>
+          <option value="shadow">Shadow</option>
+        </select>
+      </label>
+      {config.photoFrame === "shadow" && (
+        <SliderField
+          label="Shadow strength"
+          hint="Light and close, or dark and spread out."
+          value={config.photoShadowStrength}
+          min={5}
+          max={100}
+          unit="%"
+          onChange={(photoShadowStrength) => onChange({ photoShadowStrength })}
+        />
       )}
     </div>
   );
@@ -420,5 +456,6 @@ function CollageBackground({ config: raw, onChange }: WidgetSettingsProps<Collag
 
 export const appearance: AppearanceSection<CollageConfig>[] = [
   { id: "collage", label: "Collage", Component: CollageLook },
+  { id: "photos", label: "Photos", Component: CollagePhotos },
   { id: "background", label: "Background", Component: CollageBackground },
 ];
