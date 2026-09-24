@@ -63,7 +63,7 @@ export function frameSpec(style: ItemFrameStyle, fasteners: boolean): FrameSpec 
       return { style, paper: all(0.13), reach: NONE, frame: 0.03, fastener: "none" };
     case "taped":
       return fasteners
-        ? { style, paper: all(0.03), reach: { t: 0.045, r: 0, b: 0, l: 0 }, frame: 0, fastener: "tape" }
+        ? { style, paper: all(0.03), reach: { t: 0.06, r: 0, b: 0, l: 0 }, frame: 0, fastener: "tape" }
         : { style, paper: all(0.03), reach: NONE, frame: 0, fastener: "none" };
     case "pinned":
       return fasteners

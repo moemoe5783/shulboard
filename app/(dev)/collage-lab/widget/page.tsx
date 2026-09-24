@@ -58,6 +58,7 @@ function doc(
   interval: number,
   transition: string,
   motion: { transitionOrder?: string; transitionSpeed?: number } = {},
+  look: Record<string, string> = {},
 ) {
   return parseBoardDoc({
     schemaVersion: 1,
@@ -71,7 +72,7 @@ function doc(
         w: 90,
         h: 90,
         z: 0,
-        config: { ...albums, ...motion, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
+        config: { ...albums, ...motion, ...look, intervalSeconds: interval, transition, gutter: 12, density: "auto", order: "album" },
       },
     ],
   });
@@ -89,12 +90,20 @@ function Inner() {
     transitionSpeed: Number(params.get("speed") ?? 1),
   };
 
+  // The Artsy style, from the query: ?style=artsy&artsyFrame=wood&…
+  const look: Record<string, string | boolean> = {};
+  for (const key of ["style", "artsyFrame", "artsyTilt", "artsyOverlap", "artsyBackdrop", "artsyShadow"]) {
+    const value = params.get(key);
+    if (value) look[key] = value;
+  }
+  if (params.get("artsyFasteners") === "false") look.artsyFasteners = false;
+
   const lab = album(seed, count, mix);
   // Two overlapping albums for the multi-album board: photos 4 and 5 are in
   // both, and one photo in the second ended long ago.
   const ended = { ...lab[10], assetId: "lab-ended", displayUntil: "2000-01-01" };
   const albums: BoardAlbums = { lab, empty: [], first: lab.slice(0, 6), second: [...lab.slice(4, 10), ended] };
-  const full = doc({ albumId: "lab" }, interval, transition, motion);
+  const full = doc({ albumId: "lab" }, interval, transition, motion, look as Record<string, string>);
   const empty = doc({ albumId: "empty" }, interval, transition);
   const multi = doc({ albumIds: ["first", "second"] }, interval, transition);
   const widgetProps = (widget: { id: string }) => ({ "data-widget-id": widget.id });
