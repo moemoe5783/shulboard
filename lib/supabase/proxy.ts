@@ -42,6 +42,7 @@ const PUBLIC_PREFIXES = [
   "/collage-lab",
   "/backgrounds-lab",
   "/upload-lab",
+  "/preview-lab",
   "/clock-lab",
   "/widgets-lab",
 ];

@@ -121,6 +121,8 @@ export class DeviceFiles {
 
   private makeSnapshot(): BoardFiles {
     return {
+      // The display: pages wait for their files.
+      gated: true,
       version: this.version,
       // No Cache Storage (an old TV browser, an insecure origin): there's no
       // offline copy to wait for, so every file counts as ready and loads over

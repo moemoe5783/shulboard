@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
+import { EVERY_FILE_READY, type BoardFiles } from "./board-files";
 import type { BoardAlbums, BoardPhoto } from "@/lib/media/album-photos";
 
 /*
@@ -16,31 +17,11 @@ import type { BoardAlbums, BoardPhoto } from "@/lib/media/album-photos";
 
 const BoardAssetsContext = createContext<BoardAlbums | null>(null);
 
-/**
- * Which photo files are on hand — the other half of what a Gallery or Collage
- * needs to know, and the same no-fork contract as the albums above.
- *
- * A board on a wall only shows a page once every file on it is on the device
- * (the atomic swap's promise, lib/display/assets.ts). The widget doesn't learn
- * how or where files are kept; it hears two things:
- *
- *  - `isReady(src)`: this file can be shown now. `version` bumps as more
- *    arrive, so a widget waiting on a page knows to look again.
- *  - `want(owner, srcs)`: the files its pages use, in the order it will show
- *    them. That's what gets downloaded, first things first — the widget is the
- *    only thing that knows its real size on this screen, which decides the
- *    layout and so the files. `complete` says the list covers every page.
- *
- * No provider — the editor, a lab page — means everything is ready and
- * nothing is wanted: files load as they're shown, as on any web page.
- */
-export type BoardFiles = {
-  isReady: (src: string) => boolean;
-  version: number;
-  want: (owner: string, srcs: readonly string[], complete: boolean) => void;
-};
+// Which photo files are on hand, and the everything-ready default for anywhere
+// without the display's runtime — lib/board-files.ts.
+export { EVERY_FILE_READY, type BoardFiles } from "./board-files";
 
-const BoardFilesContext = createContext<BoardFiles | null>(null);
+const BoardFilesContext = createContext<BoardFiles>(EVERY_FILE_READY);
 
 export function BoardAssetsProvider({
   albums,
@@ -53,13 +34,13 @@ export function BoardAssetsProvider({
 }) {
   return (
     <BoardAssetsContext.Provider value={albums}>
-      <BoardFilesContext.Provider value={files}>{children}</BoardFilesContext.Provider>
+      <BoardFilesContext.Provider value={files ?? EVERY_FILE_READY}>{children}</BoardFilesContext.Provider>
     </BoardAssetsContext.Provider>
   );
 }
 
-/** The files on hand, or null where every file counts as ready (the editor). */
-export function useBoardFiles(): BoardFiles | null {
+/** The files on hand. Without the display's runtime, EVERY_FILE_READY. */
+export function useBoardFiles(): BoardFiles {
   return useContext(BoardFilesContext);
 }
 

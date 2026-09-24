@@ -15,7 +15,7 @@
  * Run with: npm run test:collage-player
  */
 
-import type { BoardFiles } from "../lib/board-assets.tsx";
+import { EVERY_FILE_READY, type BoardFiles } from "../lib/board-files.ts";
 import type { BoardPhoto } from "../lib/media/album-photos.ts";
 import type { CollageConfig } from "../widgets/collage/manifest.ts";
 import { CollagePlayer, type PlannedPage } from "../widgets/collage/player.ts";
@@ -93,6 +93,7 @@ type Fake = BoardFiles & { ready: Set<string>; wanted: string[]; complete: boole
 
 function fakeFiles(): Fake {
   const fake: Fake = {
+    gated: true,
     ready: new Set(),
     wanted: [],
     complete: false,
@@ -108,9 +109,9 @@ function fakeFiles(): Fake {
   return fake;
 }
 
-function start(photos: BoardPhoto[], files: BoardFiles | null, config: CollageConfig = CONFIG) {
+function start(photos: BoardPhoto[], files: BoardFiles, config: CollageConfig = CONFIG) {
   const player = new CollagePlayer();
-  const feed = (f: BoardFiles | null) =>
+  const feed = (f: BoardFiles) =>
     player.setInputs({
       photos,
       box: { width: 1200, height: 800 },
@@ -218,7 +219,7 @@ console.log("\n-- a bigger copy serves a smaller cell -----------------------");
 
 console.log("\n-- the editor --------------------------------------------------");
 {
-  const editor = start(photos, null);
+  const editor = start(photos, EVERY_FILE_READY);
   await sleep(50);
   editor.player.tick(0);
   await sleep(5);

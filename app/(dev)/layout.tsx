@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 /*
  * The dev reference sheets and labs — /tokens, /primitives, /editor-lab,
  * /font-parity, /zmanim-lab, /collage-lab (and /artsy, /widget,
- * /legacy-editor), /backgrounds-lab, /upload-lab, /clock-lab, /widgets-lab.
+ * /legacy-editor), /backgrounds-lab, /upload-lab, /preview-lab, /clock-lab, /widgets-lab.
  *
  * NOT ON PRODUCTION. They're for building and for the browser tests, which
  * run against a local `next start`; on the production deployment
