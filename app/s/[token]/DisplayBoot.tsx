@@ -49,8 +49,8 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
 
   const { bundle, status } = useDisplay(token);
 
-  // An update downloading behind a board that's showing: say so only once it
-  // has taken a few seconds.
+  // An update, or the rest of this board's photos, downloading behind a board
+  // that's showing: say so only once it has taken a few seconds.
   const updating = Boolean(bundle && status.assetProgress && status.assetProgress.done < status.assetProgress.total);
   const [slowUpdate, setSlowUpdate] = useState(false);
   useEffect(() => {
@@ -138,7 +138,11 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
       </span>
       <DisplayBoard bundle={bundle} />
       {updating && slowUpdate && status.assetProgress && (
-        <UpdatingBadge done={status.assetProgress.done} total={status.assetProgress.total} />
+        <UpdatingBadge
+          done={status.assetProgress.done}
+          total={status.assetProgress.total}
+          label={status.assetPhase === "photos" ? "Loading" : "Updating board"}
+        />
       )}
     </>
   );

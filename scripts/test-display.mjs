@@ -496,6 +496,69 @@ try {
     await manyContext.close();
   }
   console.log("");
+
+  // ---- D. A big album: the board goes up before every photo is here --------
+  console.log("D. A gallery of many photos starts before they've all downloaded");
+  {
+    const albumContext = await browser.newContext();
+    const page = await albumContext.newPage();
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    const count = 60;
+    const photoList = Array.from({ length: count }, (_, i) => ({
+      assetId: `al-${i}`,
+      src: `/m/al-${i}/display-al${i}.svg`,
+      width: 4,
+      height: 4,
+      caption: null,
+      addedAt: null,
+      displayUntil: null,
+      variants: [],
+    }));
+    const base = bundleFixture({ version: 1, hash: "album-one", title: "Kiddush photos" });
+    base.boards[0].doc.widgets.push({
+      id: "44444444-4444-4444-8444-444444444444",
+      type: "gallery",
+      x: 50, y: 10, w: 45, h: 80, rotation: 0, z: 2,
+      locked: false, hidden: false, opacity: 1, groupId: null,
+      styleOverrides: {},
+      config: { albumId: "", albumMode: "selected", albumIds: ["al"], excludedAlbumIds: [], intervalSeconds: 2, transition: "none" },
+    });
+    const bundle = {
+      ...base,
+      content: { ...base.content, albums: { al: photoList } },
+      assets: photoList.map((photo) => ({ id: photo.assetId, url: photo.src, variant: "display", contentType: "image/svg+xml", bytes: 200 })),
+    };
+    let served = 0;
+    await albumContext.route("**/api/screen/*/bundle", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", headers: { etag: '"album-one"' }, body: JSON.stringify(bundle) }),
+    );
+    await albumContext.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await albumContext.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+    await albumContext.route("**/m/**", async (route) => {
+      await new Promise((r) => setTimeout(r, 600));
+      served += 1;
+      await route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>' });
+    });
+
+    await page.goto(DISPLAY, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    const servedAtStart = served;
+    check((await marker(page, "version")) === "1" && servedAtStart < count / 2, "the board goes up after the first few photos", `${servedAtStart} of ${count} downloaded`);
+    const shown = await page.locator("[data-gallery-layer=entering]").getAttribute("data-photo-id").catch(() => null);
+    const shownIndex = Number((shown ?? "al-99").slice(3));
+    check(shownIndex < 8, "and the gallery shows a photo that's already here", shown ?? "no photo");
+
+    const tag = page.locator("[data-updating-badge]");
+    await tag.waitFor({ timeout: 8000 }).catch(() => {});
+    const tagText = (await tag.textContent().catch(() => "")) ?? "";
+    check(tagText.startsWith("Loading"), "the rest download behind it, with a small loading tag", tagText);
+
+    await page.waitForFunction(() => !document.querySelector("[data-updating-badge]"), null, { timeout: 30000 }).catch(() => {});
+    const cachedCount = await page.evaluate(async () => (await (await caches.open("shulboard-assets-v1")).keys()).length);
+    check(cachedCount >= count && !(await tag.isVisible().catch(() => false)), "until every photo is on this device and the tag goes", `${cachedCount} cached`);
+    await albumContext.close();
+  }
+  console.log("");
 } finally {
   await browser.close();
   await stopServer(server);

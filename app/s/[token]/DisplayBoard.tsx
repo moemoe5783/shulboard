@@ -86,10 +86,11 @@ export function WaitingForBoard({ reason }: { reason: string }) {
 }
 
 /**
- * The first time a screen loads a board with many photos — or after it was
- * paired — every photo is downloaded before the board appears (the atomic swap,
- * lib/display/assets.ts). Six hundred photos can take a minute or more, and a
- * dark screen that says nothing for a minute looks broken. This shows that it's
+ * The first time a screen loads a board — or after it was paired — its
+ * pictures and the first few photos of each album are downloaded before the
+ * board appears (the atomic swap, lib/display/assets.ts). On a slow connection
+ * that can still take a while, and a dark screen that says nothing looks
+ * broken. This shows that it's
  * loading and how far along it is.
  */
 export function LoadingProgress({ done, total }: { done: number; total: number }) {
@@ -112,12 +113,13 @@ export function LoadingProgress({ done, total }: { done: number; total: number }
 }
 
 /**
- * A board is on the wall and a new version is downloading behind it. The board
- * keeps running; this small tag in the corner says an update is on its way, so
- * whoever just published knows the screen heard them. Shown only once an
+ * A board is on the wall and something is downloading behind it — a new
+ * version, or the rest of this one's photos. The board keeps running; this
+ * small tag in the corner says so, so whoever just published knows the screen
+ * heard them. Shown only once an
  * update has taken a few seconds, so a quick one never flashes it.
  */
-export function UpdatingBadge({ done, total }: { done: number; total: number }) {
+export function UpdatingBadge({ done, total, label }: { done: number; total: number; label: string }) {
   const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
   return (
     <div
@@ -126,7 +128,7 @@ export function UpdatingBadge({ done, total }: { done: number; total: number }) 
       data-updating-badge
       className="bg-ink/80 text-paper font-ui numeric pointer-events-none fixed right-[1.5vw] bottom-[1.5vw] z-50 rounded-[6px] px-[1vw] py-[0.6vw] text-[clamp(11px,0.9vw,18px)]"
     >
-      Updating board {pct}%
+      {label} {pct}%
     </div>
   );
 }
