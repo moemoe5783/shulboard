@@ -30,17 +30,36 @@ export async function tagAssetResponse(assetId: string): Promise<void> {
   }
 }
 
+/** Tags per purge call — a bulk delete of hundreds of photos goes in batches. */
+const PURGE_BATCH = 100;
+
 /**
  * Drop every CDN copy of these photos' files now. Deleted, not marked stale:
  * a stale copy would be served once more while the CDN checked back.
- * Returns whether the purge was accepted.
+ *
+ * Called on a soft delete (so a deleted photo's URL is a 404 at once rather
+ * than answering from the edge for a year) and on a permanent delete. A
+ * restore needs none: the proxy serves the photo again and the next request
+ * caches it afresh.
+ *
+ * Never fails the delete it follows: a batch the CDN refuses is logged as a
+ * warning, and returns false. The photo is still gone from every board — the
+ * bundle and the proxy both refuse it — and its URL carries an unguessable
+ * content hash.
  */
 export async function purgeAssetsFromCdn(assetIds: readonly string[]): Promise<boolean> {
-  if (assetIds.length === 0) return true;
-  try {
-    await dangerouslyDeleteByTag(assetIds.map(assetCacheTag));
-    return true;
-  } catch {
-    return false;
+  let ok = true;
+  for (let at = 0; at < assetIds.length; at += PURGE_BATCH) {
+    const batch = assetIds.slice(at, at + PURGE_BATCH);
+    try {
+      await dangerouslyDeleteByTag(batch.map(assetCacheTag));
+    } catch (error) {
+      ok = false;
+      console.warn(
+        `[cdn] couldn't purge ${batch.length} photo(s) from the CDN; their old URLs may answer until they expire`,
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
+  return ok;
 }

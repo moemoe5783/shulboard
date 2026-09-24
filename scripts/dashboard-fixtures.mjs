@@ -78,7 +78,28 @@ export function fixtures() {
       { id: "b0000000-0000-4000-8000-000000000002", org_id: ORG_ID, name: "Shabbos board", canvas_width: 1920, canvas_height: 1080, updated_at: ago(2 * 864e5), doc: { schemaVersion: 1, widgets: [] }, published_hash: null, published_at: null, deleted_at: null },
     ],
     albums: [{ id: "a1000000-0000-4000-8000-000000000001", org_id: ORG_ID, name: "Kiddush photos", created_at: ago(5 * 864e5), deleted_at: null, source: "manual" }],
-    album_items: [],
+    // The ready photo, in the Kiddush album. `assets` rides along on the row,
+    // which is how the mock answers the album page's embedded select.
+    album_items: [
+      {
+        id: "a1100000-0000-4000-8000-000000000001",
+        org_id: ORG_ID,
+        album_id: "a1000000-0000-4000-8000-000000000001",
+        asset_id: PHOTO.ready,
+        position: 1,
+        caption: null,
+        created_at: ago(864e5),
+        display_until: null,
+        assets: {
+          id: PHOTO.ready,
+          variants: { display: photoVariant(PHOTO.ready, "display", "1111111111111111") },
+          width: 400,
+          height: 300,
+          deleted_at: null,
+          status: "ready",
+        },
+      },
+    ],
     assets: [
       photo(PHOTO.ready),
       photo(PHOTO.deleted, { deleted_at: new Date(Date.now() - 864e5).toISOString(), original_filename: "purim-seudah.jpg" }),
