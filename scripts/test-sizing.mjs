@@ -245,18 +245,51 @@ try {
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   await settle();
   const sectionTabs = await page.locator("[data-appearance-tab]").allTextContents();
-  check(sectionTabs.join(",") === "Presets,Background,Shape,Text,Header", "Appearance shows every section's name at the top", sectionTabs.join(", "));
+  check(sectionTabs.join(",") === "Presets,Background,Shape,Text", "Appearance shows every section's name at the top", sectionTabs.join(", "));
   await page.locator('[data-appearance-tab="text"]').click();
   await settle();
   check((await page.locator('[data-appearance-section="text"]').getByText("Alignment", { exact: true }).count()) === 1 &&
       (await page.locator('[data-appearance-section="text"]').getByText("Font", { exact: true }).count()) === 1,
     "its Text section holds the title's alignment beside the shared font and colour");
+  check((await page.locator('[data-appearance-section="text"]').getByText("Header", { exact: true }).count()) === 1,
+    "and the header, which is text too");
   await page.locator('[data-appearance-tab="background"]').click();
   await settle();
   check((await page.locator('[data-appearance-section="background"]').getByText("Background", { exact: true }).count()) >= 1,
     "and each section shows only its own controls");
   await page.getByRole("button", { name: "Options", exact: true }).click();
   await settle();
+
+  // ---- zoom -------------------------------------------------------------
+
+  const zoomText = () => page.locator("span.numeric", { hasText: "%" }).first().textContent();
+  const zoomNumber = async () => Number((await zoomText()).replace("%", ""));
+  const fitted = await zoomNumber();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await settle();
+  const zoomedIn = await zoomNumber();
+  // The viewport changing size — which scrollbars appearing does — used to
+  // snap a zoomed-in board straight back to fit.
+  await page.setViewportSize({ width: 1580, height: 950 });
+  await sleep(300);
+  check(zoomedIn > fitted && (await zoomNumber()) === zoomedIn, "a zoomed-in board stays zoomed when the viewport changes size",
+    `${fitted}% -> ${zoomedIn}% -> ${await zoomNumber()}%`);
+  const view = await page.locator("[data-editor-viewport]").boundingBox();
+  await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up("Control");
+  await settle();
+  check((await zoomNumber()) > zoomedIn, "Ctrl + scroll zooms in on the board", `${await zoomNumber()}%`);
+  await page.keyboard.press("Control+Minus");
+  await settle();
+  const afterMinus = await zoomNumber();
+  await page.keyboard.press("Control+0");
+  await settle();
+  const refit = await zoomNumber();
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await sleep(300);
+  check(afterMinus < 400 && Math.abs(refit - fitted) <= 2, "Ctrl + − zooms out, and Ctrl + 0 fits the board again", `${afterMinus}% then ${refit}%`);
 
   // ---- dimensions and preset shapes (lib/editor/size-presets.ts) ----------
 

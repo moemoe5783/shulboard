@@ -24,7 +24,8 @@ import { SliderField } from "./SliderField";
  * VALUES chosen here are board content and may be any colour (design.md §1b);
  * the controls themselves are chrome and follow the dark-panel geometry.
  *
- * IN SECTIONS, one showing at a time, with every section's name in a row of
+ * IN SECTIONS, one showing at a time (the header lives with the rest of the
+ * text), with every section's name in a row of
  * tabs at the top — so what else there is to set is visible at a glance
  * rather than found by scrolling. A widget adds its own look settings
  * (widgets/types.ts, AppearanceSection): a section of its own, listed first,
@@ -37,7 +38,6 @@ export const SHARED_APPEARANCE_SECTIONS = [
   { id: "background", label: "Background" },
   { id: "shape", label: "Shape" },
   { id: "text", label: "Text" },
-  { id: "header", label: "Header" },
 ] as const;
 
 /** A widget's contribution, ready to render. */
@@ -213,6 +213,31 @@ export function AppearanceControls({
         {active === "text" && (
           <>
             {addedTo("text")}
+      {/* Header — the title above the widget, like "Zmanim" over the table. */}
+      <div className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1">
+          <span className={PANEL_LABEL}>Header</span>
+          <input
+            type="text"
+            value={config.title}
+            placeholder="No header"
+            onChange={(event) => onChange({ title: event.target.value })}
+            className={PANEL_CONTROL}
+          />
+        </label>
+        {config.title !== "" && (
+          <SliderField
+            label="Header size"
+            value={Math.round(config.titleSize * 100)}
+            min={50}
+            max={300}
+            step={5}
+            onChange={(pct) => onChange({ titleSize: pct / 100 })}
+            format={(v) => `${v}%`}
+          />
+        )}
+      </div>
+
       {/* Text colour. */}
       <div className="flex flex-col gap-2">
         <label className="flex items-center gap-2">
@@ -250,35 +275,6 @@ export function AppearanceControls({
           </>
         )}
 
-        {active === "header" && (
-          <>
-      {/* Header — the title above the widget, like "Zmanim" over the table. */}
-      <div className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
-          <span className={PANEL_LABEL}>Header</span>
-          <input
-            type="text"
-            value={config.title}
-            placeholder="No header"
-            onChange={(event) => onChange({ title: event.target.value })}
-            className={PANEL_CONTROL}
-          />
-        </label>
-        {config.title !== "" && (
-          <SliderField
-            label="Header size"
-            value={Math.round(config.titleSize * 100)}
-            min={50}
-            max={300}
-            step={5}
-            onChange={(pct) => onChange({ titleSize: pct / 100 })}
-            format={(v) => `${v}%`}
-          />
-        )}
-      </div>
-
-          </>
-        )}
       </div>
     </div>
   );
