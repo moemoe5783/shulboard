@@ -783,6 +783,13 @@ Polaroid strip are the one part of its spec still to do.
   a token. Rate-limit it and log token use.
 - Audit log table for content changes (who changed the announcement) — cheap to
   add now, valuable when a shul asks.
+- **Platform admin — built.** The people who run Shulboard itself: `/admin`
+  lists every shul (plan, screens, members, photos, storage) and every
+  account, sets a shul's plan (`trial` / `basic` / `pro`, with a trial end)
+  and makes other platform admins. SECURITY DEFINER functions under the
+  admin's own session, not the service-role key; a shul's own admins can't
+  change its plan (`orgs_plan_guard`). Stripe ids have columns and nothing
+  else yet — P8's billing fills them.
 
 ---
 

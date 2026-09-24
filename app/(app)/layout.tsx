@@ -2,6 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import type { NavItem } from "@/components/NavRail";
 import { navRowClassName } from "@/components/navRow";
 import { getActiveOrg, getMemberships, requireUser } from "@/lib/orgs";
+import { isPlatformAdmin } from "@/lib/platform";
 import { setActiveOrg, signOut } from "./actions";
 
 /*
@@ -38,6 +39,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   await requireUser();
   const memberships = await getMemberships();
   const active = await getActiveOrg();
+  // The people who run Shulboard itself get one more row, and nobody else
+  // sees it's there (lib/platform.ts).
+  const platformAdmin = await isPlatformAdmin();
 
   // A brand new user has no shul and therefore nothing to navigate. Org creation
   // renders as a full page rather than beside an empty rail.
@@ -55,7 +59,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         activeOrgId: active.orgId,
         switchAction: setActiveOrg,
         items: NAV_ITEMS,
-        footerItems: NAV_FOOTER,
+        footerItems: platformAdmin ? [...NAV_FOOTER, { id: "admin", label: "Platform admin", href: "/admin" }] : NAV_FOOTER,
         footer: (
           // A rail row, not a button variant. Sign out is navigation-adjacent and
           // should not wear the accent that marks the active section.
