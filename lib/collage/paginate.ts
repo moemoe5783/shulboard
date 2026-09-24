@@ -23,7 +23,22 @@ import { createRng, hashSeed, shuffled } from "./random.ts";
 export type CollageDensity = "auto" | "few" | "medium" | "many" | "exact";
 export type CollageOrder = "newest" | "album" | "shuffle";
 
+/** Builds one page's layout. The Clean engine by default; the Artsy style
+ *  plugs its own in (lib/collage/artsy) and keeps everything else here —
+ *  page counts, the tail planning, the seeds. */
+export type LayoutEngine = (
+  photos: readonly CollagePhoto[],
+  box: CollageBox,
+  options: PaginateOptions,
+  seed: number,
+) => CollageLayout;
+
 export type PaginateOptions = LayoutOptions & {
+  /** Which layout engine builds the pages. */
+  engine?: LayoutEngine;
+  /** The page-count ranges for the density presets, when an engine wants
+   *  different ones (Artsy pages hold fewer photos). */
+  densityRanges?: Partial<Record<Exclude<CollageDensity, "exact">, [number, number]>>;
   density: CollageDensity;
   /** The count for `exact` density. */
   exactCount: number;
@@ -98,12 +113,14 @@ export function orderPhotos<T extends { addedAt?: string | null }>(
     .map((entry) => entry.photo);
 }
 
+const cleanEngine: LayoutEngine = (photos, box, options, seed) => buildLayout(photos, box, options, seed);
+
 function countRange(options: PaginateOptions, available: number): [number, number] {
   if (options.density === "exact") {
     const n = Math.max(1, Math.min(options.exactCount, options.maxPerPage, available));
     return [n, n];
   }
-  const [lo, hi] = DENSITY_RANGE[options.density];
+  const [lo, hi] = options.densityRanges?.[options.density] ?? DENSITY_RANGE[options.density];
   const top = Math.max(1, Math.min(hi, options.maxPerPage, available));
   return [Math.min(lo, top), top];
 }
@@ -133,7 +150,8 @@ export function nextPage<T extends CollagePhoto>(
 ): CollagePage<T> {
   const opts: PaginateOptions = { ...DEFAULT_PAGINATE_OPTIONS, ...options };
   const m = remaining.length;
-  if (m === 0) return { photos: [], layout: buildLayout([], box, opts, seed) };
+  const engine = opts.engine ?? cleanEngine;
+  if (m === 0) return { photos: [], layout: engine([], box, opts, seed) };
 
   const [lo, hi] = countRange(opts, m);
   let count = hi;
@@ -150,7 +168,7 @@ export function nextPage<T extends CollagePhoto>(
       const key = `${from}:${k}:${effort}`;
       let layout = probes.get(key);
       if (!layout) {
-        layout = buildLayout(remaining.slice(from, from + k), box, { ...opts, effort }, hashSeed(seed, from, k));
+        layout = engine(remaining.slice(from, from + k), box, { ...opts, effort }, hashSeed(seed, from, k));
         probes.set(key, layout);
       }
       return layout;
@@ -208,7 +226,7 @@ export function nextPage<T extends CollagePhoto>(
   }
 
   const photos = remaining.slice(0, count);
-  const full = buildLayout(photos, box, { ...opts, effort: opts.effort * FULL_EFFORT }, seed);
+  const full = engine(photos, box, { ...opts, effort: opts.effort * FULL_EFFORT }, seed);
   // The full search usually beats its own probe; keep whichever scored higher.
   const layout = probe && probe.cells.length === photos.length && probe.score > full.score ? probe : full;
   return { photos, layout };
