@@ -34,6 +34,55 @@ import { enterOffset, transitionTotal } from "./transitions";
  * what gives the editor its live preview while a box is being resized.
  */
 
+/**
+ * An Artsy layout as the cells the Renderer draws (./ArtsyLayer.tsx): each
+ * print's outer rect in percentages of the box, and its paper, photo and
+ * fasteners in percentages of the print. `source` picks each photo's file.
+ * Shared with the collage lab, so the lab draws exactly what a screen does.
+ */
+export function artsyCells(
+  layout: ArtsyLayout,
+  box: CollageBox,
+  source: (item: ArtsyLayout["items"][number]) => { src: string; alt: string },
+): PlannedCell[] {
+  const order = layout.items.map((item, i) => ({ i, z: item.zIndex })).sort((a, b) => a.z - b.z || a.i - b.i);
+  const zOrder = new Array<number>(layout.items.length);
+  order.forEach((entry, rank) => {
+    zOrder[entry.i] = rank;
+  });
+  const pct = (rect: { x: number; y: number; w: number; h: number }, within: { w: number; h: number }): PctRect => ({
+    left: (rect.x / within.w) * 100,
+    top: (rect.y / within.h) * 100,
+    width: (rect.w / within.w) * 100,
+    height: (rect.h / within.h) * 100,
+  });
+  return layout.items.map((item, i) => ({
+    id: item.photoId,
+    left: ((item.cx - item.outer.w / 2) / box.width) * 100,
+    top: ((item.cy - item.outer.h / 2) / box.height) * 100,
+    width: (item.outer.w / box.width) * 100,
+    height: (item.outer.h / box.height) * 100,
+    ...source(item),
+    artsy: {
+      style: item.style,
+      rotation: item.rotation,
+      zIndex: item.zIndex,
+      zOrder: zOrder[i],
+      image: pct(item.image, item.outer),
+      paper: pct(item.paper, item.outer),
+      frameUnits: item.spec.frame * Math.min(item.image.w, item.image.h),
+      fasteners: item.fasteners.map((f) => ({
+        ...pct({ x: f.x, y: f.y, w: f.w, h: f.h }, item.outer),
+        kind: f.kind,
+        angle: f.angle,
+        variant: f.variant,
+      })),
+      variation: item.variation,
+      hero: item.hero,
+    },
+  }));
+}
+
 /** A photo the engine can place: it has a size, so it has an aspect ratio. */
 type EnginePhoto = CollagePhoto & { addedAt: string | null; photo: BoardPhoto; variants: BoardPhotoVariant[] };
 
@@ -302,42 +351,10 @@ export class CollagePlayer {
     );
     const byId = new Map(page.photos.map((photo) => [photo.id, photo]));
     if (artsy) {
-      const layout = page.layout as ArtsyLayout;
-      const order = layout.items.map((item, i) => ({ i, z: item.zIndex })).sort((a, b) => a.z - b.z || a.i - b.i);
-      const zOrder = new Array<number>(layout.items.length);
-      order.forEach((entry, rank) => {
-        zOrder[entry.i] = rank;
-      });
-      const pct = (rect: { x: number; y: number; w: number; h: number }, within: { w: number; h: number }): PctRect => ({
-        left: (rect.x / within.w) * 100,
-        top: (rect.y / within.h) * 100,
-        width: (rect.w / within.w) * 100,
-        height: (rect.h / within.h) * 100,
-      });
-      const cells: PlannedCell[] = layout.items.map((item, i) => {
+      const cells = artsyCells(page.layout as ArtsyLayout, box, (item) => {
         const photo = byId.get(item.photoId)!;
         const needed = (item.image.w / box.width) * boxPx.width * dpr;
-        return {
-          id: item.photoId,
-          left: ((item.cx - item.outer.w / 2) / box.width) * 100,
-          top: ((item.cy - item.outer.h / 2) / box.height) * 100,
-          width: (item.outer.w / box.width) * 100,
-          height: (item.outer.h / box.height) * 100,
-          src: pickVariant(photo.variants, needed).src,
-          alt: photo.photo.caption ?? "",
-          artsy: {
-            style: item.style,
-            rotation: item.rotation,
-            zIndex: item.zIndex,
-            zOrder: zOrder[i],
-            image: pct(item.image, item.outer),
-            paper: pct(item.paper, item.outer),
-            frameUnits: item.spec.frame * Math.min(item.image.w, item.image.h),
-            fasteners: item.fasteners.map((f) => ({ ...pct({ x: f.x, y: f.y, w: f.w, h: f.h }, item.outer), kind: f.kind, angle: f.angle, variant: f.variant })),
-            variation: item.variation,
-            hero: item.hero,
-          },
-        };
+        return { src: pickVariant(photo.variants, needed).src, alt: photo.photo.caption ?? "" };
       });
       return {
         key: `${cycle}:${index}:${this.version}:${this.layoutKey}`,
