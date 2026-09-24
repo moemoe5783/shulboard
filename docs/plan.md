@@ -756,6 +756,18 @@ approach is shipped; it's easy to over-invest here.
 timer, so the same design shows fresh photos over weeks without anyone touching
 it. This is the feature that makes collages actually get used.
 
+**Artsy style — built.** A second look beside Clean: photos as framed, tilted
+prints (Polaroid, classic print, wood, gallery, taped, pinned, or a mix) on a
+backdrop, loosely arranged. `lib/collage/artsy` seeds from the Clean engine on
+the photos' outer shapes, then tilts, varies, jitters and relaxes. The one rule
+it never bends — no photo's image is ever covered by anything — is a hard
+constraint, checked independently and stress-tested over 1,000 random albums
+(`npm run test:collage-artsy`); pagination, cycling, preloading and seeding are
+Clean's, through a pluggable engine in `paginate.ts`. Frames, tape and
+backdrops are CSS, not image assets, so nothing extra has to reach a screen
+for it to work offline. Tuned at `/collage-lab/artsy`. Captions on the
+Polaroid strip are the one part of its spec still to do.
+
 ---
 
 ## 8. Multi-tenancy and auth

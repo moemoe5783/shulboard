@@ -75,14 +75,15 @@ missing one the same as a missing other.
 ## `SUPABASE_SERVICE_ROLE_KEY`
 
 **What it is.** The service-role key. It bypasses Row Level Security
-entirely, which is why CLAUDE.md restricts it to exactly ten places: the
+entirely, which is why CLAUDE.md restricts it to exactly eleven places: the
 bundle endpoint, the heartbeat endpoint, the realtime-auth endpoint, the
 media proxy, the cron build worker, the Chabad zmanim warming cron, and the
 two TV pairing endpoints (`/api/pair/start` and `/api/pair/poll`) —
 every one of them a server route that does its own authorization (a screen
-token, a shared secret) rather than leaning on a policy — plus two that
+token, a shared secret) rather than leaning on a policy — plus three that
 are not routes: `publishBoard`, which calls the build worker's own
-`buildScreenBundle` immediately for a just-published board, and
+`buildScreenBundle` immediately for a just-published board, `assignBoard`,
+which does the same for a screen whose board was just chosen, and
 `lib/zmanim/warm.ts`, which is the single copy of the `zmanim_cache` write
 that both the warming cron and the settings page's "Fetch now" button go
 through. That table has a SELECT policy and deliberately no write policy

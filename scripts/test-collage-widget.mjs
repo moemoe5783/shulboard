@@ -324,6 +324,96 @@ try {
     check(failed === 0 && loaded === 2, "the editor opens a board holding a pre-multi-album collage and gallery", `${loaded} widgets, ${failed ? "error page" : "no error page"} ${editorErrors.join(" | ")}`);
   }
 
+  console.log("\n-- 9: the Artsy style ------------------------------------------");
+  // What the rendered prints look like to the browser: each photo's own
+  // (unrotated) box against its natural shape, whether anything else is on top
+  // of any point in it, and whether every print stays in the collage's box.
+  const readArtsy = (board) =>
+    page.evaluate((board) => {
+      const root = document.querySelector(`[data-lab-board="${board}"] [data-collage]`);
+      if (!root) return null;
+      const box = root.getBoundingClientRect();
+      const layer = root.querySelector('[data-collage-layer="entering"]');
+      const prints = layer ? [...layer.querySelectorAll("[data-artsy-print]")] : [];
+      let covered = 0;
+      let outside = 0;
+      let worstRatio = 0;
+      for (const print of prints) {
+        const img = print.querySelector("img");
+        const rotor = img.parentElement;
+        const r = rotor.getBoundingClientRect();
+        if (r.left < box.left - 1 || r.top < box.top - 1 || r.right > box.right + 1 || r.bottom > box.bottom + 1) outside += 1;
+        worstRatio = Math.max(worstRatio, Math.abs(img.offsetWidth / img.offsetHeight / (img.naturalWidth / img.naturalHeight) - 1));
+        // Points across the image, in its own tilted frame.
+        const m = /rotate\((-?[\d.]+)deg\)/.exec(rotor.style.transform ?? "");
+        const angle = m ? (Number(m[1]) * Math.PI) / 180 : 0;
+        const ir = img.getBoundingClientRect();
+        const cx = ir.left + ir.width / 2;
+        const cy = ir.top + ir.height / 2;
+        const w = img.offsetWidth * (box.width / root.offsetWidth);
+        const h = img.offsetHeight * (box.height / root.offsetHeight);
+        for (const [fx, fy] of [[0, 0], [-0.46, -0.46], [0.46, -0.46], [-0.46, 0.46], [0.46, 0.46], [0, -0.48], [0, 0.48], [-0.48, 0], [0.48, 0]]) {
+          const lx = fx * w;
+          const ly = fy * h;
+          const x = cx + lx * Math.cos(angle) - ly * Math.sin(angle);
+          const y = cy + lx * Math.sin(angle) + ly * Math.cos(angle);
+          if (document.elementFromPoint(x, y) !== img) covered += 1;
+        }
+      }
+      return {
+        count: prints.length,
+        covered,
+        outside,
+        worstRatio,
+        tilted: prints.filter((p) => /rotate/.test(p.firstElementChild.style.transform ?? "")).length,
+        tape: layer ? layer.querySelectorAll('[data-fastener="tape"]').length : 0,
+        layout: prints.map((p) => `${p.dataset.photoId}@${p.style.left},${p.style.top},${p.firstElementChild.style.transform}`),
+      };
+    }, board);
+
+  for (const [label, query] of [
+    ["Polaroids on cork, playful", "artsyFrame=polaroid&artsyBackdrop=cork&artsyTilt=playful"],
+    ["taped snapshots", "artsyFrame=taped&artsyTilt=subtle"],
+    ["mixed prints", "artsyFrame=mixed&artsyTilt=playful&artsyOverlap=slight"],
+    ["a wood-frame gallery wall", "artsyFrame=wood&artsyTilt=none&artsyOverlap=none"],
+  ]) {
+    await page.goto(`${BASE}/collage-lab/widget?count=20&interval=60&transition=none&style=artsy&${query}`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-lab-board="large"] [data-artsy-print] img');
+    await sleep(500);
+    const large = await readArtsy("large");
+    const small = await readArtsy("small");
+    check(large.count > 1 && large.covered === 0, `${label}: nothing covers any part of any photo`, `${large.count} prints, ${large.covered} covered points`);
+    check(large.outside === 0 && large.worstRatio < 0.01, `${label}: every print inside the box, every photo its own shape`,
+      `${large.outside} outside, worst ${(large.worstRatio * 100).toFixed(2)}% off`);
+    check(small.layout.join("|") === large.layout.join("|"), `${label}: the same layout at half the size`);
+    if (label.startsWith("taped")) check(large.tape > 0, "taped snapshots carry their tape", `${large.tape} strips`);
+    if (label.includes("playful")) check(large.tilted >= large.count - 2, `${label}: tilted`, `${large.tilted} of ${large.count}`);
+  }
+
+  // Deal: the next page's prints drop in one after another, bottom first.
+  await page.goto(`${BASE}/collage-lab/widget?count=20&interval=3&transition=deal&style=artsy&artsyFrame=polaroid`, { waitUntil: "networkidle" });
+  await page.waitForSelector('[data-lab-board="large"] [data-artsy-print] img');
+  {
+    let dealt = null;
+    const until = Date.now() + 12_000;
+    while (Date.now() < until && !dealt) {
+      dealt = await page.evaluate(() => {
+        const layer = document.querySelector('[data-lab-board="large"] [data-collage-layer="entering"]');
+        const leaving = document.querySelector('[data-lab-board="large"] [data-collage-layer="leaving"]');
+        if (!layer || !leaving) return null;
+        const animations = [...layer.querySelectorAll("[data-artsy-print]")].map((p) => {
+          const style = getComputedStyle(p);
+          return { name: style.animationName, delay: parseFloat(style.animationDelay) };
+        });
+        return animations.length ? animations : null;
+      });
+      if (!dealt) await sleep(60);
+    }
+    const delays = (dealt ?? []).map((a) => a.delay).sort((a, b) => a - b);
+    check(Boolean(dealt) && dealt.every((a) => a.name === "collage-deal-in") && new Set(delays).size === delays.length,
+      "Deal drops the new prints in one after another", delays.join(", "));
+  }
+
   check(errors.length === 0, "no page errors", errors.join(" | "));
 } finally {
   await browser.close();

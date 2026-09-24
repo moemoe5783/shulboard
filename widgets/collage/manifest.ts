@@ -1,8 +1,14 @@
 import { z } from "zod";
+import { FRAME_STYLES } from "@/lib/collage/artsy/frames";
 import { albumSelectionFields, albumSelectionNeeds } from "@/lib/media/selection";
 import { widgetStyleFields } from "../style";
 import { COLLAGE_TRANSITIONS, TRANSITION_ORDERS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "./transitions";
 import type { DataNeed, WidgetManifest } from "../types";
+
+/** The Artsy style's backdrops (./artsy-style.ts draws them). None lets the
+ *  widget's own background — or the board — show through. */
+export const ARTSY_BACKDROPS = ["none", "cork", "lightWood", "darkWood", "linen", "kraft", "solid"] as const;
+export type ArtsyBackdrop = (typeof ARTSY_BACKDROPS)[number];
 
 /*
  * Collage — photos from one album, arranged by their own shapes (lib/collage).
@@ -23,6 +29,19 @@ import type { DataNeed, WidgetManifest } from "../types";
 export const collageConfigSchema = z.object({
   // Which albums: several chosen, or all except some (../media/albums.ts).
   ...albumSelectionFields,
+  /** Clean: an engineered grid, nothing overlapping. Artsy: framed, tilted
+   *  prints arranged as if by hand (lib/collage/artsy). */
+  style: z.enum(["clean", "artsy"]).default("clean").catch("clean"),
+  /** Artsy only — the frame on every print, or a curated mix of paper ones. */
+  artsyFrame: z.enum(FRAME_STYLES).default("polaroid").catch("polaroid"),
+  artsyTilt: z.enum(["none", "subtle", "playful"]).default("subtle").catch("subtle"),
+  artsyOverlap: z.enum(["none", "slight"]).default("slight").catch("slight"),
+  artsyBackdrop: z.enum(ARTSY_BACKDROPS).default("none").catch("none"),
+  /** The colour for the Solid backdrop. */
+  artsyBackdropColor: z.string().max(64).default("#ebe5d8").catch("#ebe5d8"),
+  artsyShadow: z.enum(["soft", "medium", "strong"]).default("medium").catch("medium"),
+  /** Tape and pins, for the taped and pinned styles. */
+  artsyFasteners: z.boolean().default(true).catch(true),
   /** Space between photos, in board design units. Kept as `gutter` so collages
    *  saved before the spec's "gap" wording keep their value. */
   gutter: z.number().min(0).max(60).default(8).catch(8),

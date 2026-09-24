@@ -14,6 +14,7 @@
  * asserts against, so the numbers here are the numbers the test checks.
  */
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
@@ -114,7 +115,11 @@ export default function CollageLabPage() {
       <h1 className="text-title text-ink mb-1 font-semibold">Collage lab</h1>
       <p className="text-meta text-ink-soft mb-5 max-w-[720px]">
         Random photo sets through the collage engine. Every rectangle is a photo at its own aspect ratio — nothing is
-        cropped — and the gap between them is exact. Tune the weights, then run the stress test.
+        cropped — and the gap between them is exact. Tune the weights, then run the stress test.{" "}
+        <Link href="/collage-lab/artsy" className="text-verdigris">
+          The Artsy style has its own lab
+        </Link>
+        .
       </p>
 
       <div className="mb-4 grid max-w-[1200px] grid-cols-6 gap-3">

@@ -24,7 +24,7 @@ import { createRng, hashSeed, shuffled } from "@/lib/collage/random";
  * is the same choreography, quicker — not a different one.
  */
 
-export const COLLAGE_TRANSITIONS = ["cascade", "rise", "zoom", "slide", "crossfade", "fade", "none"] as const;
+export const COLLAGE_TRANSITIONS = ["cascade", "rise", "zoom", "slide", "crossfade", "fade", "deal", "shuffle", "none"] as const;
 export type CollageTransition = (typeof COLLAGE_TRANSITIONS)[number];
 
 export const TRANSITION_LABELS: Record<CollageTransition, string> = {
@@ -34,8 +34,22 @@ export const TRANSITION_LABELS: Record<CollageTransition, string> = {
   slide: "Slide",
   crossfade: "Crossfade the whole page",
   fade: "Fade the whole page through the background",
+  deal: "Deal the prints out one by one",
+  shuffle: "Shuffle the old prints away",
   none: "None",
 };
+
+/** What each style offers. Artsy's own two deal prints in stacking order;
+ *  Clean's photo-by-photo effects are about a grid, not a pile of prints. */
+export const CLEAN_TRANSITIONS = ["cascade", "rise", "zoom", "slide", "crossfade", "fade", "none"] as const;
+export const ARTSY_TRANSITIONS: readonly CollageTransition[] = ["crossfade", "deal", "shuffle", "none"];
+
+/** The transition a style actually runs: one from the other style's list
+ *  falls back to that style's default. */
+export function transitionFor(style: "clean" | "artsy", mode: CollageTransition): CollageTransition {
+  if (style === "artsy") return ARTSY_TRANSITIONS.includes(mode) ? mode : "crossfade";
+  return (CLEAN_TRANSITIONS as readonly CollageTransition[]).includes(mode) ? mode : "cascade";
+}
 
 export const TRANSITION_ORDERS = ["reading", "random", "center"] as const;
 export type TransitionOrder = (typeof TRANSITION_ORDERS)[number];
@@ -67,6 +81,13 @@ const LEAVE_SPREAD_MS = 600;
 const HANDOFF = 0.55;
 /** Whole-page modes. */
 const PAGE_MS = 900;
+/** Deal and Shuffle: one print lands every DEAL_STEP_MS, each taking DEAL_MS. */
+const DEAL_MS = 620;
+const DEAL_STEP_MS = 150;
+const DEAL_FADE_MS = 450;
+const SHUFFLE_OUT_MS = 650;
+const SHUFFLE_STEP_MS = 60;
+const SHUFFLE_HANDOFF_MS = 200;
 
 const EASE_IN = "cubic-bezier(0.22, 1, 0.36, 1)";
 const EASE_OUT = "cubic-bezier(0.55, 0, 0.75, 0.3)";
@@ -81,6 +102,8 @@ function step(count: number, spread: number, most: number): number {
 
 function leaveSpan(mode: CollageTransition, count: number): number {
   if (count === 0) return 0;
+  if (mode === "deal") return DEAL_FADE_MS;
+  if (mode === "shuffle") return (count - 1) * SHUFFLE_STEP_MS + SHUFFLE_OUT_MS;
   if (PER_PHOTO.has(mode)) return (count - 1) * step(count, LEAVE_SPREAD_MS, 90) + LEAVE_MS;
   if (mode === "fade") return PAGE_MS / 2;
   if (mode === "crossfade") return PAGE_MS;
@@ -92,6 +115,8 @@ export function enterOffset(mode: CollageTransition, leavingCount: number, speed
   if (leavingCount === 0 || mode === "none" || mode === "crossfade") return 0;
   const s = clampSpeed(speed);
   if (mode === "fade") return PAGE_MS / 2 / s;
+  if (mode === "deal") return DEAL_FADE_MS / s;
+  if (mode === "shuffle") return SHUFFLE_HANDOFF_MS / s;
   return (leaveSpan(mode, leavingCount) * HANDOFF) / s;
 }
 
@@ -101,7 +126,9 @@ export function transitionTotal(mode: CollageTransition, leavingCount: number, e
   const s = clampSpeed(speed);
   const enterSpan = PER_PHOTO.has(mode)
     ? (Math.max(1, enteringCount) - 1) * step(enteringCount, ENTER_SPREAD_MS, 140) + ENTER_MS
-    : mode === "fade"
+    : mode === "deal" || mode === "shuffle"
+      ? (Math.max(1, enteringCount) - 1) * DEAL_STEP_MS + DEAL_MS
+      : mode === "fade"
       ? PAGE_MS / 2
       : PAGE_MS;
   return Math.max(leaveSpan(mode, leavingCount) / s, enterOffset(mode, leavingCount, s) + enterSpan / s);
@@ -123,6 +150,15 @@ export function cellAnimation(
   if (mode === "none") return undefined;
   const s = clampSpeed(speed);
   const ms = (value: number) => `${Math.round(value / s)}ms`;
+  if (mode === "deal" || mode === "shuffle") {
+    // In stacking order, bottom print first, each dropping in from a little
+    // above and settling (the keyframes are in app/globals.css).
+    if (role === "leaving") {
+      if (mode === "deal") return `collage-out ${ms(DEAL_FADE_MS)} ease both`;
+      return `collage-shuffle-out ${ms(SHUFFLE_OUT_MS)} ${EASE_OUT} ${ms(order * SHUFFLE_STEP_MS)} both`;
+    }
+    return `collage-deal-in ${ms(DEAL_MS)} ${EASE_IN} ${Math.round(offset + (order * DEAL_STEP_MS) / s)}ms both`;
+  }
   if (role === "leaving") {
     if (mode === "crossfade") return `collage-out ${ms(PAGE_MS)} ease both`;
     if (mode === "fade") return `collage-out ${ms(PAGE_MS / 2)} ease both`;

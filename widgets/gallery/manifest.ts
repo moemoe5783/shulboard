@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { albumSelectionFields, albumSelectionNeeds } from "@/lib/media/selection";
-import { COLLAGE_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "../collage/transitions";
+import { CLEAN_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "../collage/transitions";
 import { widgetStyleFields } from "../style";
 import type { DataNeed, WidgetManifest } from "../types";
 
@@ -26,7 +26,7 @@ export const galleryConfigSchema = z.object({
   /** How one photo gives way to the next — the collage's effects
    *  (../collage/transitions.ts), applied to a single photo. A gallery saved
    *  before this crossfades. */
-  transition: z.enum(COLLAGE_TRANSITIONS).default("crossfade").catch("crossfade"),
+  transition: z.enum(CLEAN_TRANSITIONS).default("crossfade").catch("crossfade"),
   /** A multiplier on every duration: 2 is twice as fast, 0.5 half as fast. */
   transitionSpeed: z
     .preprocess(

@@ -1,11 +1,15 @@
 "use server";
 
+import "server-only";
+
 import { randomBytes } from "node:crypto";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrg } from "@/lib/orgs";
 import { createClient } from "@/lib/supabase/server";
 import { resolutionById } from "@/lib/screens";
+import { buildScreenBundle } from "@/lib/bundle/build";
 
 /**
  * Screen tokens.
@@ -147,7 +151,7 @@ export async function deleteScreen(formData: FormData): Promise<void> {
  * until it exists, "assign a board" means "this playlist has exactly one
  * item," so the item is replaced rather than added to.
  */
-export type AssignBoardState = { assigned?: string; at?: number };
+export type AssignBoardState = { assigned?: string; published?: boolean; boardId?: string; at?: number };
 
 export async function assignBoard(_previous: AssignBoardState, formData: FormData): Promise<AssignBoardState> {
   const org = await requireActiveOrg();
@@ -210,11 +214,33 @@ export async function assignBoard(_previous: AssignBoardState, formData: FormDat
     if (linkError) throw new Error(`Couldn't point the screen at its playlist: ${linkError.message}`);
   }
 
-  const { data: board } = await supabase.from("boards").select("name").eq("id", boardId).maybeSingle();
+  const { data: board } = await supabase
+    .from("boards")
+    .select("name, published_at")
+    .eq("id", boardId)
+    .maybeSingle();
+
+  // Build this screen's bundle now rather than leaving it to the five-minute
+  // cron sweep — the same call, for the same reason, as publishBoard
+  // (app/(editor)/boards/[id]/actions.ts). The build publishes
+  // `bundle_changed`, so the TV switches within seconds. In after(), so the
+  // save answers straight away and a slow or failed build never undoes it;
+  // the queued rebuild the playlist triggers already made is the backstop.
+  // The screen id is the row read above under this admin's own session, so
+  // this can only ever build a screen of their own shul.
+  after(async () => {
+    await buildScreenBundle(screen.id).catch(() => null);
+  });
+
   revalidatePath(`/screens/${screenId}`);
   // `at` makes each save a new state, so saving the same board twice still
   // shows its confirmation afresh.
-  return { assigned: board?.name ?? "the board", at: Date.now() };
+  return {
+    assigned: board?.name ?? "the board",
+    published: Boolean(board?.published_at),
+    boardId,
+    at: Date.now(),
+  };
 }
 
 export type ConnectTvState = { error?: string; connected?: string };

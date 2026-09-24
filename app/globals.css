@@ -142,6 +142,21 @@
   from { opacity: 1; transform: none; }
   to { opacity: 0; transform: translateX(10%); }
 }
+/* The Artsy style's own two (widgets/collage/transitions.ts). A dealt print
+ * drops in from a little above, a touch large, and settles; a shuffled one
+ * slides off the way its --shuffle-x/-y say (each print gets its own, seeded
+ * by the page, in widgets/collage/ArtsyLayer.tsx). Transform and opacity only,
+ * on the print's outer wrapper — its tilt lives on an inner element, so the
+ * two never fight. */
+@keyframes collage-deal-in {
+  0% { opacity: 0; transform: translateY(-7%) scale(1.07); }
+  60% { opacity: 1; transform: translateY(0.6%) scale(0.99); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes collage-shuffle-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate(var(--shuffle-x, 30%), var(--shuffle-y, 0%)) rotate(var(--shuffle-r, 6deg)); }
+}
 /* The Renderer already switches to "none" under reduced motion; this is the
  * belt to that brace for anything that slips through. */
 @media (prefers-reduced-motion: reduce) {
