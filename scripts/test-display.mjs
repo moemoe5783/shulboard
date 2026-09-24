@@ -479,7 +479,7 @@ try {
     const midway = await progress.getAttribute("data-loading-progress").catch(() => null);
     const [done, total] = (midway ?? "0/0").split("/").map(Number);
     check(total === 60 && done < 60, "a first load with many photos shows how far along it is", midway ?? "no progress shown");
-    check((await many.locator("body").innerText()).includes("Getting this screen’s photos ready"), "and says what it's doing");
+    check((await many.locator("body").innerText()).includes("Loading"), "and says it's loading");
     await many.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
     check((await marker(many, "version")) === "1", "then the board appears");
 

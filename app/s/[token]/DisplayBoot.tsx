@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useDisplay } from "@/lib/display/useDisplay";
-import { DisplayBoard, LoadingPhotos, UpdatingBadge, WaitingForBoard } from "./DisplayBoard";
+import { DisplayBoard, LoadingProgress, UpdatingBadge, WaitingForBoard } from "./DisplayBoard";
 
 /*
  * Which token this device runs on, and everything that follows from it.
@@ -115,7 +115,7 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
 
   if (!bundle) {
     if (status.assetProgress && status.assetProgress.total > 0) {
-      return <LoadingPhotos done={status.assetProgress.done} total={status.assetProgress.total} />;
+      return <LoadingProgress done={status.assetProgress.done} total={status.assetProgress.total} />;
     }
     return <WaitingForBoard reason="Waiting for this screen's board." />;
   }
