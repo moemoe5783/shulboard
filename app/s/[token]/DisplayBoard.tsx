@@ -89,10 +89,10 @@ export function WaitingForBoard({ reason }: { reason: string }) {
  * The first time a screen loads a board with many photos — or after it was
  * paired — every photo is downloaded before the board appears (the atomic swap,
  * lib/display/assets.ts). Six hundred photos can take a minute or more, and a
- * dark screen that says nothing for a minute looks broken. This says what's
- * happening and how far along it is.
+ * dark screen that says nothing for a minute looks broken. This shows that it's
+ * loading and how far along it is.
  */
-export function LoadingPhotos({ done, total }: { done: number; total: number }) {
+export function LoadingProgress({ done, total }: { done: number; total: number }) {
   const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
   return (
     <div
@@ -100,12 +100,12 @@ export function LoadingPhotos({ done, total }: { done: number; total: number }) 
       role="status"
       aria-live="polite"
     >
-      <p className="text-[clamp(18px,2.4vw,40px)] opacity-80">Getting this screen&rsquo;s photos ready</p>
+      <p className="text-[clamp(18px,2.4vw,40px)] opacity-80">Loading</p>
       <div className="bg-paper/15 h-[max(6px,0.6vh)] rounded-control w-full max-w-[60vw] overflow-hidden">
         <div className="bg-paper/80 h-full transition-[width] duration-300" style={{ width: `${pct}%` }} />
       </div>
       <p className="numeric text-[clamp(14px,1.6vw,28px)] opacity-60" data-loading-progress={`${done}/${total}`}>
-        {done.toLocaleString("en-US")} of {total.toLocaleString("en-US")}
+        {pct}%
       </p>
     </div>
   );
