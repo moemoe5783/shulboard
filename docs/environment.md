@@ -107,8 +107,9 @@ everywhere it's called, so —
   never show a device as live, because it never hears from one.
 - `POST /api/screen/[token]/realtime-auth` answers 503 — see
   `SUPABASE_JWT_SECRET` below; this alone degrades rather than breaks.
-- `GET /m/<id>/<variant>-<hash>.<ext>` answers 404 for every asset — every
-  photo on every board is a broken image.
+- `GET /m/<id>/<variant>-<hash>.<ext>` answers 503 for every asset — every
+  photo on every board is a broken image. (A 503, never cached, rather than a
+  404, which the proxy lets Vercel's CDN keep for a minute.)
 - `POST /api/cron/build-bundles` answers 503 — no bundle is ever built or
   rebuilt, so even a screen that once worked never sees a content change.
 - `POST /api/pair/start` answers 503 — a TV at `/pair` says pairing isn't

@@ -273,6 +273,35 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
       return send(req.method === "POST" ? 201 : 200, changed);
     }
 
+    // ------------------------------------------------------------- storage
+    // fixtures.storage maps "<bucket>/<path>" to the file's bytes (a Buffer or
+    // string). Download and remove are what the app calls (the /m proxy,
+    // lib/storage/remove.ts); removes are recorded in state.writes.
+    if (path.startsWith("/storage/v1/object/")) {
+      fixtures.storage ??= {};
+      const key = decodeURIComponent(path.slice("/storage/v1/object/".length));
+      if (req.method === "GET") {
+        const file = fixtures.storage[key];
+        if (file === undefined) return send(400, { statusCode: "404", error: "not_found", message: "Object not found" });
+        const bytes = Buffer.isBuffer(file) ? file : Buffer.from(String(file));
+        res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(bytes.length) });
+        return res.end(bytes);
+      }
+      if (req.method === "DELETE") {
+        const bucket = key.split("/")[0];
+        const removed = [];
+        for (const prefix of body.prefixes ?? []) {
+          const full = `${bucket}/${prefix}`;
+          if (full in fixtures.storage) {
+            delete fixtures.storage[full];
+            removed.push({ name: prefix, bucket_id: bucket });
+          }
+        }
+        state.writes.push({ storageRemove: bucket, paths: body.prefixes ?? [] });
+        return send(200, removed);
+      }
+    }
+
     send(404, { message: `mock has no ${path}` });
   });
 

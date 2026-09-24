@@ -31,7 +31,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { EDITOR, GABBAI, INVITE_TOKEN, fixtures } from "./dashboard-fixtures.mjs";
+import { EDITOR, GABBAI, INVITE_TOKEN, PHOTO, fixtures } from "./dashboard-fixtures.mjs";
 import { startMockSupabase } from "./mock-supabase.mjs";
 
 const PORT = Number(process.env.PORT ?? 3231);
@@ -431,6 +431,45 @@ try {
     if (SHOTS) await page.screenshot({ path: join(SHOTS, "admin-accounts.png"), fullPage: true });
     await page.goto(`${BASE}/admin/accounts?q=sara`, { waitUntil: "networkidle" });
     check((await page.locator("input[name=q]").inputValue()) === "sara", "the account search keeps what was searched");
+  }
+
+  console.log("\n-- the media proxy -------------------------------------------");
+  {
+    const url = (id, file = "display-1111111111111111.webp") => `${BASE}/m/${id}/${file}`;
+    const ready = await fetch(url(PHOTO.ready));
+    check(ready.status === 200 && (await ready.text()) === "fake-webp-bytes", "a ready photo is served", String(ready.status));
+    check(ready.headers.get("content-type") === "image/webp", "with its recorded type", ready.headers.get("content-type") ?? "");
+    check(
+      ready.headers.get("cache-control") === "public, max-age=31536000, immutable",
+      "browsers keep it for a year, immutable",
+      ready.headers.get("cache-control") ?? "",
+    );
+    check(
+      ready.headers.get("cdn-cache-control") === "max-age=31536000" && ready.headers.get("vercel-cdn-cache-control") === "max-age=31536000",
+      "and so does Vercel's CDN",
+      `${ready.headers.get("cdn-cache-control")} / ${ready.headers.get("vercel-cdn-cache-control")}`,
+    );
+    check(!ready.headers.get("set-cookie"), "no cookie rides along, which would stop the CDN caching it");
+    for (const [label, response] of [
+      ["a deleted photo", await fetch(url(PHOTO.deleted))],
+      ["a photo still uploading", await fetch(url(PHOTO.pending))],
+      ["a stale hash", await fetch(url(PHOTO.ready, "display-2222222222222222.webp"))],
+      ["an unknown photo", await fetch(url("a5000000-0000-4000-8000-00000000ffff"))],
+    ]) {
+      check(
+        response.status === 404 && response.headers.get("cache-control") === "public, max-age=60" && response.headers.get("vercel-cdn-cache-control") === "max-age=60",
+        `${label} is a 404 cached for a minute`,
+        `${response.status} ${response.headers.get("cache-control")}`,
+      );
+    }
+    // A file the row names but Storage can't produce is a hiccup, not a
+    // missing photo: a 503 that nothing remembers.
+    const hiccup = await fetch(url(PHOTO.fileMissing));
+    check(
+      hiccup.status === 503 && hiccup.headers.get("cache-control") === "no-store",
+      "a Storage failure is a 503 that isn't cached",
+      `${hiccup.status} ${hiccup.headers.get("cache-control")}`,
+    );
   }
 
   console.log("\n-- phones ----------------------------------------------------");
