@@ -88,6 +88,8 @@ export function BoardRenderer({
   albums = null,
   files = null,
 }: BoardRendererProps) {
+  const theme = doc.themeOverrides as { font?: string; hebrewFont?: string };
+  const boardFonts = { font: theme.font, hebrewFont: theme.hebrewFont };
   return (
     <BoardLocationProvider location={location}>
       <BoardZmanimProvider zmanim={zmanim}>
@@ -112,6 +114,7 @@ export function BoardRenderer({
                 key={widget.id}
                 widget={widget}
                 canvas={canvas}
+                boardFonts={boardFonts}
                 extra={widgetProps?.(widget)}
               />
             ))}
@@ -131,10 +134,12 @@ export function BoardRenderer({
 function WidgetFrame({
   widget,
   canvas,
+  boardFonts,
   extra,
 }: {
   widget: BoardWidget;
   canvas: { width: number; height: number };
+  boardFonts: { font?: string; hebrewFont?: string };
   extra?: HTMLAttributes<HTMLDivElement> & Record<string, unknown>;
 }) {
   const Renderer = getRenderer(widget.type);
@@ -267,9 +272,10 @@ function WidgetFrame({
         styled it is a transparent, padding-less flex pass-through, so an
         unstyled widget renders exactly as it did before this frame existed.
       */}
-      <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign)}>
+      <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign, boardFonts)}>
         {style.title && (
           <div
+            dir="auto"
             style={{
               flexShrink: 0,
               fontWeight: 600,

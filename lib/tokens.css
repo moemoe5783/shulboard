@@ -87,17 +87,10 @@
   --type-sefarim: var(--font-frank-ruhl), Georgia, serif;
   --type-neutral: ui-sans-serif, system-ui, sans-serif;
 
-  /* Board-only faces — selectable per widget for board content (design.md
-   * §1b), never used in chrome. Injected by next/font in app/layout.tsx. All
-   * bilingual Hebrew+Latin, each with a real fallback so an unloaded face never
-   * leaves a board blank. Mapped by name in lib/board-theme.ts's BOARD_FONTS. */
-  --type-heebo: var(--font-heebo), system-ui, sans-serif;
-  --type-rubik: var(--font-rubik), system-ui, sans-serif;
-  --type-alef: var(--font-alef), system-ui, sans-serif;
-  --type-david-libre: var(--font-david-libre), Georgia, serif;
-  --type-miriam-libre: var(--font-miriam-libre), system-ui, sans-serif;
-  --type-suez-one: var(--font-suez-one), Georgia, serif;
-  --type-secular-one: var(--font-secular-one), system-ui, sans-serif;
+  /* Board faces are not tokens: they're the catalog (lib/fonts), declared by
+   * the stylesheet scripts/build-fonts.ts writes and app/layout.tsx links.
+   * --type-neutral above is the one board stack defined here: the old
+   * "System" choice, the device's own font. */
 
   /* 12px is the floor. Never go below it. */
   --size-title: 20px;

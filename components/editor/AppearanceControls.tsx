@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON } from "@/app/(dev)/editor-lab/chrome";
-import { BOARD_FONT_OPTIONS } from "@/lib/board-theme";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
+import { FontSelect, HebrewFontSelect } from "./FontSelects";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
 import { backgroundKind } from "@/lib/board-background";
 import { BackgroundField } from "./BackgroundField";
@@ -256,22 +256,13 @@ export function AppearanceControls({
         )}
       </div>
 
-      {/* Font — the board faces, in the order the menu shows them. */}
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Font</span>
-        <select
-          value={config.font}
-          onChange={(event) => onChange({ font: event.target.value as WidgetFont })}
-          className={PANEL_CONTROL}
-        >
-          <option value="inherit">Board default</option>
-          {BOARD_FONT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* Font, and the face its Hebrew is drawn in (components/editor/FontSelects.tsx). */}
+      <FontSelect value={config.font} inheritLabel="Board default" onChange={(font) => onChange({ font: font as WidgetFont })} />
+      <HebrewFontSelect
+        value={config.hebrewFont}
+        inheritLabel="Board's Hebrew font"
+        onChange={(hebrewFont) => onChange({ hebrewFont })}
+      />
           </>
         )}
 

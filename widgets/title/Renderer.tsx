@@ -32,10 +32,15 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
   return (
     <div ref={boxRef} className={`flex h-full w-full flex-col justify-center ${align}`}>
       <div ref={contentRef} className="flex flex-col gap-[0.4em]">
-        <span className="font-semibold leading-tight">{config.text}</span>
+        {/* dir="auto": a Hebrew-first title lays out right to left, an
+            English-first one left to right. */}
+        <span dir="auto" className="font-semibold leading-tight">
+          {config.text}
+        </span>
 
         {config.subtitle && (
           <span
+            dir="auto"
             className="leading-tight opacity-70"
             style={{ fontSize: `${config.subtitleScale}em` }}
           >

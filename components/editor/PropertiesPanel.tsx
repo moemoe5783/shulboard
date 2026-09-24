@@ -9,6 +9,7 @@ import { DimensionsField } from "@/components/editor/DimensionsField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { useElementFontSize } from "@/components/editor/useElementFontSize";
+import { FontSelect, HebrewFontSelect } from "./FontSelects";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardBackground } from "@/lib/board-background";
 import type { BoardWidget } from "@/lib/board-doc";
@@ -278,7 +279,7 @@ function BoardSettings() {
   const doc = useEditor((s) => s.doc);
   const setBoardStyle = useEditor((s) => s.setBoardStyle);
   const background = doc.background as BoardBackground;
-  const theme = doc.themeOverrides as { ink?: string };
+  const theme = doc.themeOverrides as { ink?: string; font?: string; hebrewFont?: string };
   const lightText = theme.ink === "surface" || theme.ink === "paper";
 
   const setInk = (ink: "ink" | "surface", label = "Change board text colour") =>
@@ -326,6 +327,21 @@ function BoardSettings() {
           ))}
         </div>
         <p className={PANEL_LABEL}>Set automatically when you choose a background. Elements can override it on their Appearance tab.</p>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3" data-board-fonts>
+        <FontSelect
+          label="Board font"
+          value={theme.font ?? "assistant"}
+          onChange={(font) => setBoardStyle({ themeOverrides: { ...doc.themeOverrides, font } }, "Change board font")}
+        />
+        <HebrewFontSelect
+          value={theme.hebrewFont ?? "auto"}
+          onChange={(hebrewFont) =>
+            setBoardStyle({ themeOverrides: { ...doc.themeOverrides, hebrewFont } }, "Change board Hebrew font")
+          }
+        />
+        <p className={PANEL_LABEL}>Elements can pick their own on their Appearance tab.</p>
       </div>
     </div>
   );

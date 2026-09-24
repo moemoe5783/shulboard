@@ -1,33 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import {
-  Alef,
-  Assistant,
-  David_Libre,
-  Frank_Ruhl_Libre,
-  Heebo,
-  Miriam_Libre,
-  Rubik,
-  Secular_One,
-  Suez_One,
-} from "next/font/google";
+import { Assistant, Frank_Ruhl_Libre } from "next/font/google";
+import { FONT_FACES_CSS } from "@/lib/fonts/catalog.generated";
 import "./globals.css";
 
 /*
- * The faces are loaded here and NONE is applied to the document root. next/font's
- * `variable` option declares a CSS custom property without setting font-family,
- * so nothing inherits a face from the root.
+ * TWO FONT SYSTEMS, KEPT APART.
  *
- * That is the point. Dashboard chrome opts into Assistant with the `font-ui`
- * utility; the board renderer takes its type from the board document instead,
- * because board fonts are user-selectable per text element. See the type section
- * of lib/tokens.css and lib/board-theme.ts's BOARD_FONTS.
+ * The dashboard's chrome faces — Assistant and Frank Ruhl Libre — come from
+ * next/font, which downloads them at build time and serves them from this
+ * app; nothing reaches Google at runtime. Neither is applied to the document
+ * root: `variable` declares a CSS custom property without setting
+ * font-family, so chrome opts in with the `font-ui` utility (lib/tokens.css).
  *
- * TWO FACES ARE CHROME, THE REST ARE BOARD-ONLY. Assistant and Frank Ruhl Libre
- * back the dashboard (`--type-ui`, `--type-sefarim`). Every other face here
- * exists only so a shul can pick it for its own board content (design.md §1b) —
- * they are all bilingual Hebrew-and-Latin Google faces, chosen so a board that
- * mixes scripts stays readable whichever the gabbai picks. The display faces
- * (Suez One, Secular One) ship one weight; the text faces ship 400 and 700.
+ * Board fonts are the catalog (lib/fonts): every face a board can use,
+ * self-hosted from @fontsource and declared in one stylesheet the build writes
+ * (scripts/build-fonts.ts). It's linked here, on every page, so the editor and
+ * a screen declare exactly the same faces. Declaring a face downloads nothing;
+ * a browser fetches a file only for text that uses it.
  */
 
 // The UI face for both scripts. 400 and 600 only — the spec has no other weights.
@@ -38,7 +27,7 @@ const assistant = Assistant({
   display: "swap",
 });
 
-// Sefarim typography — Hebrew dates and zmanim values in chrome, and a board face.
+// Sefarim typography — Hebrew dates and columns of times in chrome.
 const frankRuhlLibre = Frank_Ruhl_Libre({
   subsets: ["latin", "hebrew"],
   weight: ["400", "600"],
@@ -46,43 +35,7 @@ const frankRuhlLibre = Frank_Ruhl_Libre({
   display: "swap",
 });
 
-// Board-only faces, all bilingual. See the note above.
-const heebo = Heebo({ subsets: ["latin", "hebrew"], weight: ["400", "700"], variable: "--font-heebo", display: "swap" });
-const rubik = Rubik({ subsets: ["latin", "hebrew"], weight: ["400", "700"], variable: "--font-rubik", display: "swap" });
-const alef = Alef({ subsets: ["latin", "hebrew"], weight: ["400", "700"], variable: "--font-alef", display: "swap" });
-const davidLibre = David_Libre({
-  subsets: ["latin", "hebrew"],
-  weight: ["400", "700"],
-  variable: "--font-david-libre",
-  display: "swap",
-});
-const miriamLibre = Miriam_Libre({
-  subsets: ["latin", "hebrew"],
-  weight: ["400", "700"],
-  variable: "--font-miriam-libre",
-  display: "swap",
-});
-const suezOne = Suez_One({ subsets: ["latin", "hebrew"], weight: ["400"], variable: "--font-suez-one", display: "swap" });
-const secularOne = Secular_One({
-  subsets: ["latin", "hebrew"],
-  weight: ["400"],
-  variable: "--font-secular-one",
-  display: "swap",
-});
-
-const FONT_VARIABLES = [
-  assistant,
-  frankRuhlLibre,
-  heebo,
-  rubik,
-  alef,
-  davidLibre,
-  miriamLibre,
-  suezOne,
-  secularOne,
-]
-  .map((face) => face.variable)
-  .join(" ");
+const FONT_VARIABLES = `${assistant.variable} ${frankRuhlLibre.variable}`;
 
 export const metadata: Metadata = {
   title: "Shulboard",
@@ -98,6 +51,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${FONT_VARIABLES} h-full antialiased`}>
+      <head>
+        {/* The board font catalog's faces — see above. Self-hosted, hashed,
+            cached forever. */}
+        <link rel="stylesheet" href={FONT_FACES_CSS} />
+      </head>
       <body className="min-h-full">{children}</body>
     </html>
   );

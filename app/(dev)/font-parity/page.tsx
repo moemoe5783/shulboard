@@ -22,7 +22,7 @@
  * correctly-inherited board theme would render identically. `sefarim` (Frank
  * Ruhl Libre) is about as visually different from Assistant as this product
  * has, which is what makes it an actual test rather than a decoration.
- * Override with ?font=assistant or ?font=system to check the others too.
+ * Override with ?font=<any catalog id or older name> to check the others too.
  */
 
 import { useSearchParams } from "next/navigation";
@@ -30,8 +30,8 @@ import { Suspense } from "react";
 import { BoardEditor } from "@/app/(editor)/boards/[id]/BoardEditor";
 import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { boardDocAsJson, parseBoardDoc, type BoardDoc } from "@/lib/board-doc";
-import type { BoardFont } from "@/lib/board-theme";
 import { DEMO_LOCATION } from "@/lib/demo-board";
+import { catalogId } from "@/lib/fonts";
 
 const CANVAS = { width: 1920, height: 1080 };
 
@@ -40,7 +40,7 @@ export const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
 export const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
 export const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
 
-function buildDoc(font: BoardFont): BoardDoc {
+function buildDoc(font: string): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
     themeOverrides: { font, ink: "ink", background: "surface" },
@@ -89,12 +89,13 @@ function buildDoc(font: BoardFont): BoardDoc {
   });
 }
 
-const VALID_FONTS = new Set<BoardFont>(["assistant", "sefarim", "system"]);
+// Any stored font name: the catalog's ids and the pre-catalog names.
+const isFont = (name: string) => catalogId(name) !== null;
 
 function FontParityInner() {
   const params = useSearchParams();
   const requested = params.get("font") ?? "sefarim";
-  const font = (VALID_FONTS.has(requested as BoardFont) ? requested : "sefarim") as BoardFont;
+  const font = isFont(requested) ? requested : "sefarim";
   const doc = buildDoc(font);
 
   return (
