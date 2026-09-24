@@ -109,6 +109,8 @@ try {
   };
 
   console.log("\n-- sign-in ---------------------------------------------------");
+  await page.goto(`${BASE}/sign-in`, { waitUntil: "networkidle" });
+  check(!(await page.getByRole("button", { name: "Continue with Google" }).isVisible()), "Google isn't offered while it's off in Supabase");
   await signIn(GABBAI.email, "not-the-password1");
   await page.locator("p[role=alert]").waitFor({ timeout: 5000 }).catch(() => {});
   check(/don't match an account/.test((await page.locator("p[role=alert]").textContent().catch(() => "")) ?? ""), "a wrong password says so");

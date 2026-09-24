@@ -146,6 +146,9 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
       const route = path.slice("/auth/v1/".length);
       const authError = (status, code, message) => send(status, { code: status, error_code: code, msg: message, message });
 
+      if (route === "settings") {
+        return send(200, { external: { email: true, google: Boolean(fixtures.googleEnabled) }, disable_signup: false });
+      }
       if (route === "token" && url.searchParams.get("grant_type") === "password") {
         const u = byEmail.get(String(body.email ?? "").toLowerCase());
         if (!u || u.password !== body.password) return authError(400, "invalid_credentials", "Invalid login credentials");

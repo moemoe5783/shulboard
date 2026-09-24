@@ -396,6 +396,27 @@ SMTP set, account emails only reach your own team's addresses.
 
 ---
 
+## Google sign-in (optional, no variable here)
+
+"Continue with Google" appears on the sign-in page only when the Supabase
+project has Google turned on — the page asks Supabase's public settings
+endpoint (`lib/supabase/auth-settings.ts`, cached five minutes), so there's
+nothing to set in Vercel and nothing to redeploy. To turn it on:
+
+1. **Google Cloud Console** → APIs & Services → Credentials → Create
+   credentials → OAuth client ID → Web application. Authorized redirect
+   URI: `https://<project-ref>.supabase.co/auth/v1/callback` (Supabase shows
+   the exact one on its Google provider page). Configure the consent screen
+   with your product name and domain.
+2. **Supabase** → Authentication → Providers → Google → enable, and paste
+   the client ID and secret.
+
+Google sends people back to Supabase, which sends them to the app's
+`/auth/callback` — already in place, and already covered by the
+`https://<your-domain>/**` redirect URL above.
+
+---
+
 ## Setting these up on a real project
 
 Ask Claude Code to run the migrations and wire up the cron job — neither
