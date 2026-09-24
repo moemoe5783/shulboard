@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
-import { SIGN_IN_PATH } from "@/lib/routes";
+import { INVITE_PATH_PREFIX, MFA_VERIFY_PATH, SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/routes";
 import { isSupabaseConfigured, supabaseEnv } from "./env";
 
 /**
@@ -25,7 +25,10 @@ const PUBLIC_PREFIXES = [
   // register, and its scope is /s/ regardless.
   "/sw.js",
   SIGN_IN_PATH,
+  SIGN_UP_PATH,
   "/auth/",
+  // An invitation shows who's inviting before the invitee has an account.
+  INVITE_PATH_PREFIX,
   // Dev reference sheets. Remove these when the app ships.
   "/tokens",
   "/primitives",
@@ -90,6 +93,26 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   if (!user && !isPublic(pathname)) {
     return redirectToSignIn(request);
+  }
+
+  // Two-step sign-in. An account with an authenticator app is only half signed
+  // in after its password (aal1) and must give a code (aal2) before anything
+  // behind the sign-in wall. Read from the verified session, no network call.
+  // The database enforces the same rule (the mfa_satisfied() policies), so this
+  // redirect is the courtesy and not the lock.
+  if (user && !isPublic(pathname)) {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal && aal.nextLevel === "aal2" && aal.currentLevel !== "aal2") {
+      const url = request.nextUrl.clone();
+      url.pathname = MFA_VERIFY_PATH;
+      url.search = "";
+      const from = request.nextUrl.pathname + request.nextUrl.search;
+      if (from !== "/") url.searchParams.set("from", from);
+      const redirect = NextResponse.redirect(url);
+      // Keep any refreshed session cookie the check above may have written.
+      for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
+      return redirect;
+    }
   }
 
   return response;

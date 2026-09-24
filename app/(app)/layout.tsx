@@ -30,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const NAV_FOOTER: NavItem[] = [
   { id: "settings", label: "Settings", href: "/settings" },
+  { id: "account", label: "Account", href: "/account" },
 ];
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {

@@ -1304,12 +1304,37 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_org_invite: { Args: { p_token: string }; Returns: string }
       current_org_ids: { Args: Record<PropertyKey, never>; Returns: string[] }
       has_org_role_at_least: {
         Args: { min_role: string; org: string }
         Returns: boolean
       }
+      invite_preview: {
+        Args: { p_token: string }
+        Returns: {
+          email: string
+          expires_at: string
+          invited_by_name: string
+          org_id: string
+          org_name: string
+          role: Database["public"]["Enums"]["org_role"]
+          status: string
+        }[]
+      }
       is_org_member: { Args: { org: string }; Returns: boolean }
+      mfa_satisfied: { Args: Record<PropertyKey, never>; Returns: boolean }
+      org_member_directory: {
+        Args: { p_org: string }
+        Returns: {
+          email: string
+          full_name: string
+          joined_at: string
+          role: Database["public"]["Enums"]["org_role"]
+          two_step: boolean
+          user_id: string
+        }[]
+      }
       record_bundle_build_failure: {
         Args: { p_error: string; p_screen_id: string }
         Returns: undefined

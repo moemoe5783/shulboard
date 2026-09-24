@@ -21,3 +21,32 @@ export const SIGN_IN_PATH = "/sign-in";
 
 /** Where the magic link and the Google redirect both land. */
 export const AUTH_CALLBACK_PATH = "/auth/callback";
+
+/** Creating an account with an email and password. Public. */
+export const SIGN_UP_PATH = "/sign-up";
+
+/** Asking for a password reset email. Under /sign-in so it shares its
+ *  public prefix in the proxy. */
+export const FORGOT_PASSWORD_PATH = "/sign-in/forgot";
+
+/** The second step of sign-in for an account with an authenticator app. Under
+ *  /sign-in for the same reason; the proxy sends an unverified session here. */
+export const MFA_VERIFY_PATH = "/sign-in/verify";
+
+/** Where the links in account emails land (confirm, reset, sign-in): verifies
+ *  the email's one-time token on the server, so a link opened on a different
+ *  device from the one that asked for it still works. */
+export const AUTH_CONFIRM_PATH = "/auth/confirm";
+
+/** Choosing a new password, after a reset link. */
+export const NEW_PASSWORD_PATH = "/auth/new-password";
+
+/** An invitation to join a shul — reachable signed out, so someone without an
+ *  account can see who invited them before they make one. */
+export const INVITE_PATH_PREFIX = "/invite/";
+
+/** A path is safe to send someone to after sign-in: same site, not a
+ *  protocol-relative `//evil.example`. */
+export function safeNext(from: string | null | undefined, fallback = "/"): string {
+  return from && from.startsWith("/") && !from.startsWith("//") ? from : fallback;
+}

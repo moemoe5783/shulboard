@@ -35,7 +35,18 @@ create schema if not exists auth;
 
 create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),
-  email text unique
+  email text unique,
+  -- What the signup form writes (full_name); read by org_member_directory.
+  raw_user_meta_data jsonb not null default '{}'::jsonb
+);
+
+-- Supabase Auth's authenticator-app factors, as much of the shape as the
+-- mfa_satisfied() policies and the member directory read.
+create table if not exists auth.mfa_factors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  factor_type text not null default 'totp',
+  status text not null default 'unverified' check (status in ('unverified', 'verified'))
 );
 
 -- Supabase resolves the current user from the request's JWT claims, which
