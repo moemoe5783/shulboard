@@ -27,16 +27,21 @@ insert into public.screens (org_id, name, token, last_seen_at) values
   ('0e000000-0000-4000-8000-000000000001', 'Simcha hall', 'abcdefghijkmnpqrstuvwxyz2345678b', now() - interval '3 days');
 insert into storage.buckets (id, name) values ('other', 'other') on conflict do nothing;
 insert into storage.objects (bucket_id, name, metadata) values
-  ('assets', '0e000000-0000-4000-8000-000000000001/a1/original.jpg', '{"size": 1000}'),
+  ('assets', '0e000000-0000-4000-8000-000000000001/a1/large.webp', '{"size": 1000}'),
   ('assets', '0e000000-0000-4000-8000-000000000001/a1/display.webp', '{"size": 200}'),
   ('assets', '0e000000-0000-4000-8000-000000000001/a1/thumb.webp', '{"size": 50}'),
   -- Left behind: no photo record points at it.
   ('assets', '0e000000-0000-4000-8000-000000000001/gone/original.jpg', '{"size": 5000}'),
   ('assets', '0e000000-0000-4000-8000-00000000dead/x/original.jpg', '{"size": 700}'),
   ('other', 'readme.txt', '{"size": 30}');
-insert into public.assets (org_id, kind, storage_path, mime_type, byte_size, variants) values
-  ('0e000000-0000-4000-8000-000000000001', 'image', 'x/1/original.jpg', 'image/jpeg', 1000,
-   '{"display": {"bytes": 200}, "thumb": {"bytes": 50}}');
+-- The shape the upload writes (lib/media/upload.ts): no separate original, and
+-- byte_size is the largest size's own bytes. Plus an older row with no sizes
+-- listed, and an upload that failed.
+insert into public.assets (org_id, kind, storage_path, mime_type, byte_size, variants, status) values
+  ('0e000000-0000-4000-8000-000000000001', 'image', 'x/a1/large.webp', 'image/webp', 1000,
+   '{"large": {"bytes": 1000}, "display": {"bytes": 200}, "thumb": {"bytes": 50}}', 'ready'),
+  ('0e000000-0000-4000-8000-000000000001', 'image', 'x/old/original.jpg', 'image/jpeg', 300, '{}', 'ready'),
+  ('0e000000-0000-4000-8000-000000000001', 'image', 'x/failed/', 'image/webp', null, '{}', 'failed');
 
 select tests.eq((select count(*) from public.orgs where plan = 'trial' and trial_ends_at > now() + interval '29 days'), 2::bigint,
   'a new shul starts on a 30-day free trial');
@@ -77,8 +82,10 @@ select tests.eq((select storage_bytes from public.platform_orgs() where org_id =
   'and the storage its files really take, left-behind files included');
 select tests.eq((select file_count from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 4::bigint,
   'in how many files');
-select tests.eq((select recorded_bytes from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 1250::bigint,
-  'beside what its photo records account for');
+select tests.eq((select recorded_bytes from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 1550::bigint,
+  'beside what its photo records account for: each size once, the largest not counted twice, a sizeless row by its byte_size');
+select tests.eq((select photo_count from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 2::bigint,
+  'and its photos, not counting an upload that failed');
 select tests.eq((select storage_bytes from public.platform_usage()), 6980::bigint, 'the whole project''s storage, every bucket');
 select tests.eq((select unattributed_bytes from public.platform_usage()), 730::bigint,
   'and what belongs to no shul');
