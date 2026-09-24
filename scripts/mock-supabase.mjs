@@ -10,10 +10,12 @@
  * Access tokens are real-shaped JWTs (unsigned) because supabase-js reads
  * `aal` out of them for two-step sign-in.
  *
- * REST returns rows from `fixtures` by table, applying `eq`, `is`, `in` and
- * `neq` filters and honouring `.single()`/`.maybeSingle()`; writes are logged
- * in `state.writes` and echoed back. `rpc/<fn>` returns `fixtures.rpc[fn]`
- * (a value or a function of the arguments).
+ * REST returns rows from `fixtures` by table, applying `eq`, `neq`, `is`, `in`,
+ * `lt`, `lte`, `gt` and `gte` filters and honouring `.single()`/
+ * `.maybeSingle()` and `limit`. Writes change the fixtures — insert appends,
+ * update merges into the matching rows, delete removes them — and are logged
+ * in `state.writes`. `rpc/<fn>` returns `fixtures.rpc[fn]` (a value, or a
+ * function of the arguments that may change the fixtures itself).
  *
  * NOT A REIMPLEMENTATION: no RLS, no select-shaping, no ordering. The SQL
  * tests (supabase/tests) are where the database's own rules are checked.
@@ -100,7 +102,13 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
       else if (op === "neq") out = out.filter((row) => String(get(row)) !== value);
       else if (op === "is") out = out.filter((row) => (value === "null" ? get(row) == null : String(get(row)) === value));
       else if (op === "not.is") out = out.filter((row) => (value === "null" ? get(row) != null : String(get(row)) !== value));
-      else if (op === "in") {
+      else if (["lt", "lte", "gt", "gte"].includes(op)) {
+        const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+        out = out.filter((row) => {
+          const c = cmp(String(get(row) ?? ""), value);
+          return op === "lt" ? c < 0 : op === "lte" ? c <= 0 : op === "gt" ? c > 0 : c >= 0;
+        });
+      } else if (op === "in") {
         const set = new Set(value.replace(/^\(|\)$/g, "").split(",").map((v) => v.replace(/^"|"$/g, "")));
         out = out.filter((row) => set.has(String(get(row))));
       }
@@ -234,18 +242,32 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
         if (result && result.__error) return send(400, { message: result.__error, code: "P0001" });
         return send(200, result ?? null);
       }
-      const rows = fixtures[name] ?? [];
+      fixtures[name] ??= [];
+      const rows = fixtures[name];
       const single = (req.headers.accept ?? "").includes("vnd.pgrst.object");
+      const limit = Number(url.searchParams.get("limit") ?? "") || undefined;
       if (req.method === "GET" || req.method === "HEAD") {
-        const out = applyFilters(rows, url.searchParams);
-        const headers = { "content-range": `0-${Math.max(0, out.length - 1)}/${out.length}` };
+        let out = applyFilters(rows, url.searchParams);
+        const total = out.length;
+        if (limit) out = out.slice(0, limit);
+        const headers = { "content-range": `0-${Math.max(0, out.length - 1)}/${total}` };
         if (single) return out.length ? send(200, out[0], headers) : send(406, { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" });
         return send(200, out, headers);
       }
       state.writes.push({ table: name, method: req.method, query: url.search, body, user: who?.userId ?? null });
-      const echoed = Array.isArray(body) ? body : req.method === "DELETE" ? applyFilters(rows, url.searchParams) : [{ ...(applyFilters(rows, url.searchParams)[0] ?? {}), ...body }];
-      if (single) return send(200, echoed[0] ?? null);
-      return send(req.method === "POST" ? 201 : 200, echoed);
+      let changed = [];
+      if (req.method === "POST") {
+        changed = (Array.isArray(body) ? body : [body]).map((row) => ({ id: randomUUID(), created_at: new Date().toISOString(), ...row }));
+        rows.push(...changed);
+      } else if (req.method === "PATCH") {
+        changed = applyFilters(rows, url.searchParams);
+        for (const row of changed) Object.assign(row, body);
+      } else if (req.method === "DELETE") {
+        changed = applyFilters(rows, url.searchParams);
+        fixtures[name] = rows.filter((row) => !changed.includes(row));
+      }
+      if (single) return send(200, changed[0] ?? null);
+      return send(req.method === "POST" ? 201 : 200, changed);
     }
 
     send(404, { message: `mock has no ${path}` });

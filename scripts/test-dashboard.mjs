@@ -10,6 +10,11 @@
  *    with email not set up hands back a link to send.
  *  - INVITATIONS: a signed-out visitor sees who's inviting them and can
  *    create an account; the invited account joins with one button.
+ *  - TV PAIRING: a TV at /pair shows a code; entering it on the screen's page
+ *    connects that TV, which opens the board by itself; the same link on a
+ *    second device is refused and sent to pairing; the phone's Connect page
+ *    (the TV's QR code) arrives with the code filled in; disconnecting sends
+ *    the TV back to showing a code.
  *  - PHONES: every dashboard page at 390px wide has no sideways scrolling and
  *    a menu to reach the other pages (screenshots in the scratch folder when
  *    SHOTS is set).
@@ -62,8 +67,9 @@ const env = {
   NEXT_DIST_DIR: DIST,
   NEXT_PUBLIC_SUPABASE_URL: `http://localhost:${SUPABASE_PORT}`,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "fake-anon-key-for-dashboard-test",
-  // Never used: the mock serves everything. Unset so nothing reaches a real service.
-  SUPABASE_SERVICE_ROLE_KEY: "",
+  // Any value: the service-role routes (TV pairing, the screen routes) talk to
+  // the same fake, which doesn't check keys.
+  SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key-for-dashboard-test",
   RESEND_API_KEY: "",
   EMAIL_FROM_ADDRESS: "",
 };
@@ -174,6 +180,69 @@ try {
 
   await visitor.goto(`${BASE}/invite/not-a-real-token-at-all-000000000000`, { waitUntil: "networkidle" });
   check(/doesn't work/.test(await visitor.locator("main").textContent()), "a wrong invitation link says so");
+
+  console.log("\n-- TV pairing ------------------------------------------------");
+  {
+    const HALL = "5c000000-0000-4000-8000-000000000002";
+    const tv = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+    tv.on("pageerror", (error) => check(false, "no page errors (TV)", error.message));
+    await tv.goto(`${BASE}/pair`, { waitUntil: "networkidle" });
+    const codeEl = tv.locator("[data-pairing-code]");
+    await codeEl.waitFor({ timeout: 10000 }).catch(() => {});
+    const code = await codeEl.getAttribute("data-pairing-code").catch(() => null);
+    check(/^\d{6}$/.test(code ?? ""), "a TV at /pair shows a 6-digit code", code ?? "none");
+    const qrShot = await tv.getByRole("img", { name: "QR code to connect this TV" }).screenshot().catch(() => null);
+    const { default: jsQR } = await import("jsqr");
+    const { default: sharp } = await import("sharp");
+    const scanned = qrShot
+      ? await sharp(qrShot).extend({ top: 40, bottom: 40, left: 40, right: 40, background: "#ffffff" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+          .then(({ data, info }) => jsQR(new Uint8ClampedArray(data), info.width, info.height)?.data)
+      : null;
+    check(scanned === `${BASE}/connect?code=${code}`, "and a QR code that scans to the Connect page with the code", scanned ?? "no code found");
+
+    // The QR code's page, on a phone.
+    const phonePage = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, storageState: await context.storageState() })).newPage();
+    await phonePage.goto(`${BASE}/connect?code=${code}`, { waitUntil: "networkidle" });
+    check((await phonePage.inputValue("#connect-code").catch(() => "")) === code, "scanning it opens Connect with the code filled in");
+    check(/Simcha hall/.test(await phonePage.locator("main, body").first().textContent()), "offering the screens without a TV");
+
+    await page.goto(`${BASE}/screens/${HALL}`, { waitUntil: "networkidle" });
+    await page.fill(`#code-${HALL}`, "000000");
+    await page.getByRole("button", { name: "Connect TV" }).click();
+    await page.locator("p[role=alert]").waitFor({ timeout: 5000 }).catch(() => {});
+    check(/wrong or has expired/.test((await page.locator("p[role=alert]").textContent().catch(() => "")) ?? ""), "a wrong code is refused");
+    await page.fill(`#code-${HALL}`, code ?? "");
+    await page.getByRole("button", { name: "Connect TV" }).click();
+    // The page refreshes into its connected state.
+    await page.getByText(/^Connected to a/).waitFor({ timeout: 5000 }).catch(() => {});
+    check(await page.getByText(/^Connected to a/).isVisible(), "entering it on the screen's page connects the TV", await page.getByText(/^Connected to a/).textContent().catch(() => ""));
+
+    await tv.waitForURL(/\/s\//, { timeout: 15000 }).catch(() => {});
+    const tvUrl = tv.url();
+    check(/\/s\/[a-z0-9]{32}$/.test(new URL(tvUrl).pathname), "the TV opens its board by itself", tvUrl);
+    await tv.waitForTimeout(1500);
+    const kept = await tv.evaluate(() => localStorage.getItem("shulboard.screen.token"));
+    check(Boolean(kept) && tvUrl.endsWith(kept), "and keeps the link for next time");
+
+    const other = await (await browser.newContext()).newPage();
+    await other.goto(tvUrl, { waitUntil: "networkidle" });
+    await other.waitForURL(/\/pair\?reason=other-tv/, { timeout: 15000 }).catch(() => {});
+    check(/\/pair\?reason=other-tv/.test(other.url()), "the same link on a second device is refused and sent to pairing", other.url());
+    check(/connected to a different TV/.test(await other.locator("main").textContent()), "which says why");
+
+    await page.goto(`${BASE}/screens/${HALL}`, { waitUntil: "networkidle" });
+    check(/Connected to a/.test(await page.locator("main, body").first().textContent()), "the screen's page says it's connected");
+    await page.getByRole("button", { name: "Disconnect TV" }).click();
+    await page.locator("form button[type=submit]", { hasText: "Disconnect TV" }).click();
+    await page.waitForURL(/disconnected=1/, { timeout: 10000 }).catch(() => {});
+    check(/TV disconnected/.test(await page.locator("main, body").first().textContent()), "disconnecting frees the screen");
+    await tv.reload({ waitUntil: "networkidle" });
+    await tv.waitForURL(/\/pair\?reason=disconnected/, { timeout: 15000 }).catch(() => {});
+    check(/\/pair\?reason=disconnected/.test(tv.url()), "and the old TV goes back to showing a code", tv.url());
+    await tv.locator("[data-pairing-code]").waitFor({ timeout: 10000 }).catch(() => {});
+    check(await tv.locator("[data-pairing-code]").isVisible(), "a fresh one");
+    if (SHOTS) await tv.screenshot({ path: join(SHOTS, "tv-pair.png") });
+  }
 
   console.log("\n-- phones ----------------------------------------------------");
   // The gabbai, signed in (and past the code step) above, on a phone.
