@@ -329,6 +329,60 @@ try {
       (await saved.textContent().catch(() => "")) ?? "");
     await page.unroute("**/*", slowActions);
 
+    // A new album: the box stays up and working until the album's own page is
+    // there, rather than closing onto the old list.
+    await page.goto(`${BASE}/media`, { waitUntil: "networkidle" });
+    await page.route("**/*", slowActions);
+    await page.getByRole("button", { name: "New album" }).first().click();
+    await page.getByPlaceholder("Kiddush photos").fill("Siyum photos");
+    await page.getByRole("button", { name: "Add album" }).click();
+    const adding = page.locator("button[aria-busy=true]");
+    await adding.waitFor({ timeout: 3000 }).catch(() => {});
+    check(/Adding|Opening album/.test((await adding.textContent().catch(() => "")) ?? ""), "adding an album shows it's working",
+      (await adding.textContent().catch(() => "")) ?? "");
+    await page.waitForURL(/\/media\/[0-9a-f-]{36}$/, { timeout: 10000 }).catch(() => {});
+    check(/\/media\/[0-9a-f-]{36}$/.test(page.url()) && /Siyum photos/.test(await page.locator("body").textContent()),
+      "until its own page opens", page.url());
+
+    await page.getByRole("button", { name: "Delete album" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Delete album" }).click();
+    const deleting = page.locator("button[aria-busy=true]", { hasText: "Deleting" });
+    await deleting.waitFor({ timeout: 3000 }).catch(() => {});
+    check(await deleting.isVisible().catch(() => false), "deleting an album shows it's working");
+    await page.waitForURL(`${BASE}/media`, { timeout: 10000 }).catch(() => {});
+    check(page.url() === `${BASE}/media` && !/Siyum photos/.test(await page.locator("body").textContent()), "and it's gone from the list");
+    await page.unroute("**/*", slowActions);
+
+    // Following a link shows the page is loading straight away.
+    await page.route("**/*", async (route) => {
+      if (route.request().headers()["rsc"]) await new Promise((r) => setTimeout(r, 1200));
+      await route.continue();
+    });
+    await page.getByRole("link", { name: "Settings" }).first().click();
+    const loadingPage = page.locator("[data-page-loading]");
+    await loadingPage.waitFor({ timeout: 3000 }).catch(() => {});
+    check(await loadingPage.isVisible().catch(() => false), "a page that takes a moment says it's loading");
+    await page.waitForURL(`${BASE}/settings`, { timeout: 10000 }).catch(() => {});
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+
+    // Publishing a board: working while it runs, then says it's done — never
+    // just a button that went grey.
+    await page.goto(`${BASE}/boards/b0000000-0000-4000-8000-000000000002`, { waitUntil: "networkidle" });
+    await page.route("**/*", slowActions);
+    const publishButton = page.getByRole("button", { name: /^Publish/ });
+    await publishButton.click();
+    const publishing = page.locator("button[aria-busy=true]", { hasText: "Publishing" });
+    await publishing.waitFor({ timeout: 3000 }).catch(() => {});
+    check(await publishing.isVisible().catch(() => false), "publishing a board shows it's working");
+    const publishState = page.locator("[data-publish-state]");
+    await page.waitForFunction(() => /^Published/.test(document.querySelector("[data-publish-state]")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
+    const publishedText = (await publishState.textContent().catch(() => "")) ?? "";
+    check(/^Published/.test(publishedText) && !/No changes/.test(publishedText), "then says it's published", publishedText);
+    await page.unroute("**/*", slowActions);
+    await page.reload({ waitUntil: "networkidle" });
+    const idleText = (await publishState.textContent().catch(() => "")) ?? "";
+    check(/No changes to publish/.test(idleText), "and later, with nothing new, says there's nothing to publish", idleText);
+
     await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
     check((await page.getByLabel("Timezone").count()) === 0, "settings don't ask for a timezone");
     check(/Times are shown in Eastern Time/.test(await page.locator("body").textContent()), "they say the one the address gave");
