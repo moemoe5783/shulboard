@@ -715,6 +715,55 @@ export type Database = {
         }
         Relationships: []
       }
+      pairing_requests: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          claimed_screen_id: string | null
+          code: string
+          created_at: string
+          delivered_at: string | null
+          device_label: string | null
+          device_secret_hash: string
+          expires_at: string
+          id: string
+          requested_from: string | null
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          claimed_screen_id?: string | null
+          code: string
+          created_at?: string
+          delivered_at?: string | null
+          device_label?: string | null
+          device_secret_hash: string
+          expires_at: string
+          id?: string
+          requested_from?: string | null
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          claimed_screen_id?: string | null
+          code?: string
+          created_at?: string
+          delivered_at?: string | null
+          device_label?: string | null
+          device_secret_hash?: string
+          expires_at?: string
+          id?: string
+          requested_from?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pairing_requests_claimed_screen_id_fkey"
+            columns: ["claimed_screen_id"]
+            referencedRelation: "screens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       people: {
         Row: {
           birth_after_sunset: boolean
@@ -1155,6 +1204,9 @@ export type Database = {
           canvas_height: number
           canvas_width: number
           created_at: string
+          device_label: string | null
+          device_paired_at: string | null
+          device_secret_hash: string | null
           elevation_m: number | null
           hebrew_prefs: NonNullable<Json>
           id: string
@@ -1187,6 +1239,9 @@ export type Database = {
           canvas_height?: number
           canvas_width?: number
           created_at?: string
+          device_label?: string | null
+          device_paired_at?: string | null
+          device_secret_hash?: string | null
           elevation_m?: number | null
           hebrew_prefs?: NonNullable<Json>
           id?: string
@@ -1221,6 +1276,9 @@ export type Database = {
           canvas_height?: number
           canvas_width?: number
           created_at?: string
+          device_label?: string | null
+          device_paired_at?: string | null
+          device_secret_hash?: string | null
           elevation_m?: number | null
           hebrew_prefs?: NonNullable<Json>
           id?: string
@@ -1305,6 +1363,10 @@ export type Database = {
     }
     Functions: {
       accept_org_invite: { Args: { p_token: string }; Returns: string }
+      claim_pairing: {
+        Args: { p_code: string; p_screen_id: string }
+        Returns: string
+      }
       current_org_ids: { Args: Record<PropertyKey, never>; Returns: string[] }
       has_org_role_at_least: {
         Args: { min_role: string; org: string }
