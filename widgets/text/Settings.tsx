@@ -3,7 +3,7 @@
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { SliderField } from "@/components/editor/SliderField";
 import { readConfig } from "@/widgets/read-config";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { textConfigSchema, type TextConfig } from "./manifest";
 
 export function Settings({ config: raw, onChange }: WidgetSettingsProps<TextConfig>) {
@@ -21,6 +21,17 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<TextConf
         />
       </label>
 
+      {/* The type size and Fixed / Hug / Fit live on the Size tab, as for every
+          text element (PropertiesPanel.tsx). */}
+    </div>
+  );
+}
+
+/** How the text is set — alignment, where it sits, spacing, weight — at the top of the Appearance tab's Text section. */
+function TextLayout({ config: raw, onChange }: WidgetSettingsProps<TextConfig>) {
+  const config = readConfig(textConfigSchema, raw);
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Alignment</span>
         <select
@@ -67,9 +78,8 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<TextConf
         />
         <span className="text-cell text-paper">Bold</span>
       </label>
-
-      {/* The type size and Fixed / Hug / Fit live on the Size tab, as for every
-          text element (PropertiesPanel.tsx). */}
     </div>
   );
 }
+
+export const appearance: AppearanceSection<TextConfig>[] = [{ id: "text", label: "Text", Component: TextLayout }];

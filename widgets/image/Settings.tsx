@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { MediaPicker } from "../media/MediaPicker";
 import type { ImageConfig } from "./manifest";
 
@@ -70,7 +70,14 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ImageConfig>)
           className={PANEL_CONTROL}
         />
       </label>
+    </div>
+  );
+}
 
+/** How the picture sits in its box — the Appearance tab's Photo section. */
+function ImageLook({ config, onChange }: WidgetSettingsProps<ImageConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Fit</span>
         <select
@@ -87,3 +94,5 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ImageConfig>)
     </div>
   );
 }
+
+export const appearance: AppearanceSection<ImageConfig>[] = [{ id: "photo", label: "Photo", Component: ImageLook }];

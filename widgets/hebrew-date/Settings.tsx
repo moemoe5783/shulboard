@@ -1,7 +1,7 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import type { HebrewDateConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<HebrewDateConfig>) {
@@ -67,7 +67,14 @@ export function Settings({ config, onChange }: WidgetSettingsProps<HebrewDateCon
         />
         <span className="text-cell text-paper">Flip at sunset, not midnight</span>
       </label>
+    </div>
+  );
+}
 
+/** Where the text sits in its box — at the top of the Appearance tab's Text section. */
+function HebrewDateText({ config, onChange }: WidgetSettingsProps<HebrewDateConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Alignment</span>
         <select
@@ -83,3 +90,5 @@ export function Settings({ config, onChange }: WidgetSettingsProps<HebrewDateCon
     </div>
   );
 }
+
+export const appearance: AppearanceSection<HebrewDateConfig>[] = [{ id: "text", label: "Text", Component: HebrewDateText }];

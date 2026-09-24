@@ -1,7 +1,7 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import type { DafYomiConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<DafYomiConfig>) {
@@ -54,7 +54,14 @@ export function Settings({ config, onChange }: WidgetSettingsProps<DafYomiConfig
         />
         <span className="text-cell text-paper">Flip at sunset, not midnight</span>
       </label>
+    </div>
+  );
+}
 
+/** Where the text sits in its box — at the top of the Appearance tab's Text section. */
+function DafYomiText({ config, onChange }: WidgetSettingsProps<DafYomiConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Alignment</span>
         <select
@@ -70,3 +77,5 @@ export function Settings({ config, onChange }: WidgetSettingsProps<DafYomiConfig
     </div>
   );
 }
+
+export const appearance: AppearanceSection<DafYomiConfig>[] = [{ id: "text", label: "Text", Component: DafYomiText }];

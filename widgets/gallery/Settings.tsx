@@ -3,7 +3,7 @@
 import { NumberField } from "@/components/editor/NumberField";
 import { SliderField } from "@/components/editor/SliderField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { AlbumsField } from "../media/AlbumField";
 import { CLEAN_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "../collage/transitions";
 import { readGalleryConfig, type GalleryConfig } from "./manifest";
@@ -24,18 +24,6 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<GalleryC
   return (
     <div className="flex flex-col gap-4">
       <AlbumsField value={config} onChange={onChange} />
-
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Fit</span>
-        <select
-          value={config.fit}
-          onChange={(event) => onChange({ fit: event.target.value as GalleryConfig["fit"] })}
-          className={PANEL_CONTROL}
-        >
-          <option value="cover">Fill the frame (crop)</option>
-          <option value="contain">Fit the whole photo</option>
-        </select>
-      </label>
 
       <NumberField
         label="Seconds per photo"
@@ -98,3 +86,25 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<GalleryC
     </div>
   );
 }
+
+/** How each photo sits in the frame — the Appearance tab's Photo section. */
+function GalleryLook({ config: raw, onChange }: WidgetSettingsProps<GalleryConfig>) {
+  const config = readGalleryConfig(raw);
+  return (
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Fit</span>
+        <select
+          value={config.fit}
+          onChange={(event) => onChange({ fit: event.target.value as GalleryConfig["fit"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="cover">Fill the frame (crop)</option>
+          <option value="contain">Fit the whole photo</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+export const appearance: AppearanceSection<GalleryConfig>[] = [{ id: "photo", label: "Photo", Component: GalleryLook }];

@@ -7,7 +7,7 @@ import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { FRAME_LABELS, FRAME_STYLES } from "@/lib/collage/artsy/frames";
 import { SliderField } from "@/components/editor/SliderField";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { AlbumsField } from "../media/AlbumField";
 import { ARTSY_BACKDROPS, readCollageConfig, type ArtsyBackdrop, type CollageConfig } from "./manifest";
 import {
@@ -24,7 +24,7 @@ import {
 } from "./transitions";
 
 const BACKDROP_LABELS: Record<ArtsyBackdrop, string> = {
-  none: "None — the background shows through",
+  none: "None",
   cork: "Cork",
   lightWood: "Light wood",
   darkWood: "Dark wood",
@@ -126,111 +126,10 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
   const transitions: readonly CollageTransition[] = artsy ? ARTSY_TRANSITIONS : CLEAN_TRANSITIONS;
   const transition = transitionFor(config.style, config.transition);
   const maxCount = artsy ? 10 : 14;
-  const fastenable = config.artsyFrame === "taped" || config.artsyFrame === "pinned" || config.artsyFrame === "mixed";
 
   return (
     <div className="flex flex-col gap-4">
       <AlbumsField value={config} onChange={onChange} />
-
-      <Choice
-        label="Style"
-        value={config.style}
-        options={[
-          ["clean", "Clean"],
-          ["artsy", "Artsy"],
-        ]}
-        onChange={(style) =>
-          onChange({
-            style,
-            // Keep a transition the new style offers, or take its default.
-            transition: transitionFor(style, config.transition),
-            ...(style === "artsy" && config.exactCount > 10 ? { exactCount: 10 } : {}),
-          })
-        }
-      />
-
-      {artsy && (
-        <>
-          <label className="flex flex-col gap-1">
-            <span className={PANEL_LABEL}>Frame</span>
-            <select
-              value={config.artsyFrame}
-              onChange={(event) => onChange({ artsyFrame: event.target.value as CollageConfig["artsyFrame"] })}
-              className={PANEL_CONTROL}
-            >
-              {FRAME_STYLES.map((style) => (
-                <option key={style} value={style}>
-                  {FRAME_LABELS[style]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Choice
-            label="Tilt"
-            value={config.artsyTilt}
-            options={[
-              ["none", "None"],
-              ["subtle", "Subtle"],
-              ["playful", "Playful"],
-            ]}
-            onChange={(artsyTilt) => onChange({ artsyTilt })}
-          />
-          <Choice
-            label="Overlap"
-            value={config.artsyOverlap}
-            options={[
-              ["none", "None"],
-              ["slight", "Slight"],
-            ]}
-            onChange={(artsyOverlap) => onChange({ artsyOverlap })}
-          />
-          {config.artsyTilt === "none" && config.artsyOverlap === "none" && (
-            <span className={PANEL_LABEL}>Straight and apart: a gallery wall.</span>
-          )}
-          <label className="flex flex-col gap-1">
-            <span className={PANEL_LABEL}>Backdrop</span>
-            <select
-              value={config.artsyBackdrop}
-              onChange={(event) => onChange({ artsyBackdrop: event.target.value as ArtsyBackdrop })}
-              className={PANEL_CONTROL}
-            >
-              {ARTSY_BACKDROPS.map((backdrop) => (
-                <option key={backdrop} value={backdrop}>
-                  {BACKDROP_LABELS[backdrop]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {config.artsyBackdrop === "solid" && (
-            <ColorField
-              label="Backdrop colour"
-              value={config.artsyBackdropColor}
-              onChange={(artsyBackdropColor) => onChange({ artsyBackdropColor })}
-            />
-          )}
-          <Choice
-            label="Shadow"
-            value={config.artsyShadow}
-            options={[
-              ["soft", "Soft"],
-              ["medium", "Medium"],
-              ["strong", "Strong"],
-            ]}
-            onChange={(artsyShadow) => onChange({ artsyShadow })}
-          />
-          {fastenable && (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={config.artsyFasteners}
-                onChange={(event) => onChange({ artsyFasteners: event.target.checked })}
-                className={PANEL_CHECKBOX}
-              />
-              <span className={PANEL_LABEL}>Tape and pins</span>
-            </label>
-          )}
-        </>
-      )}
 
       {widgetId && status && (
         <div className="flex flex-col gap-2">
@@ -337,6 +236,99 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
           }
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The collage's look, on the Appearance tab's own Collage section: Clean or
+ * Artsy, and each style's own dressing. What the collage shows and how it
+ * moves stays on Options.
+ */
+function CollageLook({ config: raw, onChange }: WidgetSettingsProps<CollageConfig>) {
+  const config = readCollageConfig(raw);
+  const artsy = config.style === "artsy";
+  const fastenable = config.artsyFrame === "taped" || config.artsyFrame === "pinned" || config.artsyFrame === "mixed";
+  return (
+    <div className="flex flex-col gap-4">
+      <Choice
+        label="Style"
+        value={config.style}
+        options={[
+          ["clean", "Clean"],
+          ["artsy", "Artsy"],
+        ]}
+        onChange={(style) =>
+          onChange({
+            style,
+            // Keep a transition the new style offers, or take its default.
+            transition: transitionFor(style, config.transition),
+            ...(style === "artsy" && config.exactCount > 10 ? { exactCount: 10 } : {}),
+          })
+        }
+      />
+
+      {artsy && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className={PANEL_LABEL}>Frame</span>
+            <select
+              value={config.artsyFrame}
+              onChange={(event) => onChange({ artsyFrame: event.target.value as CollageConfig["artsyFrame"] })}
+              className={PANEL_CONTROL}
+            >
+              {FRAME_STYLES.map((style) => (
+                <option key={style} value={style}>
+                  {FRAME_LABELS[style]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Choice
+            label="Tilt"
+            value={config.artsyTilt}
+            options={[
+              ["none", "None"],
+              ["subtle", "Subtle"],
+              ["playful", "Playful"],
+            ]}
+            onChange={(artsyTilt) => onChange({ artsyTilt })}
+          />
+          <Choice
+            label="Overlap"
+            value={config.artsyOverlap}
+            options={[
+              ["none", "None"],
+              ["slight", "Slight"],
+            ]}
+            onChange={(artsyOverlap) => onChange({ artsyOverlap })}
+          />
+          {config.artsyTilt === "none" && config.artsyOverlap === "none" && (
+            <span className={PANEL_LABEL}>Straight and apart: a gallery wall.</span>
+          )}
+          <Choice
+            label="Shadow"
+            value={config.artsyShadow}
+            options={[
+              ["soft", "Soft"],
+              ["medium", "Medium"],
+              ["strong", "Strong"],
+            ]}
+            onChange={(artsyShadow) => onChange({ artsyShadow })}
+          />
+          {fastenable && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={config.artsyFasteners}
+                onChange={(event) => onChange({ artsyFasteners: event.target.checked })}
+                className={PANEL_CHECKBOX}
+              />
+              <span className={PANEL_LABEL}>Tape and pins</span>
+            </label>
+          )}
+        </>
+      )}
 
       {/* Clean only: Artsy spaces its prints itself and dresses them in frames. */}
       {!artsy && (
@@ -364,15 +356,52 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
           </label>
         </>
       )}
+    </div>
+  );
+}
 
-      {/* ONE background: the widget's own, on the Appearance tab — it shows in
-          the gaps and in any space the photos don't fill. A collage saved with
-          the old separate inner colour can move it there in one click. */}
+/** At the top of the Appearance tab's Background section: Artsy's backdrop,
+ *  which sits over the widget's own background, and the move for a collage
+ *  saved with the old separate colour. */
+function CollageBackground({ config: raw, onChange }: WidgetSettingsProps<CollageConfig>) {
+  const config = readCollageConfig(raw);
+  const artsy = config.style === "artsy";
+  if (!artsy && !config.leftoverColor) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      {artsy && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className={PANEL_LABEL}>Backdrop</span>
+            <select
+              value={config.artsyBackdrop}
+              onChange={(event) => onChange({ artsyBackdrop: event.target.value as ArtsyBackdrop })}
+              className={PANEL_CONTROL}
+            >
+              {ARTSY_BACKDROPS.map((backdrop) => (
+                <option key={backdrop} value={backdrop}>
+                  {BACKDROP_LABELS[backdrop]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {config.artsyBackdrop === "solid" && (
+            <ColorField
+              label="Backdrop colour"
+              value={config.artsyBackdropColor}
+              onChange={(artsyBackdropColor) => onChange({ artsyBackdropColor })}
+            />
+          )}
+        </>
+      )}
+      {/* ONE background: the widget's own, right below — it shows in the gaps
+          and in any space the photos don't fill. A collage saved with the old
+          separate inner colour can move it there in one click. */}
       {config.leftoverColor ? (
         <div className="flex flex-col gap-2">
           <span className={PANEL_LABEL}>
-            This collage has its own background colour from an earlier version. Backgrounds now live on the
-            Appearance tab, with the rest of the frame.
+            This collage has its own background colour from an earlier version. Move it to the background below,
+            with the rest of the frame.
           </span>
           <button
             type="button"
@@ -381,15 +410,15 @@ export function Settings({ config: raw, onChange, widgetIds }: WidgetSettingsPro
               onChange({ background: config.background || config.leftoverColor, backgroundOpacity: config.background ? config.backgroundOpacity : 100, leftoverColor: "" })
             }
           >
-            Move it to Appearance
+            Move it to the background
           </button>
         </div>
-      ) : (
-        <span className={PANEL_LABEL}>
-          The background behind the photos is set on the Appearance tab. It shows in the gaps and anywhere the
-          photos don&rsquo;t reach.
-        </span>
-      )}
+      ) : null}
     </div>
   );
 }
+
+export const appearance: AppearanceSection<CollageConfig>[] = [
+  { id: "collage", label: "Collage", Component: CollageLook },
+  { id: "background", label: "Background", Component: CollageBackground },
+];

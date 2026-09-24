@@ -1,7 +1,7 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import type { ParshaConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<ParshaConfig>) {
@@ -30,7 +30,14 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ParshaConfig>
         />
         <span className="text-cell text-paper">Nekudos</span>
       </label>
+    </div>
+  );
+}
 
+/** Where the text sits in its box — at the top of the Appearance tab's Text section. */
+function ParshaText({ config, onChange }: WidgetSettingsProps<ParshaConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Alignment</span>
         <select
@@ -46,3 +53,5 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ParshaConfig>
     </div>
   );
 }
+
+export const appearance: AppearanceSection<ParshaConfig>[] = [{ id: "text", label: "Text", Component: ParshaText }];
