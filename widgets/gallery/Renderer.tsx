@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useBoardFiles } from "@/lib/board-assets";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
@@ -143,12 +143,20 @@ function useGalleryStage(
   return { stage, target };
 }
 
-/** The box in real pixels, times the pixel ratio — what decides which stored
- *  size is sharp here. Null until measured. */
-function useBoxPixels(ref: RefObject<HTMLDivElement | null>): { width: number; height: number } | null {
+/**
+ * The box in real pixels, times the pixel ratio — what decides which stored
+ * size is sharp here. Null until measured.
+ *
+ * Measured through a callback ref, so it measures whenever the box element
+ * appears. The gallery draws a placeholder instead of its box until its
+ * albums arrive, which in the editor is a moment after it mounts; measuring
+ * only on mount found no element then and never looked again, and the gallery
+ * stayed empty in the editor.
+ */
+function useBoxPixels(): [(el: HTMLDivElement | null) => void, { width: number; height: number } | null] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const read = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -160,8 +168,8 @@ function useBoxPixels(ref: RefObject<HTMLDivElement | null>): { width: number; h
     const observer = new ResizeObserver(read);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [ref]);
-  return box;
+  }, [el]);
+  return [setEl, box];
 }
 
 /** A photo shown this many intervals without the next one arriving gives way
@@ -176,8 +184,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
   const albumKey = albumSelectionKey(config);
   const second = useSecond();
   const files = useBoardFiles();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const boxPx = useBoxPixels(rootRef);
+  const [rootRef, boxPx] = useBoxPixels();
   const [owner] = useState(() => `gallery-${(galleries += 1)}`);
 
   const ordered = useMemo(
@@ -201,7 +208,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
   // Tell the board which files this gallery shows, starting with the one due
   // now: every photo in the order it comes round (lib/board-assets.tsx).
   useEffect(() => {
-    if (!files || !ordered || !boxPx) return;
+    if (!files.gated || !ordered || !boxPx) return;
     const srcs: string[] = [];
     for (let i = 0; i < ordered.length; i += 1) {
       const photo = ordered[(index + i) % ordered.length];
@@ -209,12 +216,12 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
     }
     files.want(owner, srcs, true);
   }, [files, ordered, boxPx, needed, index, owner]);
-  useEffect(() => () => files?.want(owner, [], true), [files, owner]);
+  useEffect(() => () => files.want(owner, [], true), [files, owner]);
 
   // The file to draw for a photo: its size for this box, or a bigger copy
   // already on the device; undefined when neither is here yet.
   const fileFor = (photo: BoardPhoto): Shown | undefined => {
-    const variant = readyVariant(photoVariants(photo), needed.get(photo.assetId) ?? boxPx?.width ?? 0, files?.isReady ?? null);
+    const variant = readyVariant(photoVariants(photo), needed.get(photo.assetId) ?? boxPx?.width ?? 0, files.gated ? files.isReady : null);
     return variant ? { photo, src: variant.src } : undefined;
   };
 

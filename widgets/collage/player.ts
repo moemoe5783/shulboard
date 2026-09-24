@@ -8,7 +8,7 @@ import {
   type CollagePhoto,
 } from "@/lib/collage";
 import { ARTSY_PAGINATION, artsyEngine, type ArtsyLayout, type Fastener, type ItemFrameStyle } from "@/lib/collage/artsy";
-import type { BoardFiles } from "@/lib/board-assets";
+import type { BoardFiles } from "@/lib/board-files";
 import type { BoardPhoto, BoardPhotoVariant } from "@/lib/media/album-photos";
 import { photoVariants, pickVariant, readyVariant } from "@/lib/media/variant-choice";
 import type { CollageConfig } from "./manifest";
@@ -176,8 +176,8 @@ export type PlayerInputs = {
    *  layout key and the shuffle seed. */
   albumKey: string;
   /** Which files are on the device, and where to say which ones this collage
-   *  will use. Null in the editor: everything is ready. */
-  files: BoardFiles | null;
+   *  will use (lib/board-files.ts). In the editor, EVERY_FILE_READY. */
+  files: BoardFiles;
 };
 
 function usable(photos: readonly BoardPhoto[]): EnginePhoto[] {
@@ -228,7 +228,8 @@ function preload(urls: readonly string[]): Promise<void> {
 /** A page whose every photo has a file on the device, with each cell's `src`
  *  set to that file; null when any is missing. */
 function readyPage(page: PlannedPage, files: BoardFiles | null): PlannedPage | null {
-  if (!files) return page;
+  // Only the display's runtime makes a page wait for its files.
+  if (!files?.gated) return page;
   const cells: PlannedCell[] = [];
   for (const cell of page.cells) {
     const variant = readyVariant(cell.variants, cell.needed, files.isReady);
@@ -395,7 +396,7 @@ export class CollagePlayer {
   private planStep() {
     // Only a display plans ahead — it has files to fetch. The editor plans
     // each page as it's reached (pageAt), which is all a preview needs.
-    if (this.planning || this.disposed || !this.inputs?.files) return;
+    if (this.planning || this.disposed || !this.inputs?.files.gated) return;
     const pending = this.cyclesWanted().find((cycle) => !this.cycles.get(cycle)?.done);
     if (pending === undefined) {
       this.announce(true);
@@ -478,7 +479,7 @@ export class CollagePlayer {
    */
   private announce(complete: boolean) {
     const files = this.inputs?.files;
-    if (!files) return;
+    if (!files?.gated) return;
     const pages: PlannedPage[] = [];
     const cycles = [...this.cycles.keys()].sort((a, b) => a - b);
     for (const cycle of cycles) {
