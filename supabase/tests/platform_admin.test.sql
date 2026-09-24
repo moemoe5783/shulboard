@@ -25,6 +25,15 @@ insert into public.orgs (id, name, slug, created_by) values
 insert into public.screens (org_id, name, token, last_seen_at) values
   ('0e000000-0000-4000-8000-000000000001', 'Main lobby', 'abcdefghijkmnpqrstuvwxyz2345678a', now()),
   ('0e000000-0000-4000-8000-000000000001', 'Simcha hall', 'abcdefghijkmnpqrstuvwxyz2345678b', now() - interval '3 days');
+insert into storage.buckets (id, name) values ('other', 'other') on conflict do nothing;
+insert into storage.objects (bucket_id, name, metadata) values
+  ('assets', '0e000000-0000-4000-8000-000000000001/a1/original.jpg', '{"size": 1000}'),
+  ('assets', '0e000000-0000-4000-8000-000000000001/a1/display.webp', '{"size": 200}'),
+  ('assets', '0e000000-0000-4000-8000-000000000001/a1/thumb.webp', '{"size": 50}'),
+  -- Left behind: no photo record points at it.
+  ('assets', '0e000000-0000-4000-8000-000000000001/gone/original.jpg', '{"size": 5000}'),
+  ('assets', '0e000000-0000-4000-8000-00000000dead/x/original.jpg', '{"size": 700}'),
+  ('other', 'readme.txt', '{"size": 30}');
 insert into public.assets (org_id, kind, storage_path, mime_type, byte_size, variants) values
   ('0e000000-0000-4000-8000-000000000001', 'image', 'x/1/original.jpg', 'image/jpeg', 1000,
    '{"display": {"bytes": 200}, "thumb": {"bytes": 50}}');
@@ -37,6 +46,7 @@ select tests.authenticate_with('c2222222-2222-4222-8222-222222222222', 'gabbai@e
 set local role authenticated;
 select tests.eq((select count(*) from public.platform_orgs()), 0::bigint, 'a shul''s owner sees no platform view');
 select tests.eq((select count(*) from public.platform_users()), 0::bigint, 'nor the list of accounts');
+select tests.eq((select count(*) from public.platform_usage()), 0::bigint, 'nor the project''s usage');
 select tests.allowed($$update public.orgs set name = 'Beis Menachem Chabad' where id = '0e000000-0000-4000-8000-000000000001'$$,
   'an owner can still rename the shul');
 select tests.denied($$update public.orgs set plan = 'pro' where id = '0e000000-0000-4000-8000-000000000001'$$,
@@ -63,8 +73,16 @@ select tests.eq((select screen_count from public.platform_orgs() where org_id = 
   'with its screens');
 select tests.eq((select screens_live from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 1::bigint,
   'how many are live');
-select tests.eq((select storage_bytes from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 1250::bigint,
-  'and the storage its files use, originals and every size');
+select tests.eq((select storage_bytes from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 6250::bigint,
+  'and the storage its files really take, left-behind files included');
+select tests.eq((select file_count from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 4::bigint,
+  'in how many files');
+select tests.eq((select recorded_bytes from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001'), 1250::bigint,
+  'beside what its photo records account for');
+select tests.eq((select storage_bytes from public.platform_usage()), 6980::bigint, 'the whole project''s storage, every bucket');
+select tests.eq((select unattributed_bytes from public.platform_usage()), 730::bigint,
+  'and what belongs to no shul');
+select tests.ok((select database_bytes from public.platform_usage()) > 0, 'and the database''s own size');
 select tests.ok((select owner_email from public.platform_orgs() where org_id = '0e000000-0000-4000-8000-000000000001') = 'gabbai@example.test',
   'and who owns it');
 select tests.allowed($$select public.platform_set_org_plan('0e000000-0000-4000-8000-000000000001', 'pro', null)$$,

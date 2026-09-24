@@ -396,12 +396,18 @@ try {
     check((await page.getByRole("link", { name: "Platform admin" }).count()) >= 1, "a platform admin gets a Platform admin row in the menu");
     await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
     const summary = (await page.locator("[data-admin-summary]").textContent()) ?? "";
-    check(/1 shul: 1 on a free trial, 0 on Basic, 0 on Pro\. 2 screens, 1 live now, and 4\.2 MB of photos stored\./.test(summary),
-      "the admin sees every shul, with plans, screens and storage", summary);
+    check(/1 shul: 1 on a free trial, 0 on Basic, 0 on Pro\. 2 screens, 1 live now\./.test(summary),
+      "the admin sees every shul, with plans and screens", summary);
+    const usage = (await page.locator("[data-admin-usage]").textContent()) ?? "";
+    check(/Storage holds 7\.1 MB in 14 files, 700 KB of it belonging to no shul\. The database is 12\.3 MB\./.test(usage),
+      "and the project's storage and database size", usage);
     const row = page.locator("tr", { hasText: "Beis Menachem" });
-    check(/Free trial/.test((await row.textContent()) ?? "") && /4\.2 MB/.test((await row.textContent()) ?? ""), "each shul's row shows its plan and storage");
+    check(/Free trial/.test((await row.textContent()) ?? "") && /6\.4 MB/.test((await row.textContent()) ?? ""), "each shul's row shows its plan and real storage");
     await page.getByRole("link", { name: "Beis Menachem" }).click();
     await page.waitForURL(/\/admin\/shuls\//, { timeout: 10000 }).catch(() => {});
+    check(/6\.4 MB in 12 files/.test((await page.locator("[data-admin-shul-facts]").textContent()) ?? "") &&
+        /2\.2 MB of that is files no photo in Media accounts for/.test((await page.locator("[data-admin-leftover]").textContent().catch(() => "")) ?? ""),
+      "a shul's page shows its files, and how much of them no photo accounts for");
     await page.getByLabel("Plan").selectOption("pro");
     await page.getByRole("button", { name: "Save plan" }).click();
     await page.getByRole("status").filter({ hasText: "Saved" }).waitFor({ timeout: 10000 }).catch(() => {});

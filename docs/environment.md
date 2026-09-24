@@ -428,7 +428,11 @@ Google sends people back to Supabase, which sends them to the app's
 The **Platform admin** pages (`/admin`) show every shul — its plan, screens,
 members, photos and storage — and let a platform admin change a shul's plan
 (free trial, Basic, Pro) and make other accounts platform admins
-(`supabase/migrations/20260926090000_platform_admin.sql`). They run under the
+(`supabase/migrations/20260926090000_platform_admin.sql`). Storage figures are
+read from Storage's own record of each file (`20260926100000_platform_storage.sql`),
+with the database's size beside them; Supabase bills storage as a monthly
+average, so they won't match an invoice to the byte, and Supabase's own
+invoices stay in its dashboard (Organization → Billing). They run under the
 admin's own session through narrow database functions, so there's nothing to
 set in Vercel and no new holder of the service-role key.
 
