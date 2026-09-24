@@ -334,9 +334,11 @@ try {
   let assetAvailable = true;
   const seenIfNoneMatch = [];
 
+  const seenDevice = [];
   await netContext.route("**/api/screen/*/bundle", async (route) => {
     const ifNoneMatch = route.request().headers()["if-none-match"] ?? null;
     seenIfNoneMatch.push(ifNoneMatch);
+    seenDevice.push(route.request().headers()["x-screen-device"] ?? null);
 
     if (served === "gone") {
       await route.fulfill({ status: 410, contentType: "application/json", body: JSON.stringify({ code: "token_invalid" }) });
@@ -415,17 +417,30 @@ try {
     await boardText(net));
   check(await marker(net, "version") === "2", "at the new version");
 
-  // A retired token: the display clears what it stored and says so.
+  // Every request proves which TV it is (one TV per screen): the same
+  // 43-character device secret each time, kept by the device.
+  check(
+    seenDevice.length > 0 && seenDevice.every((d) => /^[A-Za-z0-9_-]{43}$/.test(d ?? "") && d === seenDevice[0]),
+    "every bundle request carries this device's own secret",
+    `${new Set(seenDevice).size} distinct, first ${seenDevice[0]}`,
+  );
+
+  // A retired token: the display clears what it stored and goes to show a
+  // pairing code (app/pair), so connecting it again needs no typed link.
+  await netContext.route("**/api/pair/**", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Pairing isn't configured yet." }) }),
+  );
   served = "gone";
   await net.reload({ waitUntil: "domcontentloaded" });
-  await net.waitForTimeout(1200);
+  await net.waitForURL(/\/pair\?reason=disconnected/, { timeout: 8000 }).catch(() => {});
   check(
     (await net.evaluate(() => localStorage.getItem("shulboard.screen.token"))) === null,
     "a 410 makes the display forget its stored token",
   );
+  check(/\/pair\?reason=disconnected/.test(net.url()), "and it goes to show a pairing code rather than going white", net.url());
   check(
-    (await net.locator("body").innerText()).includes("link was changed"),
-    "and it says the link changed rather than going white",
+    (await net.locator("body").innerText()).includes("disconnected"),
+    "saying the TV was disconnected",
   );
 
   await netContext.close();
