@@ -13,11 +13,16 @@ Environment variables: @docs/environment.md
 - `app/s/[token]/` — public display route. No auth. One TV per URL.
 - `app/api/screen/[token]/bundle/`, `.../heartbeat/`, `.../realtime-auth/`,
   `app/m/[id]/[file]/`, `app/api/cron/build-bundles/`,
-  `app/api/cron/warm-zmanim/`, `app/api/pair/start/`, `app/api/pair/poll/`,
-  `publishBoard` in
+  `app/api/cron/warm-zmanim/`, `app/api/cron/clean-media/`,
+  `app/api/pair/start/`, `app/api/pair/poll/`, `publishBoard` in
   `app/(editor)/boards/[id]/actions.ts`, `assignBoard` in
   `app/(app)/screens/actions.ts`, and `lib/zmanim/warm.ts` — the
-  eleven places holding the service-role key. `assignBoard` earns it exactly
+  twelve places holding the service-role key. `clean-media` is the nightly
+  media cleanup (lib/storage/retention.ts): it sweeps every shul's trash and
+  the whole Storage bucket, the same cross-tenant read-and-delete no policy
+  expresses; the hard delete itself is `lib/storage/purge.ts`, which Media's
+  "Delete permanently" also calls under the editor's own session, so that
+  button holds no key. `assignBoard` earns it exactly
   as `publishBoard` does: it calls the same `buildScreenBundle`, for the one
   screen whose board was just chosen, so the TV switches in seconds rather
   than at the next cron sweep; the screen id is a row it read under the

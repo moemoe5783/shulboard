@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, buttonClassName } from "@/components/Button";
@@ -47,11 +48,16 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
           <h1 className="text-title">Media</h1>
           <p className="text-body text-ink-soft mt-1">Albums of photos your boards can show.</p>
         </div>
-        {!creating && (
-          <button type="button" className={buttonClassName("primary")} onClick={() => setCreating(true)}>
-            New album
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <Link href="/media/deleted" className={buttonClassName("tertiary")}>
+            Recently deleted
+          </Link>
+          {!creating && (
+            <button type="button" className={buttonClassName("primary")} onClick={() => setCreating(true)}>
+              New album
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && (

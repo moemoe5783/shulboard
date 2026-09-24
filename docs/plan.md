@@ -712,6 +712,15 @@ data migration.
   `assetId` and nothing yet says which size a widget wants.
 - Per-file progress, resumable for large videos, clear per-file error states.
 - Reordering, captions, bulk delete, bulk move between albums.
+- **Deleting is a trash, not a delete — built.** A deleted photo or album
+  sits in Media → Recently deleted for 30 days (`lib/storage/retention.ts`),
+  restorable, then the nightly `api/cron/clean-media` deletes it for good:
+  every stored size, the row and the CDN's copies, through
+  `lib/storage/purge.ts` — the same path the page's "Delete for good" takes.
+  A trashed photo a live board still names is kept and reported. The same
+  job clears failed or abandoned uploads (the row is written `pending`
+  before any file, so every file has a row) and any file no row claims. It
+  only reports until `MEDIA_CLEANUP_DRY_RUN=false` (docs/environment.md).
 
 **One cheap addition worth considering in v1: a shareable upload link.** A
 tokenized URL per album (`/u/<token>`) that anyone can open on a phone and upload

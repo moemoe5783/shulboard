@@ -104,4 +104,7 @@ select tests.eq(
   (select file_size_limit from storage.buckets where id = 'assets'),
   8388608, 'bucket: assets caps a file at 8 MB');
 
+reset role;
+select count(*) filter (where ok) as passed, count(*) filter (where not ok) as failed from tests.log;
+
 rollback;

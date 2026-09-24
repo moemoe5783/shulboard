@@ -94,7 +94,8 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
     let out = rows;
     for (const [key, raw] of params) {
       if (["select", "order", "limit", "offset", "on_conflict", "columns"].includes(key)) continue;
-      const dot = raw.indexOf(".");
+      // "not.is.null" is the operator "not.is", not "not".
+      const dot = raw.startsWith("not.") ? raw.indexOf(".", 4) : raw.indexOf(".");
       const op = raw.slice(0, dot);
       const value = raw.slice(dot + 1);
       const get = (row) => row[key];
@@ -277,6 +278,22 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
     // fixtures.storage maps "<bucket>/<path>" to the file's bytes (a Buffer or
     // string). Download and remove are what the app calls (the /m proxy,
     // lib/storage/remove.ts); removes are recorded in state.writes.
+    if (path.startsWith("/storage/v1/object/list/") && req.method === "POST") {
+      fixtures.storage ??= {};
+      const bucket = decodeURIComponent(path.slice("/storage/v1/object/list/".length));
+      const folder = `${bucket}/${String(body.prefix ?? "").replace(/\/$/, "")}/`;
+      const entries = Object.keys(fixtures.storage)
+        .filter((key) => key.startsWith(folder) && !key.slice(folder.length).includes("/"))
+        .map((key) => ({ name: key.slice(folder.length), id: randomUUID(), metadata: {} }));
+      return send(200, entries);
+    }
+    if (path.startsWith("/storage/v1/object/sign/") && req.method === "POST") {
+      const bucket = decodeURIComponent(path.slice("/storage/v1/object/sign/".length));
+      return send(
+        200,
+        (body.paths ?? []).map((p) => ({ path: p, signedURL: `/object/sign/${bucket}/${p}?token=mock`, error: null })),
+      );
+    }
     if (path.startsWith("/storage/v1/object/")) {
       fixtures.storage ??= {};
       const key = decodeURIComponent(path.slice("/storage/v1/object/".length));
