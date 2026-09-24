@@ -13,7 +13,12 @@ import { CHROME_DARK, CHROME_META, CHROME_RULE } from "./chrome";
  * points at.
  */
 
-export function LayersPanel() {
+export function LayersPanel({
+  onContextMenu,
+}: {
+  /** Open the editor's right-click menu here — the same menu the canvas uses. */
+  onContextMenu?: (at: { x: number; y: number }) => void;
+} = {}) {
   const widgets = useEditor((s) => s.doc.widgets);
   const selection = useEditor((s) => s.selection);
   const select = useEditor((s) => s.select);
@@ -50,7 +55,20 @@ export function LayersPanel() {
             const name = widgetLabel(widget);
 
             return (
-              <li key={widget.id} className="flex items-center">
+              <li
+                key={widget.id}
+                className="flex items-center"
+                onContextMenu={(event) => {
+                  if (!onContextMenu) return;
+                  event.preventDefault();
+                  // Right-clicking a row acts on it, like right-clicking the
+                  // widget on the canvas: a row already in the selection keeps
+                  // the whole selection; any other row becomes the selection.
+                  const store = useEditor.getState();
+                  if (!store.selection.includes(widget.id)) store.selectWidgets([widget.id]);
+                  onContextMenu({ x: event.clientX, y: event.clientY });
+                }}
+              >
                 <button
                   type="button"
                   onClick={(event) =>

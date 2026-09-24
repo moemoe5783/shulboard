@@ -159,6 +159,10 @@ export function TransformFrame({
 
   const moveableRef = useRef<Moveable>(null);
   const selectoRef = useRef<Selecto>(null);
+  /** Set when a press on a covered, selected widget was taken as a drag of the
+   *  selection: the widget on top, to select instead if it turns out to be a
+   *  plain click. */
+  const clickThroughRef = useRef<string | null>(null);
   const framesRef = useRef(new Map<string, Frame>());
   const altDragRef = useRef(false);
   const pointerDownRef = useRef(false);
@@ -526,6 +530,17 @@ export function TransformFrame({
     [constrainAxis, paint],
   );
 
+  /** After a press taken as a drag of a covered selection (Selecto's
+   *  onDragStart): a press that never moved was a click, so select what's on
+   *  top, as a click there always has. Locked widgets aren't selectable. */
+  const clickedThrough = (isDrag: boolean) => {
+    const top = clickThroughRef.current;
+    clickThroughRef.current = null;
+    if (isDrag || !top) return;
+    const el = canvasRef.current?.querySelector<HTMLElement>(`[data-widget-id="${top}"]`);
+    if (el && el.dataset.locked !== "true") selectWidgets([top]);
+  };
+
   return (
     <>
       <Moveable
@@ -575,12 +590,18 @@ export function TransformFrame({
           beginGesture([target as HTMLElement], Boolean(inputEvent?.altKey))
         }
         onDrag={onDragOne}
-        onDragEnd={({ target }) => endGesture([target as HTMLElement], "move")}
+        onDragEnd={({ target, isDrag }) => {
+          endGesture([target as HTMLElement], "move");
+          clickedThrough(isDrag);
+        }}
         onDragGroupStart={({ targets: group, inputEvent }: OnDragGroupStart) =>
           beginGesture(group as HTMLElement[], Boolean(inputEvent?.altKey))
         }
         onDragGroup={({ events }: OnDragGroup) => events.forEach(onDragOne)}
-        onDragGroupEnd={({ targets: group }) => endGesture(group as HTMLElement[], "move")}
+        onDragGroupEnd={({ targets: group, isDrag }) => {
+          endGesture(group as HTMLElement[], "move");
+          clickedThrough(isDrag);
+        }}
         onResizeStart={({ target, direction, clientX, clientY }: OnResizeStart) => {
           beginGesture([target as HTMLElement], false);
           const el = target as HTMLElement;
@@ -692,7 +713,8 @@ export function TransformFrame({
         toggleContinueSelect={["shift"]}
         preventDefault
         onDragStart={(event) => {
-          const target = event.inputEvent.target as HTMLElement;
+          const input = event.inputEvent as MouseEvent;
+          const target = input.target as HTMLElement;
           // A press that lands on a handle, or on something already selected, is
           // the start of a transform, not the start of a marquee.
           if (
@@ -700,7 +722,21 @@ export function TransformFrame({
             targets.some((el) => el === target || el.contains(target))
           ) {
             event.stop();
+            return;
           }
+          // A press on a selected widget that another widget covers — picked
+          // in the layers panel, say — drags the selection, the way every
+          // design tool does. Otherwise the widget on top would steal the press
+          // and a covered widget could never be moved by hand. If it turns out
+          // to be a click, the widget on top is selected after all (onDragEnd).
+          if (input.shiftKey || typeof document === "undefined") return;
+          const under = document
+            .elementsFromPoint(input.clientX, input.clientY)
+            .find((el) => targets.includes(el as HTMLElement)) as HTMLElement | undefined;
+          if (!under) return;
+          event.stop();
+          clickThroughRef.current = target.closest<HTMLElement>(itemSelector)?.dataset.widgetId ?? null;
+          moveableRef.current?.dragStart(input, under);
         }}
         onSelectEnd={(event) => {
           // The store expands a group selection, so a click here and a

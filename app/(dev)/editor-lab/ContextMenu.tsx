@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useCommands } from "./commands";
 
 /*
@@ -54,14 +54,46 @@ export function ContextMenu({
     };
   }, [at, onClose]);
 
+  /*
+   * Kept inside the window. Opened near the bottom or the right edge, the menu
+   * flips to open upward or leftward from the pointer; in a window shorter
+   * than the whole menu it pins to the top and scrolls. Measured before paint,
+   * so it never shows cut off first.
+   */
+  const [place, setPlace] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!at || !el) {
+      setPlace(null);
+      return;
+    }
+    const margin = 8;
+    const { width } = el.getBoundingClientRect();
+    // The full height, even if a previous opening capped it.
+    const height = el.scrollHeight + 2;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = at.x + width + margin > vw ? at.x - width : at.x;
+    left = Math.max(margin, Math.min(left, vw - width - margin));
+    let top = at.y + height + margin > vh ? at.y - height : at.y;
+    const maxHeight = height > vh - margin * 2 ? vh - margin * 2 : undefined;
+    top = maxHeight ? margin : Math.max(margin, Math.min(top, vh - height - margin));
+    setPlace({ left, top, maxHeight });
+  }, [at]);
+
   if (!at) return null;
 
   return (
     <div
       ref={ref}
       role="menu"
-      className="rounded-panel border-rule bg-surface font-ui fixed z-50 w-56 border p-1 shadow-menu"
-      style={{ left: at.x, top: at.y }}
+      className="rounded-panel border-rule bg-surface font-ui fixed z-50 w-56 overflow-y-auto border p-1 shadow-menu"
+      style={
+        place
+          ? { left: place.left, top: place.top, maxHeight: place.maxHeight }
+          : // First layout pass, off screen, to measure.
+            { left: at.x, top: at.y, visibility: "hidden" }
+      }
     >
       {groups.map((group, index) => (
         <div key={group.id} className={index > 0 ? "border-rule mt-1 border-t pt-1" : undefined}>
