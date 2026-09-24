@@ -1,6 +1,7 @@
 "use client";
 
 import { BoardRenderer } from "@/components/board/BoardRenderer";
+import type { BoardFiles } from "@/lib/board-assets";
 import type { BoardZmanim } from "@/lib/board-zmanim";
 import type { BundleEnvelope } from "@/lib/bundle/types";
 import type { ChabadZmanimByDate } from "@/lib/zmanim/resolve";
@@ -17,7 +18,7 @@ import type { ChabadZmanimByDate } from "@/lib/zmanim/resolve";
  * which is the one thing a screen in a lobby must never do.
  */
 
-export function DisplayBoard({ bundle }: { bundle: BundleEnvelope }) {
+export function DisplayBoard({ bundle, files }: { bundle: BundleEnvelope; files: BoardFiles }) {
   // Playlist rotation and dayparting are P6. Until then the screen shows the
   // first board on its playlist, which is what a shul with one board has.
   const boardId = bundle.playlist?.items[0]?.boardId;
@@ -59,6 +60,7 @@ export function DisplayBoard({ bundle }: { bundle: BundleEnvelope }) {
         location={location}
         zmanim={zmanim}
         albums={bundle.content.albums}
+        files={files}
         style={{
           aspectRatio: `${canvas.width} / ${canvas.height}`,
           width: `min(100vw, calc(100vh * ${canvas.width} / ${canvas.height}))`,
@@ -87,17 +89,21 @@ export function WaitingForBoard({ reason }: { reason: string }) {
 
 /**
  * The first time a screen loads a board — or after it was paired — its
- * pictures and the first few photos of each album are downloaded before the
- * board appears (the atomic swap, lib/display/assets.ts). On a slow connection
+ * pictures are downloaded before the board appears (the atomic swap,
+ * lib/display/assets.ts), and then the opening photos of each gallery and
+ * collage, with the board already drawn underneath so they know their size. On a slow connection
  * that can still take a while, and a dark screen that says nothing looks
  * broken. This shows that it's
  * loading and how far along it is.
  */
-export function LoadingProgress({ done, total }: { done: number; total: number }) {
+export function LoadingProgress({ done, total, over = false }: { done: number; total: number; over?: boolean }) {
   const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
   return (
     <div
-      className="bg-ink text-paper font-ui flex h-screen w-screen flex-col items-center justify-center gap-[3vh] px-[8vw]"
+      className={`bg-ink text-paper font-ui flex h-screen w-screen flex-col items-center justify-center gap-[3vh] px-[8vw] ${
+        // Over a board already mounted beneath it, whose photos are arriving.
+        over ? "fixed inset-0 z-40" : ""
+      }`}
       role="status"
       aria-live="polite"
     >

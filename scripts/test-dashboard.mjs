@@ -31,7 +31,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { EDITOR, GABBAI, INVITE_TOKEN, fixtures } from "./dashboard-fixtures.mjs";
+import { EDITOR, GABBAI, INVITE_TOKEN, PHOTO, fixtures } from "./dashboard-fixtures.mjs";
 import { startMockSupabase } from "./mock-supabase.mjs";
 
 const PORT = Number(process.env.PORT ?? 3231);
@@ -72,6 +72,9 @@ const env = {
   // the same fake, which doesn't check keys.
   SUPABASE_SERVICE_ROLE_KEY: "fake-service-role-key-for-dashboard-test",
   RESEND_API_KEY: "",
+  // The media cleanup cron is checked on its default, a dry run.
+  CRON_SECRET: "dashboard-test-cron-secret",
+  MEDIA_CLEANUP_DRY_RUN: "",
   EMAIL_FROM_ADDRESS: "",
 };
 
@@ -431,6 +434,123 @@ try {
     if (SHOTS) await page.screenshot({ path: join(SHOTS, "admin-accounts.png"), fullPage: true });
     await page.goto(`${BASE}/admin/accounts?q=sara`, { waitUntil: "networkidle" });
     check((await page.locator("input[name=q]").inputValue()) === "sara", "the account search keeps what was searched");
+  }
+
+  console.log("\n-- the media proxy -------------------------------------------");
+  {
+    const url = (id, file = "display-1111111111111111.webp") => `${BASE}/m/${id}/${file}`;
+    const ready = await fetch(url(PHOTO.ready));
+    check(ready.status === 200 && (await ready.text()) === "fake-webp-bytes", "a ready photo is served", String(ready.status));
+    check(ready.headers.get("content-type") === "image/webp", "with its recorded type", ready.headers.get("content-type") ?? "");
+    check(
+      ready.headers.get("cache-control") === "public, max-age=31536000, immutable",
+      "browsers keep it for a year, immutable",
+      ready.headers.get("cache-control") ?? "",
+    );
+    check(
+      ready.headers.get("cdn-cache-control") === "max-age=31536000" && ready.headers.get("vercel-cdn-cache-control") === "max-age=31536000",
+      "and so does Vercel's CDN",
+      `${ready.headers.get("cdn-cache-control")} / ${ready.headers.get("vercel-cdn-cache-control")}`,
+    );
+    check(!ready.headers.get("set-cookie"), "no cookie rides along, which would stop the CDN caching it");
+    for (const [label, response] of [
+      ["a deleted photo", await fetch(url(PHOTO.deleted))],
+      ["a photo still uploading", await fetch(url(PHOTO.pending))],
+      ["a stale hash", await fetch(url(PHOTO.ready, "display-2222222222222222.webp"))],
+      ["an unknown photo", await fetch(url("a5000000-0000-4000-8000-00000000ffff"))],
+    ]) {
+      check(
+        response.status === 404 && response.headers.get("cache-control") === "public, max-age=60" && response.headers.get("vercel-cdn-cache-control") === "max-age=60",
+        `${label} is a 404 cached for a minute`,
+        `${response.status} ${response.headers.get("cache-control")}`,
+      );
+    }
+    // A file the row names but Storage can't produce is a hiccup, not a
+    // missing photo: a 503 that nothing remembers.
+    const hiccup = await fetch(url(PHOTO.fileMissing));
+    check(
+      hiccup.status === 503 && hiccup.headers.get("cache-control") === "no-store",
+      "a Storage failure is a 503 that isn't cached",
+      `${hiccup.status} ${hiccup.headers.get("cache-control")}`,
+    );
+  }
+
+  console.log("\n-- media cleanup (dry run) -----------------------------------");
+  {
+    const before = mock.state.writes.length;
+    const refused = await fetch(`${BASE}/api/cron/clean-media`, { method: "POST" });
+    check(refused.status === 401, "the cleanup cron refuses a call without the secret", String(refused.status));
+    const response = await fetch(`${BASE}/api/cron/clean-media`, {
+      method: "POST",
+      headers: { authorization: "Bearer dashboard-test-cron-secret" },
+    });
+    const report = await response.json().catch(() => ({}));
+    check(response.ok && report.dryRun === true, "with no setting it's a dry run", JSON.stringify(report).slice(0, 200));
+    check(report.retentionDays === 30, "photos are kept 30 days", String(report.retentionDays));
+    check(
+      report.trash?.purged?.length === 1 && report.trash.purged[0] === PHOTO.expired && report.trash.files === 1,
+      "it reports the photo past 30 days, and its file, as due",
+      JSON.stringify(report.trash?.purged),
+    );
+    const kept = report.trash?.kept?.[0];
+    check(
+      kept?.assetId === PHOTO.deleted && kept.boards?.[0]?.name === "Weekday board",
+      "a due photo a board still names is kept, reported with the board's name",
+      JSON.stringify(report.trash?.kept),
+    );
+    check(report.orphans?.found === 1 && report.orphans.removed === 0, "it finds the orphan file and leaves it", JSON.stringify(report.orphans));
+    const writes = mock.state.writes.slice(before);
+    check(
+      !writes.some((w) => w.storageRemove || (w.table && w.method === "DELETE")),
+      "and a dry run deletes nothing",
+      writes.map((w) => w.storageRemove ? "storage" : `${w.method} ${w.table}`).join(", "),
+    );
+  }
+
+  console.log("\n-- recently deleted ------------------------------------------");
+  {
+    await page.goto(`${BASE}/media`, { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: "Recently deleted" }).click();
+    await page.waitForURL(`${BASE}/media/deleted`);
+    await page.getByRole("heading", { name: "Recently deleted" }).waitFor();
+    const row = (name) => page.locator("tr", { hasText: name });
+    check(await row("purim-seudah.jpg").isVisible(), "a photo deleted yesterday is listed");
+    check(((await row("purim-seudah.jpg").textContent()) ?? "").includes("In 29 days"), "with the days left until it's deleted for good");
+    check(((await row("old-kiddush.jpg").textContent()) ?? "").includes("Tonight"), "one past 30 days goes tonight");
+    if (SHOTS) {
+      await row("purim-seudah.jpg").locator("input[type=checkbox]").check();
+      await page.screenshot({ path: join(SHOTS, "recently-deleted.png"), fullPage: true });
+      await row("purim-seudah.jpg").locator("input[type=checkbox]").uncheck();
+    }
+    const thumb = await row("purim-seudah.jpg").locator("img").getAttribute("src");
+    check(Boolean(thumb?.includes("/object/sign/assets/")), "its thumbnail is a signed URL, since /m won't serve a deleted photo", thumb ?? "");
+
+    let before = mock.state.writes.length;
+    await row("purim-seudah.jpg").getByRole("button", { name: "Restore", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: "Restored 1 photo" }).waitFor({ timeout: 10000 }).catch(() => {});
+    const restored = mock.state.writes
+      .slice(before)
+      .find((w) => w.table === "assets" && w.method === "PATCH" && w.body.deleted_at === null && w.query.includes(PHOTO.deleted));
+    check(Boolean(restored), "Restore clears the photo's deleted date");
+    check(await page.getByRole("status").filter({ hasText: "Restored 1 photo" }).isVisible(), "and says so");
+
+    before = mock.state.writes.length;
+    await row("old-kiddush.jpg").getByRole("button", { name: "Delete old-kiddush.jpg for good" }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Delete for good" });
+    check(((await dialog.textContent()) ?? "").includes("can’t be undone"), "deleting for good asks first, and says it can't be undone");
+    await dialog.getByRole("button", { name: "Delete for good" }).click();
+    await page.getByRole("status").filter({ hasText: "for good" }).waitFor({ timeout: 10000 }).catch(() => {});
+    const writes = mock.state.writes.slice(before);
+    const removed = writes.find((w) => w.storageRemove === "assets");
+    check(
+      Boolean(removed?.paths?.some((p) => p.includes(PHOTO.expired))),
+      "its files are removed from Storage",
+      JSON.stringify(removed?.paths ?? []),
+    );
+    const removeAt = writes.indexOf(removed);
+    const rowDelete = writes.findIndex((w) => w.table === "assets" && w.method === "DELETE" && w.query.includes(PHOTO.expired));
+    check(rowDelete > removeAt && removeAt >= 0, "then its row is deleted, files first");
+    check(await page.getByRole("status").filter({ hasText: "Deleted 1 photo for good." }).isVisible(), "and it says so");
   }
 
   console.log("\n-- phones ----------------------------------------------------");

@@ -186,27 +186,12 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
       bytes: asset.bytes,
     }));
 
-  // Every stored size of every album photo, too: a collage picks the smallest
-  // variant that's sharp at the size it renders, which depends on the screen,
-  // so all of them have to be cached for that choice to work offline. Sorted
-  // after the display variants so the list stays stable build to build.
-  const seenUrls = new Set(assets.map((asset) => asset.url));
-  const albumVariants: BundleAsset[] = [];
-  for (const photo of Object.values(input.content.albums).flat()) {
-    for (const variant of photo.variants ?? []) {
-      if (seenUrls.has(variant.src)) continue;
-      seenUrls.add(variant.src);
-      albumVariants.push({
-        id: photo.assetId,
-        url: variant.src,
-        variant: variant.name,
-        contentType: variant.contentType,
-        bytes: variant.bytes,
-      });
-    }
-  }
-  albumVariants.sort((a, b) => a.url.localeCompare(b.url));
-  assets.push(...albumVariants);
+  // Album photos are NOT listed here. Which size of each photo a Gallery or
+  // Collage shows depends on its size on the screen, so each widget asks the
+  // display for exactly those files (lib/display/assets.ts) — listing every
+  // stored size would have every screen download all of them. The sizes are
+  // in `content.albums`, for the widgets to choose from.
+  const seenUrls = new Set<string>(assets.map((asset) => asset.url));
 
   // Board backgrounds (./background.ts), cached before the swap like any photo.
   assets.push(...backgroundBundleAssets(boards.map((board) => board.doc), backgroundAssets, seenUrls));

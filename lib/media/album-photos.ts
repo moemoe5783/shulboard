@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
-import { mediaProxyPath, readAssetVariant } from "@/lib/bundle/media";
+import { mediaProxyPath, readAssetVariant, readBestVariant } from "@/lib/bundle/media";
 import { scaledSize, VARIANT_SPECS } from "./variants";
 
 /*
@@ -117,15 +117,15 @@ export async function fetchAlbumPhotos(
     // Only a finished upload: a 'pending' or 'failed' row's files are
     // incomplete or already removed (lib/media/upload.ts).
     if (!asset || asset.deleted_at || asset.status !== "ready") continue;
-    const variant = readAssetVariant(asset.variants, DISPLAY_VARIANT);
-    if (!variant) continue;
+    const best = readBestVariant(asset.variants, DISPLAY_VARIANT);
+    if (!best) continue;
     albums[item.album_id]?.push({
       assetId: asset.id,
       src: mediaProxyPath({
         id: asset.id,
-        variant: DISPLAY_VARIANT,
-        content_hash: variant.contentHash,
-        extension: variant.extension,
+        variant: best.name,
+        content_hash: best.variant.contentHash,
+        extension: best.variant.extension,
       }),
       width: asset.width,
       height: asset.height,

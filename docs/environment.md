@@ -1,7 +1,7 @@
 # Environment variables
 
 Every environment variable this product reads, in one place, because all
-nine are set by hand in a hosting dashboard rather than committed anywhere, and
+ten are set by hand in a hosting dashboard rather than committed anywhere, and
 "what does this one do again" is exactly the question this file exists to
 answer three months from now.
 
@@ -10,7 +10,8 @@ same handling as a password. Getting that distinction backwards in either
 direction is the mistake this table exists to prevent: a secret in a
 `NEXT_PUBLIC_*` variable ships in the browser bundle for anyone to read; a
 public one held back as if it were secret just breaks sign-in for no reason.
-The other two, `ZMANIM_CHABAD_ENABLED` and `EMAIL_FROM_ADDRESS`, are neither —
+The other three, `ZMANIM_CHABAD_ENABLED`, `EMAIL_FROM_ADDRESS` and
+`MEDIA_CLEANUP_DRY_RUN`, are neither —
 not passwords, and no reason to ship them to a browser either — plain
 server-side settings, read only by server code that never runs on the client.
 
@@ -18,13 +19,14 @@ server-side settings, read only by server code that never runs on the client.
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | public | the whole app |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | the whole app |
-| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron, TV pairing) |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret | the display pipeline (bundle, heartbeat, realtime auth, media proxy, cron worker, zmanim warming cron, media cleanup cron, TV pairing) |
 | `SUPABASE_JWT_SECRET` | secret | live board updates over Realtime |
-| `CRON_SECRET` | secret | the bundle build worker, and the Chabad zmanim cache-warming cron |
+| `CRON_SECRET` | secret | the bundle build worker, the Chabad zmanim cache-warming cron, and the media cleanup cron |
 | `GEOCODING_API_KEY` | secret | the address lookup on the shul settings and new-shul forms |
 | `ZMANIM_CHABAD_ENABLED` | server flag | offering Chabad.org as a zmanim source at all |
 | `RESEND_API_KEY` | secret | emailing invitations (and, set in Supabase, every account email) |
 | `EMAIL_FROM_ADDRESS` | server setting | the address those emails come from |
+| `MEDIA_CLEANUP_DRY_RUN` | server flag | letting the nightly media cleanup actually delete (it only reports until this is `false`) |
 
 ---
 
@@ -75,10 +77,10 @@ missing one the same as a missing other.
 ## `SUPABASE_SERVICE_ROLE_KEY`
 
 **What it is.** The service-role key. It bypasses Row Level Security
-entirely, which is why CLAUDE.md restricts it to exactly eleven places: the
+entirely, which is why CLAUDE.md restricts it to exactly twelve places: the
 bundle endpoint, the heartbeat endpoint, the realtime-auth endpoint, the
-media proxy, the cron build worker, the Chabad zmanim warming cron, and the
-two TV pairing endpoints (`/api/pair/start` and `/api/pair/poll`) —
+media proxy, the cron build worker, the Chabad zmanim warming cron, the
+media cleanup cron, and the two TV pairing endpoints (`/api/pair/start` and `/api/pair/poll`) —
 every one of them a server route that does its own authorization (a screen
 token, a shared secret) rather than leaning on a policy — plus three that
 are not routes: `publishBoard`, which calls the build worker's own
@@ -107,8 +109,9 @@ everywhere it's called, so —
   never show a device as live, because it never hears from one.
 - `POST /api/screen/[token]/realtime-auth` answers 503 — see
   `SUPABASE_JWT_SECRET` below; this alone degrades rather than breaks.
-- `GET /m/<id>/<variant>-<hash>.<ext>` answers 404 for every asset — every
-  photo on every board is a broken image.
+- `GET /m/<id>/<variant>-<hash>.<ext>` answers 503 for every asset — every
+  photo on every board is a broken image. (A 503, never cached, rather than a
+  404, which the proxy lets Vercel's CDN keep for a minute.)
 - `POST /api/cron/build-bundles` answers 503 — no bundle is ever built or
   rebuilt, so even a screen that once worked never sees a content change.
 - `POST /api/pair/start` answers 503 — a TV at `/pair` says pairing isn't
@@ -402,6 +405,43 @@ SMTP set, account emails only reach your own team's addresses.
 
 ---
 
+## `MEDIA_CLEANUP_DRY_RUN`
+
+**What it is.** The safety catch on the nightly media cleanup,
+`POST|GET /api/cron/clean-media`. Set to the exact string `false` to let it
+delete; anything else, including unset, means it only reports what it would
+have deleted. Off by default on purpose: this is the one job in the product
+that deletes a shul's photos for good, so its first reports deserve a look
+before it's let loose.
+
+**What the job does, once a day** (numbers in `lib/storage/retention.ts`):
+
+- Photos deleted in Media more than **30 days** ago are deleted for good —
+  every size in Storage, the row, its album links, and Vercel's CDN copies
+  (purged by cache tag). Albums deleted that long ago go too. Until then
+  they sit in Media → **Recently deleted**, where an editor can restore them
+  or delete them for good sooner.
+- A deleted photo that a live board (draft or published) or a screen's
+  bundle still names is **kept**, and listed in the report under
+  `trash.kept` with the names of the boards that name it.
+- Uploads that failed, and uploads still pending after 24 hours (a tab
+  closed mid-upload), are deleted with their files.
+- Files in the `assets` bucket that no photo row claims, older than 24
+  hours, are removed.
+
+Each step handles up to 200 per run, so a backlog clears over a few nights.
+
+**Setting it up.** A **third** external scheduler entry, alongside the two in
+`CRON_SECRET` and `ZMANIM_CHABAD_ENABLED`: `POST
+https://<your-domain>/api/cron/clean-media` with `Authorization: Bearer
+<CRON_SECRET>`, once a day. Read a few of its JSON reports (every count is
+there, plus `"dryRun": true`), then set this to `false`.
+
+**What happens without the scheduler.** Nothing is ever deleted for good:
+Recently deleted keeps growing, and so does Storage. Nothing breaks.
+
+---
+
 ## Google sign-in (optional, no variable here)
 
 "Continue with Google" appears on the sign-in page only when the Supabase
@@ -487,11 +527,16 @@ short:
    `Authorization: Bearer <CRON_SECRET>` header, once a day rather than
    every 5 minutes.
 
-All nine go in the hosting platform's environment variable settings — for
+8. The media cleanup — a **third** external scheduler entry, hitting
+   `POST https://<your-domain>/api/cron/clean-media` with the same
+   `Authorization: Bearer <CRON_SECRET>` header, once a day. It only reports
+   until `MEDIA_CLEANUP_DRY_RUN` is set to `false`; see that section above.
+
+All ten go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
-carries the two public ones as fillable lines; it names the other seven —
-the five secrets, plus `ZMANIM_CHABAD_ENABLED` and `EMAIL_FROM_ADDRESS`, which
-aren't secrets but have no
+carries the two public ones as fillable lines; it names the other eight —
+the five secrets, plus `ZMANIM_CHABAD_ENABLED`, `EMAIL_FROM_ADDRESS` and
+`MEDIA_CLEANUP_DRY_RUN`, which aren't secrets but have no
 more business defaulting to a value in a committed file than a secret does
 — in a comment explaining why each is deliberately left blank, rather than
 inviting anyone to paste a real value into a file that gets committed.

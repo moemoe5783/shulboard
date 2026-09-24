@@ -21,6 +21,41 @@ export const INVITE_TOKEN = "Zy3c1b1sQ0tTUmZ1dm9lX3Rlc3QtaW52aXRl";
 
 const org = { id: ORG_ID, name: "Beis Menachem", slug: "beis-menachem", timezone: "America/New_York", location_label: "Brooklyn, NY", postal_code: "11213", latitude: 40.66, longitude: -73.94 };
 
+/** Photos for the /m proxy checks: one ready, one deleted, one mid-upload. */
+export const PHOTO = {
+  ready: "a5000000-0000-4000-8000-000000000001",
+  deleted: "a5000000-0000-4000-8000-000000000002",
+  pending: "a5000000-0000-4000-8000-000000000003",
+  /** Ready on record, but Storage has no file for it. */
+  fileMissing: "a5000000-0000-4000-8000-000000000004",
+  /** Deleted 40 days ago: past the 30 days Recently deleted keeps it. */
+  expired: "a5000000-0000-4000-8000-000000000005",
+};
+const photoVariant = (id, name, hash) => ({
+  storage_path: `${ORG_ID}/${id}/${name}-${hash}.webp`,
+  content_hash: hash,
+  extension: "webp",
+  content_type: "image/webp",
+  bytes: 12,
+  width: 400,
+  height: 300,
+});
+const photo = (id, extra) => ({
+  created_at: new Date(Date.now() - 864e5).toISOString(),
+  id,
+  org_id: ORG_ID,
+  kind: "image",
+  storage_bucket: "assets",
+  storage_path: `${ORG_ID}/${id}/display-1111111111111111.webp`,
+  mime_type: "image/webp",
+  width: 400,
+  height: 300,
+  status: "ready",
+  deleted_at: null,
+  variants: { display: photoVariant(id, "display", "1111111111111111") },
+  ...extra,
+});
+
 export function fixtures() {
   const now = Date.now();
   const ago = (ms) => new Date(now - ms).toISOString();
@@ -44,12 +79,34 @@ export function fixtures() {
     ],
     albums: [{ id: "a1000000-0000-4000-8000-000000000001", org_id: ORG_ID, name: "Kiddush photos", created_at: ago(5 * 864e5), deleted_at: null, source: "manual" }],
     album_items: [],
-    assets: [],
+    assets: [
+      photo(PHOTO.ready),
+      photo(PHOTO.deleted, { deleted_at: new Date(Date.now() - 864e5).toISOString(), original_filename: "purim-seudah.jpg" }),
+      photo(PHOTO.pending, { status: "pending" }),
+      photo(PHOTO.fileMissing),
+      photo(PHOTO.expired, { deleted_at: new Date(Date.now() - 40 * 864e5).toISOString(), original_filename: "old-kiddush.jpg" }),
+    ],
+    storage: Object.fromEntries(
+      [PHOTO.ready, PHOTO.deleted, PHOTO.pending, PHOTO.expired].map((id) => [`assets/${ORG_ID}/${id}/display-1111111111111111.webp`, "fake-webp-bytes"]),
+    ),
     playlists: [],
     playlist_items: [],
     screen_bundles: [],
     pairing_requests: [],
     rpc: {
+      // The cleanup job's two lookups (20260927090300_media_cleanup.sql).
+      media_purge_candidates: [
+        { asset_id: PHOTO.expired, org_id: ORG_ID, deleted_at: ago(40 * 864e5), referenced: false, boards: [], in_bundle: false },
+        {
+          asset_id: PHOTO.deleted,
+          org_id: ORG_ID,
+          deleted_at: ago(40 * 864e5),
+          referenced: true,
+          boards: [{ id: "b0000000-0000-4000-8000-000000000001", name: "Weekday board" }],
+          in_bundle: false,
+        },
+      ],
+      media_orphan_objects: [{ name: `${ORG_ID}/a5000000-0000-4000-8000-0000000000ff/display-1.webp`, created_at: ago(3 * 864e5) }],
       org_member_directory: [
         { user_id: GABBAI.id, email: GABBAI.email, full_name: "Moshe Levi", role: "owner", joined_at: "2026-01-02T00:00:00Z", two_step: false },
         { user_id: EDITOR.id, email: EDITOR.email, full_name: "Sara Cohen", role: "editor", joined_at: "2026-03-10T00:00:00Z", two_step: true },

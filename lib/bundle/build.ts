@@ -8,7 +8,7 @@ import { fetchAlbumPhotos } from "@/lib/media/album-photos";
 import { albumIdsFor, assembleBundle, assetIdsFor, needsZmanim, type AssetRow } from "./assemble";
 import { boardBackgroundAssetId } from "./background";
 import { hashPayload, payloadBytes } from "./hash";
-import { readAssetVariant } from "./media";
+import { readBestVariant } from "./media";
 import type { BundleContent, BundlePayload } from "./types";
 
 /** Exactly the columns buildScreenBundle's own select fetches — named so
@@ -40,8 +40,9 @@ type ScreenForBuild = Pick<
  *  fetch by slot size, not the original") is the one variant every board
  *  embeds. */
 const BOARD_ASSET_VARIANT = "display";
-/** A board background's preferred sizes, best first. */
-const BACKGROUND_ASSET_VARIANTS = ["large", "display"];
+/** A board background's preferred size — it fills the whole screen. A photo
+ *  too small to have one falls back to its largest (readBestVariant). */
+const BACKGROUND_ASSET_VARIANT = "large";
 
 /*
  * The build job — docs/plan.md §3a, docs/schema.md §9 and §10.
@@ -370,13 +371,14 @@ async function assemblePayloadFor(
       .eq("status", "ready");
 
     for (const row of rows ?? []) {
-      const variant = readAssetVariant(row.variants, BOARD_ASSET_VARIANT);
+      const best = readBestVariant(row.variants, BOARD_ASSET_VARIANT);
       // Not processed yet, or generated in a shape this build doesn't
       // recognise. Either way the widget shows its own empty state.
-      if (!variant) continue;
+      if (!best) continue;
+      const { variant } = best;
       assets.set(row.id, {
         id: row.id,
-        variant: BOARD_ASSET_VARIANT,
+        variant: best.name,
         content_hash: variant.contentHash,
         extension: variant.extension,
         content_type: variant.contentType,
@@ -396,19 +398,16 @@ async function assemblePayloadFor(
       .is("deleted_at", null)
       .eq("status", "ready");
     for (const row of rows ?? []) {
-      for (const name of BACKGROUND_ASSET_VARIANTS) {
-        const variant = readAssetVariant(row.variants, name);
-        if (!variant) continue;
-        backgroundAssets.set(row.id, {
-          id: row.id,
-          variant: name,
-          content_hash: variant.contentHash,
-          extension: variant.extension,
-          content_type: variant.contentType,
-          bytes: variant.bytes,
-        });
-        break;
-      }
+      const best = readBestVariant(row.variants, BACKGROUND_ASSET_VARIANT);
+      if (!best) continue;
+      backgroundAssets.set(row.id, {
+        id: row.id,
+        variant: best.name,
+        content_hash: best.variant.contentHash,
+        extension: best.variant.extension,
+        content_type: best.variant.contentType,
+        bytes: best.variant.bytes,
+      });
     }
   }
 

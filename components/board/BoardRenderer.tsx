@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
-import { BoardAssetsProvider } from "@/lib/board-assets";
+import { BoardAssetsProvider, type BoardFiles } from "@/lib/board-assets";
 import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
 import { BoardZmanimProvider, type BoardZmanim } from "@/lib/board-zmanim";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
@@ -68,6 +68,9 @@ export type BoardRendererProps = {
    *  Omitted wherever nothing resolves them, where those widgets show their own
    *  empty state. */
   albums?: BoardAlbums | null;
+  /** Which photo files are on this device (lib/board-assets.tsx). The display
+   *  passes it; the editor doesn't, and there every file counts as ready. */
+  files?: BoardFiles | null;
 };
 
 /** Widget types the document may contain that are not widgets. A group is a row
@@ -83,11 +86,12 @@ export function BoardRenderer({
   location = null,
   zmanim = null,
   albums = null,
+  files = null,
 }: BoardRendererProps) {
   return (
     <BoardLocationProvider location={location}>
       <BoardZmanimProvider zmanim={zmanim}>
-        <BoardAssetsProvider albums={albums}>
+        <BoardAssetsProvider albums={albums} files={files}>
         <div
           className={`relative overflow-hidden ${className}`}
           style={{

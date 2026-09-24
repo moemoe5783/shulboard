@@ -50,7 +50,8 @@
     "emails": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/build-emails.ts",
     "test:emails": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/build-emails.ts --check",
     "test:dashboard": "node scripts/test-dashboard.mjs",
-    "test:upload": "node scripts/test-upload-browser.mjs"
+    "test:upload": "node scripts/test-upload-browser.mjs",
+    "test:collage-player": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/alias-loader.mjs --experimental-strip-types scripts/test-collage-player.ts"
   },
   "dependencies": {
     "@hebcal/core": "^6.9.2",
@@ -58,6 +59,7 @@
     "@photostructure/tz-lookup": "^11.7.0",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.115.0",
+    "@vercel/functions": "^3.9.9",
     "heic-to": "^1.5.2",
     "jose": "^6.2.12",
     "jsqr": "^1.4.0",

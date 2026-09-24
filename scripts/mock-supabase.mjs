@@ -94,7 +94,8 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
     let out = rows;
     for (const [key, raw] of params) {
       if (["select", "order", "limit", "offset", "on_conflict", "columns"].includes(key)) continue;
-      const dot = raw.indexOf(".");
+      // "not.is.null" is the operator "not.is", not "not".
+      const dot = raw.startsWith("not.") ? raw.indexOf(".", 4) : raw.indexOf(".");
       const op = raw.slice(0, dot);
       const value = raw.slice(dot + 1);
       const get = (row) => row[key];
@@ -271,6 +272,51 @@ export function startMockSupabase({ port, users, fixtures = {}, emailConfirmatio
       }
       if (single) return send(200, changed[0] ?? null);
       return send(req.method === "POST" ? 201 : 200, changed);
+    }
+
+    // ------------------------------------------------------------- storage
+    // fixtures.storage maps "<bucket>/<path>" to the file's bytes (a Buffer or
+    // string). Download and remove are what the app calls (the /m proxy,
+    // lib/storage/remove.ts); removes are recorded in state.writes.
+    if (path.startsWith("/storage/v1/object/list/") && req.method === "POST") {
+      fixtures.storage ??= {};
+      const bucket = decodeURIComponent(path.slice("/storage/v1/object/list/".length));
+      const folder = `${bucket}/${String(body.prefix ?? "").replace(/\/$/, "")}/`;
+      const entries = Object.keys(fixtures.storage)
+        .filter((key) => key.startsWith(folder) && !key.slice(folder.length).includes("/"))
+        .map((key) => ({ name: key.slice(folder.length), id: randomUUID(), metadata: {} }));
+      return send(200, entries);
+    }
+    if (path.startsWith("/storage/v1/object/sign/") && req.method === "POST") {
+      const bucket = decodeURIComponent(path.slice("/storage/v1/object/sign/".length));
+      return send(
+        200,
+        (body.paths ?? []).map((p) => ({ path: p, signedURL: `/object/sign/${bucket}/${p}?token=mock`, error: null })),
+      );
+    }
+    if (path.startsWith("/storage/v1/object/")) {
+      fixtures.storage ??= {};
+      const key = decodeURIComponent(path.slice("/storage/v1/object/".length));
+      if (req.method === "GET") {
+        const file = fixtures.storage[key];
+        if (file === undefined) return send(400, { statusCode: "404", error: "not_found", message: "Object not found" });
+        const bytes = Buffer.isBuffer(file) ? file : Buffer.from(String(file));
+        res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(bytes.length) });
+        return res.end(bytes);
+      }
+      if (req.method === "DELETE") {
+        const bucket = key.split("/")[0];
+        const removed = [];
+        for (const prefix of body.prefixes ?? []) {
+          const full = `${bucket}/${prefix}`;
+          if (full in fixtures.storage) {
+            delete fixtures.storage[full];
+            removed.push({ name: prefix, bucket_id: bucket });
+          }
+        }
+        state.writes.push({ storageRemove: bucket, paths: body.prefixes ?? [] });
+        return send(200, removed);
+      }
     }
 
     send(404, { message: `mock has no ${path}` });

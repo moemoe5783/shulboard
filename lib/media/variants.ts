@@ -25,9 +25,8 @@ export type VariantSpec = {
 
 /**
  * thumb for the album grid and pickers, display for the board, large for a 4K
- * wall. Ordered small-to-large; the pipeline skips any whose maxEdge is past the
- * original's longest edge except that `display` is always written (the board
- * needs it) at whatever size the original allows.
+ * wall. Ordered small-to-large. See `variantSpecsFor` for which a given photo
+ * gets.
  */
 export const VARIANT_SPECS: VariantSpec[] = [
   { name: "thumb", maxEdge: 400 },
@@ -35,11 +34,47 @@ export const VARIANT_SPECS: VariantSpec[] = [
   { name: "large", maxEdge: 2160 },
 ];
 
+/** thumb and display are written for every photo — the album grid and the
+ *  board read them by name. */
+const ALWAYS = new Set(["thumb", BOARD_VARIANT]);
+
+/**
+ * The sizes one photo gets. A size is skipped when the photo's long edge is no
+ * bigger than the next-smaller size's: it would come out pixel-for-pixel the
+ * same as that one (sizes are never enlarged), so it's the same picture stored
+ * twice. A 1000px photo gets thumb and display; a 3000px one gets all three.
+ * thumb and display are always written, however small the photo.
+ *
+ * Every reader falls back to the largest size on file when the one it asks for
+ * isn't there (lib/bundle/media.ts, `readBestVariant`).
+ */
+export function variantSpecsFor(width: number, height: number): VariantSpec[] {
+  const longest = Math.max(width, height);
+  return VARIANT_SPECS.filter((spec, i) => ALWAYS.has(spec.name) || longest > VARIANT_SPECS[i - 1].maxEdge);
+}
+
 /** WebP everywhere — one servable type, good compression, universal on the
  *  browsers a dashboard runs in and the TV browsers the display runs on. */
 export const VARIANT_CONTENT_TYPE = "image/webp";
 export const VARIANT_EXTENSION = "webp";
 export const VARIANT_QUALITY = 0.85;
+
+/**
+ * JPEG, for the browser that can't make WebP. Asked for WebP, a canvas that
+ * doesn't support it hands back a PNG without a word (older Safari), and a
+ * 2160px PNG photo can be tens of megabytes — so the upload re-encodes to
+ * JPEG instead. JPEG has no transparency, so a transparent picture is laid on
+ * white first; WebP keeps it.
+ */
+export const FALLBACK_CONTENT_TYPE = "image/jpeg";
+export const FALLBACK_EXTENSION = "jpg";
+
+/** The only types the `assets` bucket accepts, and the largest file —
+ *  enforced by Storage itself (20260927090200_assets_bucket_limits.sql) and
+ *  checked here first, so a gabbai gets a reason rather than a refusal. Keep
+ *  the two in step. */
+export const STORED_CONTENT_TYPES = [VARIANT_CONTENT_TYPE, FALLBACK_CONTENT_TYPE];
+export const MAX_STORED_BYTES = 8 * 1024 * 1024;
 
 /** The image types a browser decodes itself. HEIC/HEIF (iPhone photos) is
  *  accepted too, but converted first — see `isHeicFile` and lib/media/heic.ts. */

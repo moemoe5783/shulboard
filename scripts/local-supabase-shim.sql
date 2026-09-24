@@ -132,7 +132,11 @@ create schema if not exists storage;
 create table if not exists storage.buckets (
   id text primary key,
   name text not null,
-  public boolean not null default false
+  public boolean not null default false,
+  -- The two limits Storage itself enforces on upload, as hosted Supabase
+  -- names them (20260927090200_assets_bucket_limits.sql sets them).
+  file_size_limit bigint,
+  allowed_mime_types text[]
 );
 
 create table if not exists storage.objects (

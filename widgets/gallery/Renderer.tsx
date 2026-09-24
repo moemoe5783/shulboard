@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { useBoardFiles } from "@/lib/board-assets";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
 import type { BoardPhoto } from "@/lib/media/album-photos";
+import { fittedWidth, photoVariants, pickVariant, readyVariant } from "@/lib/media/variant-choice";
 import type { WidgetRendererProps } from "../types";
 import { albumSelectionKey, hasAlbumSelection, useSelectedPhotos } from "../media/albums";
 import { PhotoEmpty } from "../media/PhotoEmpty";
@@ -65,13 +67,19 @@ function useReducedMotion(): boolean {
   );
 }
 
+/** A photo, and the file of it to draw. */
+type Shown = { photo: BoardPhoto; src: string };
+
 type Stage = {
-  current: BoardPhoto | null;
-  previous: BoardPhoto | null;
+  current: Shown | null;
+  previous: Shown | null;
   /** Bumps on every swap, so the layers remount and their animations replay. */
   generation: number;
   /** When the new photo starts arriving, after the old one has made room. */
   offset: number;
+  /** The second the photo on screen went up — for how long it has waited on
+   *  the next one. */
+  shownAt: number | null;
 };
 
 /**
@@ -79,10 +87,20 @@ type Stage = {
  * the collage player (../collage/player.ts). The swap waits for the new photo
  * to be decoded, so it never arrives half-drawn, and the old photo stays until
  * its own exit has finished (../collage/transitions.ts: nothing pops).
+ *
+ * `choose` picks what should be on screen from what is — it's given the photo
+ * showing and when it went up, so it can hold that photo while the next one's
+ * file is still on its way.
  */
-function useGalleryStage(target: BoardPhoto | undefined, mode: CollageTransition, speed: number): Stage {
-  const [stage, setStage] = useState<Stage>({ current: target ?? null, previous: null, generation: 0, offset: 0 });
-  const targetId = target?.assetId;
+function useGalleryStage(
+  choose: (current: Shown | null, shownAt: number | null) => Shown | undefined,
+  second: number | null,
+  mode: CollageTransition,
+  speed: number,
+): { stage: Stage; target: Shown | undefined } {
+  const [stage, setStage] = useState<Stage>({ current: null, previous: null, generation: 0, offset: 0, shownAt: null });
+  const target = choose(stage.current, stage.shownAt);
+  const targetId = target?.photo.assetId;
 
   useEffect(() => {
     if (!target) return;
@@ -90,14 +108,17 @@ function useGalleryStage(target: BoardPhoto | undefined, mode: CollageTransition
     void preload(target.src).then(() => {
       if (cancelled) return;
       setStage((stage) => {
-        if (stage.current?.assetId === target.assetId) return stage.current === target ? stage : { ...stage, current: target };
+        if (stage.current?.photo.assetId === target.photo.assetId) {
+          return stage.current.src === target.src && stage.current.photo === target.photo ? stage : { ...stage, current: target };
+        }
         // The very first photo arrives without a transition.
-        if (!stage.current) return { current: target, previous: null, generation: stage.generation + 1, offset: 0 };
+        if (!stage.current) return { current: target, previous: null, generation: stage.generation + 1, offset: 0, shownAt: second };
         return {
           current: target,
           previous: mode === "none" ? null : stage.current,
           generation: stage.generation + 1,
           offset: enterOffset(mode, 1, speed),
+          shownAt: second,
         };
       });
     });
@@ -119,31 +140,107 @@ function useGalleryStage(target: BoardPhoto | undefined, mode: CollageTransition
     return () => clearTimeout(timer);
   }, [previous, generation, mode, speed]);
 
-  return stage;
+  return { stage, target };
 }
+
+/** The box in real pixels, times the pixel ratio — what decides which stored
+ *  size is sharp here. Null until measured. */
+function useBoxPixels(ref: RefObject<HTMLDivElement | null>): { width: number; height: number } | null {
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const next = { width: Math.round(el.clientWidth * dpr), height: Math.round(el.clientHeight * dpr) };
+      if (next.width === 0 || next.height === 0) return;
+      setBox((previous) => (previous && previous.width === next.width && previous.height === next.height ? previous : next));
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return box;
+}
+
+/** A photo shown this many intervals without the next one arriving gives way
+ *  to the next photo that IS here — the collage's rule (../collage/player.ts). */
+const HOLD_INTERVALS = 3;
+
+let galleries = 0;
 
 export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryConfig>) {
   const config = readGalleryConfig(raw);
   const photos = useSelectedPhotos(config);
   const albumKey = albumSelectionKey(config);
   const second = useSecond();
+  const files = useBoardFiles();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const boxPx = useBoxPixels(rootRef);
+  const [owner] = useState(() => `gallery-${(galleries += 1)}`);
 
   const ordered = useMemo(
     () => (photos && config.order === "shuffle" ? shuffled(photos, albumKey) : photos),
     [photos, config.order, albumKey],
   );
 
+  // How wide each photo draws in this box — what picks its file.
+  const needed = useMemo(() => {
+    const out = new Map<string, number>();
+    if (!ordered || !boxPx) return out;
+    for (const photo of ordered) out.set(photo.assetId, fittedWidth(photo, boxPx, config.fit));
+    return out;
+  }, [ordered, boxPx, config.fit]);
+
   const reducedMotion = useReducedMotion();
   const mode: CollageTransition = reducedMotion ? "none" : config.transition;
-  const index = ordered && ordered.length > 0 ? (second === null ? 0 : Math.floor(second / config.intervalSeconds) % ordered.length) : 0;
-  const target = ordered && ordered.length > 0 ? ordered[index] : undefined;
-  const upcoming = ordered && ordered.length > 1 ? ordered[(index + 1) % ordered.length] : undefined;
-  const stage = useGalleryStage(target, mode, config.transitionSpeed);
+  const count = ordered?.length ?? 0;
+  const index = count > 0 ? (second === null ? 0 : Math.floor(second / config.intervalSeconds) % count) : 0;
+
+  // Tell the board which files this gallery shows, starting with the one due
+  // now: every photo in the order it comes round (lib/board-assets.tsx).
+  useEffect(() => {
+    if (!files || !ordered || !boxPx) return;
+    const srcs: string[] = [];
+    for (let i = 0; i < ordered.length; i += 1) {
+      const photo = ordered[(index + i) % ordered.length];
+      srcs.push(pickVariant(photoVariants(photo), needed.get(photo.assetId) ?? boxPx.width).src);
+    }
+    files.want(owner, srcs, true);
+  }, [files, ordered, boxPx, needed, index, owner]);
+  useEffect(() => () => files?.want(owner, [], true), [files, owner]);
+
+  // The file to draw for a photo: its size for this box, or a bigger copy
+  // already on the device; undefined when neither is here yet.
+  const fileFor = (photo: BoardPhoto): Shown | undefined => {
+    const variant = readyVariant(photoVariants(photo), needed.get(photo.assetId) ?? boxPx?.width ?? 0, files?.isReady ?? null);
+    return variant ? { photo, src: variant.src } : undefined;
+  };
+
+  // The photo due now, if it's here. If not, the one on screen stays — until
+  // it has been up three intervals, when the next photo that is here takes
+  // over rather than one photo holding the wall forever.
+  const choose = (onScreen: Shown | null, shownAt: number | null): Shown | undefined => {
+    if (!ordered || count === 0 || !boxPx) return undefined;
+    const due = fileFor(ordered[index]);
+    if (due) return due;
+    const stillInAlbum = onScreen !== null && ordered.some((photo) => photo.assetId === onScreen.photo.assetId);
+    const heldFor = shownAt !== null && second !== null ? second - shownAt : 0;
+    if (stillInAlbum && heldFor < HOLD_INTERVALS * config.intervalSeconds) return onScreen;
+    for (let i = 1; i < count; i += 1) {
+      const next = fileFor(ordered[(index + i) % count]);
+      if (next) return next;
+    }
+    return stillInAlbum ? onScreen : undefined;
+  };
+  const upcoming = ordered && count > 1 ? fileFor(ordered[(index + 1) % count]) : undefined;
+  const { stage, target } = useGalleryStage(choose, second, mode, config.transitionSpeed);
 
   // Decode the next photo during this one's hold, so the swap is on time.
   useEffect(() => {
     if (upcoming) void preload(upcoming.src);
-  }, [upcoming]);
+  }, [upcoming?.src]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!hasAlbumSelection(config)) {
     return <PhotoEmpty canvas={canvas} message="Pick albums in this gallery’s settings." />;
@@ -155,55 +252,57 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
     return <PhotoEmpty canvas={canvas} message="This album has no photos yet." />;
   }
 
-  const current = stage.current ?? target!;
+  const current = stage.current ?? target;
   // The photo a board opens on just shows; every later one transitions in.
   const first = stage.generation === 0;
 
   return (
-    <div className="relative h-full w-full overflow-hidden" data-gallery>
+    <div ref={rootRef} className="relative h-full w-full overflow-hidden" data-gallery>
       {stage.previous && (
         <PhotoLayer
           key={`${stage.generation}-leaving`}
-          photo={stage.previous}
+          shown={stage.previous}
           fit={config.fit}
           animation={cellAnimation(mode, "leaving", 0, 1, 0, config.transitionSpeed)}
           role="leaving"
         />
       )}
-      <PhotoLayer
-        key={`${stage.generation}-entering`}
-        photo={current}
-        fit={config.fit}
-        animation={first ? undefined : cellAnimation(mode, "entering", 0, 1, stage.offset, config.transitionSpeed)}
-        role="entering"
-      >
-        {config.showCaption && current.caption && (
-          <div
-            className="absolute right-0 bottom-0 left-0"
-            style={{
-              background: "rgba(0, 0, 0, 0.45)",
-              color: "#ffffff",
-              fontSize: boardLength(28, canvas.width),
-              padding: boardLength(12, canvas.width),
-              lineHeight: 1.2,
-            }}
-          >
-            {current.caption}
-          </div>
-        )}
-      </PhotoLayer>
+      {current && (
+        <PhotoLayer
+          key={`${stage.generation}-entering`}
+          shown={current}
+          fit={config.fit}
+          animation={first ? undefined : cellAnimation(mode, "entering", 0, 1, stage.offset, config.transitionSpeed)}
+          role="entering"
+        >
+          {config.showCaption && current.photo.caption && (
+            <div
+              className="absolute right-0 bottom-0 left-0"
+              style={{
+                background: "rgba(0, 0, 0, 0.45)",
+                color: "#ffffff",
+                fontSize: boardLength(28, canvas.width),
+                padding: boardLength(12, canvas.width),
+                lineHeight: 1.2,
+              }}
+            >
+              {current.photo.caption}
+            </div>
+          )}
+        </PhotoLayer>
+      )}
     </div>
   );
 }
 
 function PhotoLayer({
-  photo,
+  shown,
   fit,
   animation,
   role,
   children,
 }: {
-  photo: BoardPhoto;
+  shown: Shown;
   fit: GalleryConfig["fit"];
   animation: string | undefined;
   role: "entering" | "leaving";
@@ -212,15 +311,15 @@ function PhotoLayer({
   return (
     <div
       data-gallery-layer={role}
-      data-photo-id={photo.assetId}
+      data-photo-id={shown.photo.assetId}
       className="absolute inset-0"
       style={{ zIndex: role === "entering" ? 1 : 0, animation, willChange: animation ? "opacity, transform" : undefined }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- a media-proxy path,
           not a Next-optimizable asset, and the same <img> Image uses. */}
       <img
-        src={photo.src}
-        alt={photo.caption ?? ""}
+        src={shown.src}
+        alt={shown.photo.caption ?? ""}
         className="h-full w-full"
         style={{ objectFit: fit, objectPosition: "center" }}
         draggable={false}

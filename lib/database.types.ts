@@ -1413,6 +1413,24 @@ export type Database = {
       }
       is_org_member: { Args: { org: string }; Returns: boolean }
       is_platform_admin: { Args: Record<PropertyKey, never>; Returns: boolean }
+      media_orphan_objects: {
+        Args: { p_limit: number; p_min_age_hours: number }
+        Returns: {
+          created_at: string
+          name: string
+        }[]
+      }
+      media_purge_candidates: {
+        Args: { p_limit: number; p_retention_days: number }
+        Returns: {
+          asset_id: string
+          boards: Json
+          deleted_at: string
+          in_bundle: boolean
+          org_id: string
+          referenced: boolean
+        }[]
+      }
       mfa_satisfied: { Args: Record<PropertyKey, never>; Returns: boolean }
       org_member_directory: {
         Args: { p_org: string }

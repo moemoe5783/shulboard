@@ -5,10 +5,14 @@ import {
   ACCEPTED_IMAGE_TYPES,
   BOARD_VARIANT,
   scaledSize,
+  variantSpecsFor,
+  FALLBACK_CONTENT_TYPE,
+  FALLBACK_EXTENSION,
+  MAX_STORED_BYTES,
+  STORED_CONTENT_TYPES,
   VARIANT_CONTENT_TYPE,
   VARIANT_EXTENSION,
   VARIANT_QUALITY,
-  VARIANT_SPECS,
   isHeicFile,
 } from "./variants";
 import { decodeHeic } from "./heic";
@@ -19,8 +23,8 @@ import { removeStorageObjects } from "@/lib/storage/remove";
  *
  * For each photo: decode it (auto-oriented from its EXIF), write the `assets`
  * row as 'pending', resize to each variant, re-encode to WebP (which drops
- * EXIF/GPS), upload the derivatives to the `assets` Storage bucket under
- * <org>/<asset>/<variant>-<hash>.webp, then mark the row 'ready' and add the
+ * EXIF/GPS; JPEG where the browser can't make WebP), upload the derivatives to
+ * the `assets` Storage bucket under <org>/<asset>/<variant>-<hash>.<ext>, then mark the row 'ready' and add the
  * `album_items` link — exactly the shape lib/bundle/media.ts and the /m proxy
  * already read. Any failure after the row exists removes the files already
  * uploaded and marks the row 'failed' with the reason.
@@ -59,19 +63,42 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Draw a bitmap scaled to (w,h) and encode it to a WebP blob. */
-async function encodeVariant(bitmap: ImageBitmap, width: number, height: number): Promise<Blob> {
+type Encoded = { blob: Blob; contentType: string; extension: string };
+
+function toBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, VARIANT_QUALITY));
+}
+
+/**
+ * Draw a bitmap scaled to (w,h) and encode it — WebP, or JPEG where the
+ * browser can't make WebP (lib/media/variants.ts, FALLBACK_CONTENT_TYPE).
+ *
+ * The type is read off the blob that comes back, never assumed from the one
+ * asked for: a canvas without WebP support answers with a PNG and no error, and
+ * the bucket refuses PNG (20260927090200_assets_bucket_limits.sql).
+ */
+async function encodeVariant(bitmap: ImageBitmap, width: number, height: number): Promise<Encoded> {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas unavailable");
   ctx.drawImage(bitmap, 0, 0, width, height);
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, VARIANT_CONTENT_TYPE, VARIANT_QUALITY),
-  );
-  if (!blob) throw new Error("WebP encoding failed");
-  return blob;
+  const webp = await toBlob(canvas, VARIANT_CONTENT_TYPE);
+  if (webp?.type === VARIANT_CONTENT_TYPE) {
+    return { blob: webp, contentType: VARIANT_CONTENT_TYPE, extension: VARIANT_EXTENSION };
+  }
+
+  // JPEG has no transparency: a transparent pixel would come out black. Lay
+  // the picture on white, which is what it looks like on a page.
+  ctx.globalCompositeOperation = "destination-over";
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, width, height);
+  const jpeg = await toBlob(canvas, FALLBACK_CONTENT_TYPE);
+  if (jpeg?.type === FALLBACK_CONTENT_TYPE) {
+    return { blob: jpeg, contentType: FALLBACK_CONTENT_TYPE, extension: FALLBACK_EXTENSION };
+  }
+  throw new Error("this browser can't encode WebP or JPEG");
 }
 
 export async function uploadPhoto(input: {
@@ -180,17 +207,26 @@ export async function uploadPhoto(input: {
   try {
     // Reading is the first ~10%, each size is an equal share of the next 80%
     // (half resizing, half uploading), and saving the row is the last 10%.
-    const share = 0.8 / VARIANT_SPECS.length;
-    for (const [i, spec] of VARIANT_SPECS.entries()) {
+    const specs = variantSpecsFor(naturalWidth, naturalHeight);
+    const share = 0.8 / specs.length;
+    for (const [i, spec] of specs.entries()) {
       const { width, height } = scaledSize(naturalWidth, naturalHeight, spec.maxEdge);
       progress("resizing", 0.1 + share * i);
-      const blob = await encodeVariant(source, width, height);
+      const { blob, contentType, extension } = await encodeVariant(source, width, height);
+      // Storage refuses anything else (the bucket's own limits); saying why
+      // here beats its bare 4xx.
+      if (!STORED_CONTENT_TYPES.includes(blob.type) || blob.type !== contentType) {
+        return await fail(`${file.name} came out as ${blob.type || "an unknown type"}, which can't be stored.`);
+      }
+      if (blob.size > MAX_STORED_BYTES) {
+        return await fail(`${file.name} is too large to store at ${spec.name} size.`);
+      }
       progress("uploading", 0.1 + share * (i + 0.5));
       const hash = (await sha256Hex(await blob.arrayBuffer())).slice(0, 16);
-      const storagePath = `${folder}${spec.name}-${hash}.${VARIANT_EXTENSION}`;
+      const storagePath = `${folder}${spec.name}-${hash}.${extension}`;
 
       const { error } = await supabase.storage.from("assets").upload(storagePath, blob, {
-        contentType: VARIANT_CONTENT_TYPE,
+        contentType,
         upsert: false,
       });
       if (error) return await fail(`Upload failed for ${file.name}: ${error.message}`);
@@ -199,8 +235,8 @@ export async function uploadPhoto(input: {
       const entry: VariantEntry = {
         storage_path: storagePath,
         content_hash: hash,
-        extension: VARIANT_EXTENSION,
-        content_type: VARIANT_CONTENT_TYPE,
+        extension,
+        content_type: contentType,
         bytes: blob.size,
         width,
         height,

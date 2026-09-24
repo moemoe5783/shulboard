@@ -12,7 +12,8 @@
  */
 
 import { canonicalJson, etagFor, etagMatches, hashBoardDoc, hashPayload } from "../lib/bundle/hash.ts";
-import { mediaProxyPath, parseVariantFile, readAssetVariant } from "../lib/bundle/media.ts";
+import { mediaProxyPath, parseVariantFile, readAssetVariant, readBestVariant } from "../lib/bundle/media.ts";
+import { variantSpecsFor } from "../lib/media/variants.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail = "") {
@@ -209,6 +210,43 @@ check(readAssetVariant(null, "display") === null, "a null variants column reads 
 check(
   readAssetVariant({ display: { storage_path: "x" } }, "display") === null,
   "a variant missing required fields reads as null rather than a partial object",
+);
+
+// ---------------------------------------------------------------------------
+// Which sizes a photo gets, and falling back to the largest on file
+// ---------------------------------------------------------------------------
+
+const names = (w: number, h: number) => variantSpecsFor(w, h).map((spec) => spec.name).join(",");
+check(names(3000, 2000) === "thumb,display,large", "a 3000px photo gets every size", names(3000, 2000));
+check(names(1000, 750) === "thumb,display", "a 1000px photo gets thumb and display only", names(1000, 750));
+check(names(750, 1080) === "thumb,display", "a portrait exactly 1080px tall gets no large", names(750, 1080));
+check(names(1081, 700) === "thumb,display,large", "one pixel past display earns a large", names(1081, 700));
+check(names(300, 200) === "thumb,display", "a tiny photo still gets thumb and display", names(300, 200));
+
+const entry = (name: string, width: number, bytes: number) => ({
+  storage_path: `org/asset/${name}-h.webp`,
+  content_hash: "h",
+  extension: "webp",
+  content_type: "image/webp",
+  bytes,
+  width,
+  height: width,
+});
+const small = { thumb: entry("thumb", 400, 10), display: entry("display", 1000, 50) };
+check(readBestVariant(small, "display")?.name === "display", "the size asked for wins when it's on file");
+check(readBestVariant(small, "large")?.name === "display", "a missing large falls back to the largest on file");
+check(
+  readBestVariant({ thumb: entry("thumb", 400, 10) }, "display")?.name === "thumb",
+  "a missing display falls back to whatever is largest",
+);
+check(readBestVariant({}, "display") === null, "no sizes at all reads as null");
+check(readBestVariant(null, "large") === null, "a null variants column reads as null");
+check(
+  readBestVariant(
+    { a: { ...entry("a", 0, 10), width: undefined }, b: { ...entry("b", 0, 90), width: undefined } },
+    "large",
+  )?.name === "b",
+  "an older row with no recorded widths falls back by bytes",
 );
 
 const failed = results.filter((r) => !r.ok).length;
