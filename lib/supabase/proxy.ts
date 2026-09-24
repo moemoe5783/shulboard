@@ -41,6 +41,7 @@ const PUBLIC_PREFIXES = [
   "/zmanim-lab",
   "/collage-lab",
   "/backgrounds-lab",
+  "/upload-lab",
   "/clock-lab",
   "/widgets-lab",
 ];
