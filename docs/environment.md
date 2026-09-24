@@ -1,18 +1,18 @@
 # Environment variables
 
 Every environment variable this product reads, in one place, because all
-seven are set by hand in a hosting dashboard rather than committed anywhere, and
+nine are set by hand in a hosting dashboard rather than committed anywhere, and
 "what does this one do again" is exactly the question this file exists to
 answer three months from now.
 
-Two are public — meant to reach the browser. Four are secrets — server-only,
+Two are public — meant to reach the browser. Five are secrets — server-only,
 same handling as a password. Getting that distinction backwards in either
 direction is the mistake this table exists to prevent: a secret in a
 `NEXT_PUBLIC_*` variable ships in the browser bundle for anyone to read; a
 public one held back as if it were secret just breaks sign-in for no reason.
-The seventh, `ZMANIM_CHABAD_ENABLED`, is neither — not a password, and no
-reason to ship it to a browser either — a plain server-side feature flag,
-read only by server code that already never runs on the client.
+The other two, `ZMANIM_CHABAD_ENABLED` and `EMAIL_FROM_ADDRESS`, are neither —
+not passwords, and no reason to ship them to a browser either — plain
+server-side settings, read only by server code that never runs on the client.
 
 | Variable | Kind | Required by |
 |---|---|---|
@@ -23,6 +23,8 @@ read only by server code that already never runs on the client.
 | `CRON_SECRET` | secret | the bundle build worker, and the Chabad zmanim cache-warming cron |
 | `GEOCODING_API_KEY` | secret | the address lookup on the shul settings and new-shul forms |
 | `ZMANIM_CHABAD_ENABLED` | server flag | offering Chabad.org as a zmanim source at all |
+| `RESEND_API_KEY` | secret | emailing invitations (and, set in Supabase, every account email) |
+| `EMAIL_FROM_ADDRESS` | server setting | the address those emails come from |
 
 ---
 
@@ -342,6 +344,55 @@ indicator, since nothing ever populates `zmanim_cache`.
 
 ---
 
+## `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS`
+
+**What they are.** The email service. Two kinds of email leave Shulboard,
+and both go through the same Resend account:
+
+- **Invitations** to join a shul are sent by the app itself
+  (`lib/email/send.ts`), with `RESEND_API_KEY` over Resend's API. An
+  invitation isn't an account event — the person may have no account yet.
+- **Account emails** — confirm your email, sign-in links, reset your
+  password — are sent by Supabase Auth, over Resend's SMTP, with the same
+  key as the SMTP password. That is set in Supabase, not in Vercel (below).
+
+`EMAIL_FROM_ADDRESS` is the bare address both come from, e.g.
+`notices@yourshulboard.org`, on a domain verified in Resend. The display
+name is always "Shulboard".
+
+**Where they come from.** resend.com → sign up → Domains → add your domain
+and add the DNS records it lists (until it says Verified, nothing sends) →
+API Keys → create one with "Sending access". Set both in Vercel.
+
+Then, in the Supabase dashboard:
+
+1. **Authentication → SMTP Settings** → enable custom SMTP: host
+   `smtp.resend.com`, port `465`, username `resend`, password the same API
+   key, sender email `EMAIL_FROM_ADDRESS`, sender name `Shulboard`.
+   **Without this Supabase only emails your own Supabase team's addresses**,
+   so nobody else could confirm an account or reset a password.
+2. **Authentication → Email Templates** → for each of Confirm signup, Magic
+   link, Reset password, Change email address, Reauthentication and Invite
+   user, paste the matching file from `supabase/templates/` and the subject
+   from `supabase/config.toml`. Those files are generated — change
+   `lib/email/templates.ts` and run `npm run emails`, never edit the HTML.
+3. **Authentication → URL Configuration** → Site URL is your domain, and
+   add `https://<your-domain>/**` to Redirect URLs. Every link in those
+   emails comes back to `/auth/confirm` with the page to go to next.
+4. **Authentication → Providers → Email** → turn on "Confirm email". An
+   invitation is accepted by the account with the invited address, so an
+   address has to be proven before it's trusted.
+5. **Authentication → Multi-factor** → enable TOTP (authenticator apps).
+   Free on every plan. Without it the Account page's "Set up an
+   authenticator app" fails.
+
+**What breaks without them.** Nothing throws. With `RESEND_API_KEY` unset
+the invite form says email isn't set up and hands back the invitation link
+to send by hand — the invitation itself works the same. Without Supabase's
+SMTP set, account emails only reach your own team's addresses.
+
+---
+
 ## Setting these up on a real project
 
 Ask Claude Code to run the migrations and wire up the cron job — neither
@@ -365,7 +416,11 @@ short:
    that nothing breaks without it, but without it no gabbai can look up an
    address, and coordinates go back to being two numbers he has to find
    himself — which is the failure this variable exists to remove.
-6. `ZMANIM_CHABAD_ENABLED` — optional, and leave it unset unless you have
+6. `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` — plus the five Supabase
+   dashboard steps in their section above (SMTP, templates, redirect URLs,
+   confirm email, authenticator apps). Without them, invitations are links
+   you send by hand and account emails reach only your own team.
+7. `ZMANIM_CHABAD_ENABLED` — optional, and leave it unset unless you have
    specifically decided to turn Chabad.org on (see that section above for
    why this isn't a routine setup step). If you do set it to `true`, also
    create a **second** external scheduler entry hitting
@@ -373,10 +428,11 @@ short:
    `Authorization: Bearer <CRON_SECRET>` header, once a day rather than
    every 5 minutes.
 
-All seven go in the hosting platform's environment variable settings — for
+All nine go in the hosting platform's environment variable settings — for
 Vercel, Project → Settings → Environment Variables. `.env.example` only ever
-carries the two public ones as fillable lines; it names the other five —
-the four secrets, plus `ZMANIM_CHABAD_ENABLED`, which isn't one but has no
+carries the two public ones as fillable lines; it names the other seven —
+the five secrets, plus `ZMANIM_CHABAD_ENABLED` and `EMAIL_FROM_ADDRESS`, which
+aren't secrets but have no
 more business defaulting to a value in a committed file than a secret does
 — in a comment explaining why each is deliberately left blank, rather than
 inviting anyone to paste a real value into a file that gets committed.
