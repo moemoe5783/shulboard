@@ -298,7 +298,7 @@ export function BoardEditor({
       <Toolbar onFit={fit} canvas={canvas} />
 
       <div className="flex min-h-0 flex-1">
-        <LayersPanel />
+        <LayersPanel onContextMenu={setMenu} />
 
         <div
           ref={viewportRef}

@@ -185,7 +185,7 @@ export function EditorLab() {
       <Toolbar onFit={fit} canvas={CANVAS} />
 
       <div className="flex min-h-0 flex-1">
-        <LayersPanel />
+        <LayersPanel onContextMenu={setMenu} />
 
         {/* The canvas sits on --ink at 88%, which is design.md §4's one
             deliberate use of a dark ground: it makes the board the brightest
