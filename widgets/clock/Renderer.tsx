@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useSecond } from "@/lib/tick";
-import { BOARD_FONTS, boardFontSize } from "@/lib/board-theme";
+import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
 import type { WidgetRendererProps } from "../types";
 import { onFontsChange, useFitFontSize } from "../useFitFontSize";
 import { manifest, type ClockConfig } from "./manifest";
@@ -11,6 +11,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
   const second = useSecond();
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLSpanElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
 
   const format = useMemo(
     () =>
@@ -25,63 +26,81 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
   );
 
   const text = second === null ? " " : format.format(new Date(second * 1000));
-  const isFit = config.sizingMode === "fit";
+  const mode = config.sizingMode;
+  const isFit = mode === "fit";
+  const isHug = mode === "hug";
 
-  // Only searches while in `fit` mode — a `fixed` clock (the default) has
-  // nothing running in the background for the months it sits on a screen.
-  useFitFontSize(boxRef, contentRef, {
+  /*
+   * Every size decision measures the WIDEST time this format can show
+   * (`widestTime`: all zeros, two-digit hour) in a hidden stand-in, not the
+   * time on screen — so nothing resizes when 9:59 becomes 10:00, which is what
+   * made `fit` a bad choice for a clock (docs/sizing.md §2). The stand-in only
+   * changes when the format does (seconds on, 12/24h, a different zone).
+   */
+  const widest = second === null ? "" : widestTime(text);
+
+  // `fit`: as large as the box allows on both axes. The text box is trimmed to
+  // the figures (cap height to baseline, `text-box` below), so it's the digits
+  // themselves that fill the height rather than the font's line box, which
+  // left a short box with the time sitting in the middle of empty space.
+  // `heightFraction` leaves room for round figures overshooting the cap
+  // height; a browser without `text-box` measures the line box and simply
+  // fills a little less.
+  useFitFontSize(boxRef, measureRef, {
     minFontSize: manifest.sizing.minFontSize ?? 24,
-    maxFontSize: manifest.sizing.maxFontSize ?? 400,
+    maxFontSize: manifest.sizing.maxFontSize ?? 1080,
     canvasWidth: canvas.width,
     enabled: isFit,
-    deps: [text],
+    heightFraction: 0.9,
+    measureBy: "box",
+    onFit: (px) => {
+      if (contentRef.current) contentRef.current.style.fontSize = `${px}px`;
+    },
+    deps: [widest],
   });
 
-  // `fixed` keeps the declared size — unless the box is too narrow for
-  // the time at that size (seconds turned on, a 24h→12h switch, a box dragged
-  // in), where the clock used to be cut off. Then the type shrinks exactly
-  // enough to fit the widest time this format can show, so it never clips and
-  // never changes size when the hour gains a digit (docs/sizing.md §7).
-  const widest = second === null ? "" : widestTime(text);
-  // Not in `hug`, whose contract is that the declared size drives the box.
-  const isCapped = config.sizingMode === "fixed";
-  const scale = useWidthCap(boxRef, contentRef, { enabled: isCapped, deps: [widest, config.size, canvas.width] });
+  // `fixed` keeps the declared size — unless the box is too narrow for the
+  // time at that size (seconds turned on, a box dragged in), where the clock
+  // used to be cut off. Then the type shrinks exactly enough to fit
+  // (docs/sizing.md §7). Not in `hug`, where the declared size drives the box.
+  const isCapped = mode === "fixed";
+  const scale = useWidthCap(boxRef, measureRef, { enabled: isCapped, deps: [widest, config.size, canvas.width] });
 
   const align =
     config.align === "center" ? "justify-center" : config.align === "right" ? "justify-end" : "justify-start";
 
+  // Trimmed to the figures except in `hug`, whose box is the text's own
+  // height — trimmed, a round figure's overshoot would be clipped by the frame.
+  const trim = isHug ? "" : "[text-box:trim-both_cap_alphabetic]";
+  const declared = boardFontSize(config.size, canvas.width);
+
   return (
     <div ref={boxRef} className={`relative flex h-full w-full items-center ${align}`}>
       {/*
-        Frank Ruhl Libre, forced, rather than the board's own theme font —
-        docs/sizing.md §4. It's the only face with real tabular figures
-        (design.md's own measurement table: Assistant's tabular-nums spread is
-        unchanged, a measured no-op), and a clock is the one element whose
-        digit count changes every single minute it's on screen. The `numeric`
-        class still has to be applied on top: Frank Ruhl Libre has tabular
-        figures available but doesn't use them without tabular-nums asked for.
+        The numbers face (lib/board-theme.ts's NUMERIC_FONT): the board's or
+        this widget's font when its digits are all one width, Frank Ruhl Libre
+        when they aren't — docs/sizing.md §4. A clock's digits change every
+        second it's on screen; in a face without tabular figures it would
+        jitter. The `numeric` class asks for the tabular figures, which the
+        faces have but don't all use by default.
       */}
       <span
         ref={contentRef}
-        className="numeric font-semibold leading-none whitespace-nowrap"
+        className={`numeric font-semibold leading-none whitespace-nowrap ${trim}`}
         style={{
-          fontFamily: BOARD_FONTS.sefarim,
-          fontSize: isFit
-            ? undefined
-            : isCapped && scale < 1
-              ? `calc(${boardFontSize(config.size, canvas.width)} * ${scale})`
-              : boardFontSize(config.size, canvas.width),
+          fontFamily: NUMERIC_FONT,
+          fontSize: isFit ? undefined : isCapped && scale < 1 ? `calc(${declared} * ${scale})` : declared,
         }}
       >
         {text}
       </span>
-      {/* The widest time this format shows, measured at the declared size. */}
-      {isCapped && (
+      {!isHug && (
         <span
+          ref={measureRef}
           data-clock-measure
           aria-hidden
-          className="numeric pointer-events-none invisible absolute font-semibold leading-none whitespace-nowrap"
-          style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: boardFontSize(config.size, canvas.width) }}
+          className={`numeric pointer-events-none invisible absolute font-semibold leading-none whitespace-nowrap ${trim}`}
+          style={{ fontFamily: NUMERIC_FONT, fontSize: isFit ? undefined : declared }}
         >
           {widest}
         </span>
@@ -109,13 +128,10 @@ function useWidthCap(
   const [scale, setScale] = useState(1);
   useIsomorphicLayoutEffect(() => {
     const box = boxRef.current;
-    if (!enabled || !box) {
-      setScale(1);
-      return;
-    }
+    if (!enabled || !box) return;
     let frame: number | null = null;
     const measure = () => {
-      const probe = box.querySelector<HTMLElement>("[data-clock-measure]");
+      const probe = contentRef.current;
       const available = box.clientWidth;
       const needed = probe?.getBoundingClientRect().width ?? 0;
       if (available <= 0 || needed <= 0) return;
@@ -137,5 +153,5 @@ function useWidthCap(
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [enabled, boxRef, contentRef, ...deps]);
-  return scale;
+  return enabled ? scale : 1;
 }

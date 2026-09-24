@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { BOARD_FONTS } from "@/lib/board-theme";
+import { BOARD_FONTS, NUMERIC_FONT } from "@/lib/board-theme";
 import { formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
 import { useSecond } from "@/lib/tick";
@@ -295,10 +295,10 @@ function Entry({
         </span>
       )}
 
-      {/* The time itself — Frank Ruhl Libre, tabular, same as Clock. */}
+      {/* The time itself — the numbers face (lib/board-theme.ts), tabular, same as Clock. */}
       <span
         className="numeric font-semibold leading-none whitespace-nowrap"
-        style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: "1em" }}
+        style={{ fontFamily: NUMERIC_FONT, fontSize: "1em" }}
       >
         {time}
       </span>
@@ -319,7 +319,7 @@ function Entry({
       {config.showCountdown && (
         <span
           className="numeric leading-tight whitespace-nowrap opacity-80"
-          style={{ fontFamily: BOARD_FONTS.sefarim, fontSize: `${COUNTDOWN_SCALE}em` }}
+          style={{ fontFamily: NUMERIC_FONT, fontSize: `${COUNTDOWN_SCALE}em` }}
         >
           {countdown}
         </span>

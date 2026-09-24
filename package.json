@@ -12,7 +12,7 @@
     "test:db-types": "bash scripts/check-db-types.sh",
     "gen:db-types": "bash scripts/generate-db-types.sh",
     "test:routes": "node scripts/test-routes.mjs",
-    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:hebrew && npm run test:chabad-adapter && npm run test:chabad-rss && npm run test:chabad-embed && npm run test:geocoding && npm run test:zmanim-fallback && npm run test:zmanim-widget && npm run test:zmanim-fit && npm run test:zmanim-international && npm run test:collage && npm run test:image-size && npm run test:album-selection && npm run test:backgrounds && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display && npm run test:realtime && npm run test:font-parity && npm run test:zmanim-layout && npm run test:collage-widget && npm run test:backgrounds-browser && npm run test:sizing && npm run test:hebrew-widgets",
+    "test": "npm run test:db && npm run test:db-types && npm run test:widgets && npm run test:hebrew && npm run test:chabad-adapter && npm run test:chabad-rss && npm run test:chabad-embed && npm run test:geocoding && npm run test:zmanim-fallback && npm run test:zmanim-widget && npm run test:zmanim-fit && npm run test:zmanim-international && npm run test:collage && npm run test:image-size && npm run test:album-selection && npm run test:backgrounds && npm run test:bundle && npm run build && npm run test:routes && npm run test:editor && npm run test:display && npm run test:realtime && npm run test:font-parity && npm run test:zmanim-layout && npm run test:collage-widget && npm run test:backgrounds-browser && npm run test:sizing && npm run test:clock-fit && npm run test:hebrew-widgets",
     "test:backgrounds": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-backgrounds.ts",
     "test:backgrounds-browser": "node scripts/test-backgrounds-browser.mjs",
     "test:album-selection": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/test-album-selection.ts",
@@ -41,7 +41,8 @@
     "test:collage-widget": "node scripts/test-collage-widget.mjs",
     "test:zmanim-layout": "node scripts/test-zmanim-layout.mjs",
     "probe:chabad-shape": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/probe-chabad-shape.ts",
-    "backgrounds": "node scripts/add-backgrounds.mjs"
+    "backgrounds": "node scripts/add-backgrounds.mjs",
+    "test:clock-fit": "node scripts/test-clock-fit.mjs"
   },
   "dependencies": {
     "@hebcal/core": "^6.9.2",

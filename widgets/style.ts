@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
-import { BOARD_FONTS, boardLength, type BoardFont } from "@/lib/board-theme";
+import { BOARD_FONTS, boardLength, numericFace, type BoardFont } from "@/lib/board-theme";
 
 /*
  * Per-widget appearance — the design/appearance controls EVERY widget carries:
@@ -324,7 +324,12 @@ export function widgetStyle(
     }
   }
   if (config.textColor) style.color = config.textColor;
-  if (config.font !== "inherit") style.fontFamily = BOARD_FONTS[config.font as BoardFont];
+  if (config.font !== "inherit") {
+    style.fontFamily = BOARD_FONTS[config.font as BoardFont];
+    // Numbers follow the widget's font when its digits are one width
+    // (lib/board-theme.ts's TABULAR_FONTS), else stay in Frank Ruhl Libre.
+    (style as Record<string, string>)["--board-numeric-font"] = numericFace(config.font);
+  }
   // padding is a multiple of the widget's own text size (referenceSize is that
   // size, in design units), so the frame scales with the content.
   //
