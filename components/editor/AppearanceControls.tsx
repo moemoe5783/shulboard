@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON } from "@/app/(dev)/editor-lab/chrome";
-import { BOARD_FONT_OPTIONS } from "@/lib/board-theme";
+import { CATEGORY_LABELS, PICKABLE_FONTS, pickableFont, type FontCategory } from "@/lib/fonts";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
 import { backgroundKind } from "@/lib/board-background";
@@ -265,10 +265,17 @@ export function AppearanceControls({
           className={PANEL_CONTROL}
         >
           <option value="inherit">Board default</option>
-          {BOARD_FONT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
+          {/* A board saved before the catalog may name a face it no longer
+              offers (Miriam Libre, System) — kept selectable while chosen. */}
+          {config.font !== "inherit" && !pickableFont(config.font) && <option value={config.font}>{config.font}</option>}
+          {(Object.keys(CATEGORY_LABELS) as FontCategory[]).map((category) => (
+            <optgroup key={category} label={CATEGORY_LABELS[category]}>
+              {PICKABLE_FONTS.filter((font) => font.category === category).map((font) => (
+                <option key={font.id} value={font.id}>
+                  {font.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>

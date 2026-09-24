@@ -270,6 +270,7 @@ function WidgetFrame({
       <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign)}>
         {style.title && (
           <div
+            dir="auto"
             style={{
               flexShrink: 0,
               fontWeight: 600,

@@ -43,9 +43,13 @@ self.addEventListener("activate", (event) => {
 });
 
 /** Immutable by construction: a variant's path contains its content hash, so a
- *  re-processed asset is a new path rather than a stale hit. */
+ *  re-processed asset is a new path rather than a stale hit. Board fonts
+ *  (/fonts/, scripts/build-fonts.ts) are named by content hash the same way. */
 const isAsset = (url) =>
-  url.pathname.startsWith("/m/") || url.pathname.startsWith("/demo/") || url.pathname.startsWith("/backgrounds/");
+  url.pathname.startsWith("/m/") ||
+  url.pathname.startsWith("/fonts/") ||
+  url.pathname.startsWith("/demo/") ||
+  url.pathname.startsWith("/backgrounds/");
 const isBuildOutput = (url) => url.pathname.startsWith("/_next/static/");
 
 /*

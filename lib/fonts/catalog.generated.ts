@@ -2251,3 +2251,176 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     }
   }
 };
+
+/** Each Hebrew face's size-matched, Hebrew-only family: `base` for any
+ *  English face, and a per-pairing one where an English face needs its own. */
+export const HEBREW_ALIASES: Record<string, { base: { family: string; sizeAdjust: number }; pairings: Record<string, { family: string; sizeAdjust: number }> }> = {
+  "frank-ruhl-libre": {
+    "base": {
+      "family": "Frank Ruhl Libre Hebrew",
+      "sizeAdjust": 1.02
+    },
+    "pairings": {
+      "cinzel": {
+        "family": "Frank Ruhl Libre Hebrew for Cinzel",
+        "sizeAdjust": 1.19
+      },
+      "eb-garamond": {
+        "family": "Frank Ruhl Libre Hebrew for EB Garamond",
+        "sizeAdjust": 0.9
+      },
+      "cormorant-garamond": {
+        "family": "Frank Ruhl Libre Hebrew for Cormorant Garamond",
+        "sizeAdjust": 0.86
+      },
+      "libre-baskerville": {
+        "family": "Frank Ruhl Libre Hebrew for Libre Baskerville",
+        "sizeAdjust": 1.11
+      },
+      "crimson-pro": {
+        "family": "Frank Ruhl Libre Hebrew for Crimson Pro",
+        "sizeAdjust": 0.85
+      }
+    }
+  },
+  "david-libre": {
+    "base": {
+      "family": "David Libre Hebrew",
+      "sizeAdjust": 1.12
+    },
+    "pairings": {}
+  },
+  "noto-serif-hebrew": {
+    "base": {
+      "family": "Noto Serif Hebrew Hebrew",
+      "sizeAdjust": 0.91
+    },
+    "pairings": {}
+  },
+  "bona-nova": {
+    "base": {
+      "family": "Bona Nova Hebrew",
+      "sizeAdjust": 1.01
+    },
+    "pairings": {}
+  },
+  "heebo": {
+    "base": {
+      "family": "Heebo Hebrew",
+      "sizeAdjust": 1.01
+    },
+    "pairings": {
+      "inter": {
+        "family": "Heebo Hebrew for Inter",
+        "sizeAdjust": 1.1
+      },
+      "bebas-neue": {
+        "family": "Heebo Hebrew for Bebas Neue",
+        "sizeAdjust": 1.21
+      },
+      "oswald": {
+        "family": "Heebo Hebrew for Oswald",
+        "sizeAdjust": 1.2
+      },
+      "pinyon-script": {
+        "family": "Heebo Hebrew for Pinyon Script",
+        "sizeAdjust": 0.89
+      },
+      "dancing-script": {
+        "family": "Heebo Hebrew for Dancing Script",
+        "sizeAdjust": 0.91
+      },
+      "caveat": {
+        "family": "Heebo Hebrew for Caveat",
+        "sizeAdjust": 0.91
+      }
+    }
+  },
+  "assistant": {
+    "base": {
+      "family": "Assistant Hebrew",
+      "sizeAdjust": 1.08
+    },
+    "pairings": {}
+  },
+  "rubik": {
+    "base": {
+      "family": "Rubik Hebrew",
+      "sizeAdjust": 1.03
+    },
+    "pairings": {}
+  },
+  "ibm-plex-sans-hebrew": {
+    "base": {
+      "family": "IBM Plex Sans Hebrew Hebrew",
+      "sizeAdjust": 0.98
+    },
+    "pairings": {}
+  },
+  "alef": {
+    "base": {
+      "family": "Alef Hebrew",
+      "sizeAdjust": 1.12
+    },
+    "pairings": {}
+  },
+  "suez-one": {
+    "base": {
+      "family": "Suez One Hebrew",
+      "sizeAdjust": 1.01
+    },
+    "pairings": {}
+  },
+  "secular-one": {
+    "base": {
+      "family": "Secular One Hebrew",
+      "sizeAdjust": 1.09
+    },
+    "pairings": {}
+  },
+  "bellefair": {
+    "base": {
+      "family": "Bellefair Hebrew",
+      "sizeAdjust": 1.29
+    },
+    "pairings": {}
+  },
+  "karantina": {
+    "base": {
+      "family": "Karantina Hebrew",
+      "sizeAdjust": 0.98
+    },
+    "pairings": {}
+  },
+  "amatic-sc": {
+    "base": {
+      "family": "Amatic SC Hebrew",
+      "sizeAdjust": 0.89
+    },
+    "pairings": {}
+  },
+  "noto-rashi-hebrew": {
+    "base": {
+      "family": "Noto Rashi Hebrew Hebrew",
+      "sizeAdjust": 0.93
+    },
+    "pairings": {}
+  },
+  "playpen-sans-hebrew": {
+    "base": {
+      "family": "Playpen Sans Hebrew Hebrew",
+      "sizeAdjust": 0.98
+    },
+    "pairings": {}
+  },
+  "miriam-libre": {
+    "base": {
+      "family": "Miriam Libre Hebrew",
+      "sizeAdjust": 1.01
+    },
+    "pairings": {}
+  }
+};
+
+/** The stylesheet declaring every face (the root layout links it). */
+export const FONT_FACES_CSS = "/fonts/faces.3124d82afb.css";
