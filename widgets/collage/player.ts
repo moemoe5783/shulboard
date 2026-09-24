@@ -7,6 +7,7 @@ import {
   type CollageBox,
   type CollagePhoto,
 } from "@/lib/collage";
+import { ARTSY_PAGINATION, artsyEngine, type ArtsyLayout, type Fastener, type ItemFrameStyle } from "@/lib/collage/artsy";
 import type { BoardPhoto, BoardPhotoVariant } from "@/lib/media/album-photos";
 import type { CollageConfig } from "./manifest";
 import { enterOffset, transitionTotal } from "./transitions";
@@ -36,15 +37,39 @@ import { enterOffset, transitionTotal } from "./transitions";
 /** A photo the engine can place: it has a size, so it has an aspect ratio. */
 type EnginePhoto = CollagePhoto & { addedAt: string | null; photo: BoardPhoto; variants: BoardPhotoVariant[] };
 
+/** A rectangle as percentages of whatever contains it. */
+export type PctRect = { left: number; top: number; width: number; height: number };
+
+/** An Artsy print's dressing, laid out by lib/collage/artsy. Every rect is a
+ *  percentage of the print's own outer rect, so it scales with the board. */
+export type PlannedArtsy = {
+  style: ItemFrameStyle;
+  rotation: number;
+  zIndex: number;
+  /** Where in the stacking order it sits, from the bottom — what Deal and
+   *  Shuffle play in. */
+  zOrder: number;
+  image: PctRect;
+  paper: PctRect;
+  /** For wood and gallery frames: the frame band's thickness, and the mat
+   *  inside it, in board design units. */
+  frameUnits: number;
+  fasteners: (PctRect & { kind: Fastener["kind"]; angle: number; variant: number })[];
+  variation: { tint: number; tone: number; grain: number };
+  hero: boolean;
+};
+
 export type PlannedCell = {
   id: string;
-  /** Percentages of the collage box. */
+  /** Percentages of the collage box. For an Artsy print, its unrotated outer
+   *  rect; the tilt is `artsy.rotation`, about the centre. */
   left: number;
   top: number;
   width: number;
   height: number;
   src: string;
   alt: string;
+  artsy?: PlannedArtsy;
 };
 
 export type PlannedPage = {
@@ -195,6 +220,8 @@ export class CollagePlayer {
       config.density,
       config.exactCount,
       config.order,
+      config.style,
+      config.style === "artsy" ? [config.artsyFrame, config.artsyTilt, config.artsyOverlap, config.artsyFasteners].join(",") : "",
       Math.round(box.width),
       Math.round(box.height),
       photos.length > 0,
@@ -254,13 +281,72 @@ export class CollagePlayer {
     const remaining = ordered.filter((photo) => !shown.has(photo.id));
     if (remaining.length === 0) return null;
 
+    const artsy = config.style === "artsy";
     const page = nextPage(
       remaining,
       box,
-      { gap: config.gutter, density: config.density, exactCount: config.exactCount },
+      artsy
+        ? {
+            ...ARTSY_PAGINATION,
+            engine: artsyEngine({
+              frame: config.artsyFrame,
+              tilt: config.artsyTilt,
+              overlap: config.artsyOverlap,
+              fasteners: config.artsyFasteners,
+            }),
+            density: config.density,
+            exactCount: Math.min(config.exactCount, ARTSY_PAGINATION.maxPerPage ?? 10),
+          }
+        : { gap: config.gutter, density: config.density, exactCount: config.exactCount },
       pageSeed(this.version, index, box),
     );
     const byId = new Map(page.photos.map((photo) => [photo.id, photo]));
+    if (artsy) {
+      const layout = page.layout as ArtsyLayout;
+      const order = layout.items.map((item, i) => ({ i, z: item.zIndex })).sort((a, b) => a.z - b.z || a.i - b.i);
+      const zOrder = new Array<number>(layout.items.length);
+      order.forEach((entry, rank) => {
+        zOrder[entry.i] = rank;
+      });
+      const pct = (rect: { x: number; y: number; w: number; h: number }, within: { w: number; h: number }): PctRect => ({
+        left: (rect.x / within.w) * 100,
+        top: (rect.y / within.h) * 100,
+        width: (rect.w / within.w) * 100,
+        height: (rect.h / within.h) * 100,
+      });
+      const cells: PlannedCell[] = layout.items.map((item, i) => {
+        const photo = byId.get(item.photoId)!;
+        const needed = (item.image.w / box.width) * boxPx.width * dpr;
+        return {
+          id: item.photoId,
+          left: ((item.cx - item.outer.w / 2) / box.width) * 100,
+          top: ((item.cy - item.outer.h / 2) / box.height) * 100,
+          width: (item.outer.w / box.width) * 100,
+          height: (item.outer.h / box.height) * 100,
+          src: pickVariant(photo.variants, needed).src,
+          alt: photo.photo.caption ?? "",
+          artsy: {
+            style: item.style,
+            rotation: item.rotation,
+            zIndex: item.zIndex,
+            zOrder: zOrder[i],
+            image: pct(item.image, item.outer),
+            paper: pct(item.paper, item.outer),
+            frameUnits: item.spec.frame * Math.min(item.image.w, item.image.h),
+            fasteners: item.fasteners.map((f) => ({ ...pct({ x: f.x, y: f.y, w: f.w, h: f.h }, item.outer), kind: f.kind, angle: f.angle, variant: f.variant })),
+            variation: item.variation,
+            hero: item.hero,
+          },
+        };
+      });
+      return {
+        key: `${cycle}:${index}:${this.version}:${this.layoutKey}`,
+        cycle,
+        index,
+        photoIds: page.photos.map((photo) => photo.id),
+        cells,
+      };
+    }
     const cells: PlannedCell[] = page.layout.cells.map((cell) => {
       const photo = byId.get(cell.photoId)!;
       const needed = (cell.w / box.width) * boxPx.width * dpr;

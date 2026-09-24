@@ -5,11 +5,11 @@ import { SliderField } from "@/components/editor/SliderField";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import type { WidgetSettingsProps } from "@/widgets/types";
 import { AlbumsField } from "../media/AlbumField";
-import { COLLAGE_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN, type CollageTransition } from "../collage/transitions";
+import { CLEAN_TRANSITIONS, TRANSITION_SPEED_MAX, TRANSITION_SPEED_MIN } from "../collage/transitions";
 import { readGalleryConfig, type GalleryConfig } from "./manifest";
 
 /** The collage's effects, named for one photo rather than a page of them. */
-const GALLERY_TRANSITION_LABELS: Record<CollageTransition, string> = {
+const GALLERY_TRANSITION_LABELS: Record<(typeof CLEAN_TRANSITIONS)[number], string> = {
   cascade: "Fade out, then in",
   rise: "Rise",
   zoom: "Zoom",
@@ -64,7 +64,7 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<GalleryC
           onChange={(event) => onChange({ transition: event.target.value as GalleryConfig["transition"] })}
           className={PANEL_CONTROL}
         >
-          {COLLAGE_TRANSITIONS.map((transition) => (
+          {CLEAN_TRANSITIONS.map((transition) => (
             <option key={transition} value={transition}>
               {GALLERY_TRANSITION_LABELS[transition]}
             </option>

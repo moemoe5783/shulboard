@@ -9,7 +9,9 @@ import { PhotoEmpty } from "../media/PhotoEmpty";
 import { resolveDesignUnits } from "../useFitFontSize";
 import { readCollageConfig, type CollageConfig } from "./manifest";
 import { CollagePlayer, type PlannedPage, type PlayerSnapshot } from "./player";
-import { cellAnimation, sequenceOrder, type CollageTransition } from "./transitions";
+import { backdropStyle } from "./artsy-style";
+import { ArtsyLayer } from "./ArtsyLayer";
+import { cellAnimation, sequenceOrder, transitionFor, type CollageTransition } from "./transitions";
 
 /*
  * The collage on the board. The layout comes from lib/collage — the same
@@ -97,7 +99,10 @@ function useReducedMotion(): boolean {
 export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageConfig>) {
   const reducedMotion = useReducedMotion();
   const stored = readCollageConfig(raw);
-  const config: CollageConfig = reducedMotion ? { ...stored, transition: "none" } : stored;
+  // The transition this style runs (Artsy's own two, or Clean's), and none
+  // at all under reduced motion.
+  const transition = reducedMotion ? "none" : transitionFor(stored.style, stored.transition);
+  const config: CollageConfig = { ...stored, transition };
   const album = useSelectedPhotos(config);
   const second = useSecond();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -152,7 +157,11 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<CollageCon
       data-collage-cycle={snapshot.current ? snapshot.current.cycle + 1 : undefined}
       data-collage-count={snapshot.current ? snapshot.current.cells.length : undefined}
       className="relative h-full w-full overflow-hidden"
-      style={{ backgroundColor: config.leftoverColor || undefined }}
+      style={
+        config.style === "artsy"
+          ? backdropStyle(config.artsyBackdrop, config.artsyBackdropColor, canvas.width)
+          : { backgroundColor: config.leftoverColor || undefined }
+      }
     >
       {hint ? (
         // Editor-only: on a screen, an empty or unconfigured collage shows
@@ -194,7 +203,18 @@ function hintFor(
 /** One page of photos. Each photo animates on its own (./transitions.ts): in
  *  the chosen order for the photo-by-photo effects, all together for the
  *  whole-page ones. A leaving page animates away too, so nothing is left to pop. */
-function Layer({
+function Layer(props: {
+  page: PlannedPage;
+  config: CollageConfig;
+  canvas: { width: number };
+  role: "entering" | "leaving";
+  offset: number;
+}) {
+  if (props.config.style === "artsy") return <ArtsyLayer {...props} mode={props.config.transition as CollageTransition} />;
+  return <CleanLayer {...props} />;
+}
+
+function CleanLayer({
   page,
   config,
   canvas,
