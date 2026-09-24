@@ -233,6 +233,31 @@ try {
 
   console.log("");
 
+  // ---- the Appearance tab, in sections --------------------------------------
+
+  await page.keyboard.press("Escape");
+  await widget(TITLE_ID).click();
+  await settle();
+  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await settle();
+  check((await page.locator("aside").getByText("Alignment", { exact: true }).count()) === 0,
+    "a title's Options no longer mixes in how it looks (alignment moved to Appearance)");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await settle();
+  const sectionTabs = await page.locator("[data-appearance-tab]").allTextContents();
+  check(sectionTabs.join(",") === "Presets,Background,Shape,Text,Header", "Appearance shows every section's name at the top", sectionTabs.join(", "));
+  await page.locator('[data-appearance-tab="text"]').click();
+  await settle();
+  check((await page.locator('[data-appearance-section="text"]').getByText("Alignment", { exact: true }).count()) === 1 &&
+      (await page.locator('[data-appearance-section="text"]').getByText("Font", { exact: true }).count()) === 1,
+    "its Text section holds the title's alignment beside the shared font and colour");
+  await page.locator('[data-appearance-tab="background"]').click();
+  await settle();
+  check((await page.locator('[data-appearance-section="background"]').getByText("Background", { exact: true }).count()) >= 1,
+    "and each section shows only its own controls");
+  await page.getByRole("button", { name: "Options", exact: true }).click();
+  await settle();
+
   // ---- dimensions and preset shapes (lib/editor/size-presets.ts) ----------
 
   await page.keyboard.press("Escape");

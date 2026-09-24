@@ -4,7 +4,7 @@ import { ColorField } from "@/components/editor/ColorField";
 import { PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
 import { SliderField } from "@/components/editor/SliderField";
 import { readConfig } from "@/widgets/read-config";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import { qrCodeConfigSchema, type QrCodeConfig } from "./manifest";
 
 function luminance(hex: string): number | null {
@@ -31,7 +31,6 @@ function colourProblem(dark: string, light: string): string | null {
 
 export function Settings({ config: raw, onChange }: WidgetSettingsProps<QrCodeConfig>) {
   const config = readConfig(qrCodeConfigSchema, raw);
-  const problem = colourProblem(config.darkColor, config.lightColor);
   const value = config.value.trim();
   // "shul.org/donate" with no https:// is a web address some phones treat as
   // plain text.
@@ -69,6 +68,30 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<QrCodeCo
           className={PANEL_CONTROL}
         />
       </label>
+
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Error correction</span>
+        <select
+          value={config.errorCorrection}
+          onChange={(event) => onChange({ errorCorrection: event.target.value as QrCodeConfig["errorCorrection"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="L">Low — simplest code</option>
+          <option value="M">Medium — recommended</option>
+          <option value="Q">High</option>
+          <option value="H">Highest — densest code</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** The code's colours, margin and caption size — the Appearance tab's Code section. */
+function QrCodeLook({ config: raw, onChange }: WidgetSettingsProps<QrCodeConfig>) {
+  const config = readConfig(qrCodeConfigSchema, raw);
+  const problem = colourProblem(config.darkColor, config.lightColor);
+  return (
+    <div className="flex flex-col gap-4">
       {config.caption && (
         <SliderField
           label="Caption size"
@@ -89,20 +112,8 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<QrCodeCo
       </div>
 
       <SliderField label="Margin" value={config.margin} min={0} max={8} onChange={(margin) => onChange({ margin })} format={(v) => `${v} squares`} />
-
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Error correction</span>
-        <select
-          value={config.errorCorrection}
-          onChange={(event) => onChange({ errorCorrection: event.target.value as QrCodeConfig["errorCorrection"] })}
-          className={PANEL_CONTROL}
-        >
-          <option value="L">Low — simplest code</option>
-          <option value="M">Medium — recommended</option>
-          <option value="Q">High</option>
-          <option value="H">Highest — densest code</option>
-        </select>
-      </label>
     </div>
   );
 }
+
+export const appearance: AppearanceSection<QrCodeConfig>[] = [{ id: "code", label: "Code", Component: QrCodeLook }];

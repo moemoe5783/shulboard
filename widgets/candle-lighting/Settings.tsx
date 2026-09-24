@@ -1,7 +1,7 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import type { CandleLightingConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightingConfig>) {
@@ -88,19 +88,6 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
         </span>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className={PANEL_LABEL}>Alignment</span>
-        <select
-          value={config.align}
-          onChange={(event) => onChange({ align: event.target.value as CandleLightingConfig["align"] })}
-          className={PANEL_CONTROL}
-        >
-          <option value="left">Left</option>
-          <option value="center">Centre</option>
-          <option value="right">Right</option>
-        </select>
-      </label>
-
       {/*
         THE "Zmanim source" SELECT AND THE "Calculate missing times"
         CHECKBOX BOTH STOOD HERE, and both are gone rather than reduced.
@@ -124,3 +111,25 @@ export function Settings({ config, onChange }: WidgetSettingsProps<CandleLightin
     </div>
   );
 }
+
+/** Where the text sits in its box — at the top of the Appearance tab's Text section. */
+function CandleLightingText({ config, onChange }: WidgetSettingsProps<CandleLightingConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1">
+        <span className={PANEL_LABEL}>Alignment</span>
+        <select
+          value={config.align}
+          onChange={(event) => onChange({ align: event.target.value as CandleLightingConfig["align"] })}
+          className={PANEL_CONTROL}
+        >
+          <option value="left">Left</option>
+          <option value="center">Centre</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+export const appearance: AppearanceSection<CandleLightingConfig>[] = [{ id: "text", label: "Text", Component: CandleLightingText }];

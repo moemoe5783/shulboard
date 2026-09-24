@@ -1,7 +1,7 @@
 "use client";
 
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "@/components/editor/panelControls";
-import type { WidgetSettingsProps } from "@/widgets/types";
+import type { AppearanceSection, WidgetSettingsProps } from "@/widgets/types";
 import type { ClockConfig } from "./manifest";
 
 export function Settings({ config, onChange }: WidgetSettingsProps<ClockConfig>) {
@@ -39,6 +39,18 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ClockConfig>)
         />
       </label>
 
+      {/* No Size field here: the properties panel shows it generically, above
+          this form, for every mode (docs/sizing.md's "objective, visible
+          type size... in every sizing mode") — see PropertiesPanel.tsx's
+          TypeSizeField. */}
+    </div>
+  );
+}
+
+/** Where the text sits in its box — at the top of the Appearance tab's Text section. */
+function ClockText({ config, onChange }: WidgetSettingsProps<ClockConfig>) {
+  return (
+    <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className={PANEL_LABEL}>Alignment</span>
         <select
@@ -51,11 +63,8 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ClockConfig>)
           <option value="right">Right</option>
         </select>
       </label>
-
-      {/* No Size field here: the properties panel shows it generically, above
-          this form, for every mode (docs/sizing.md's "objective, visible
-          type size... in every sizing mode") — see PropertiesPanel.tsx's
-          TypeSizeField. */}
     </div>
   );
 }
+
+export const appearance: AppearanceSection<ClockConfig>[] = [{ id: "text", label: "Text", Component: ClockText }];
