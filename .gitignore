@@ -46,3 +46,6 @@ scripts/fixtures/
 
 # originals for the background library (scripts/add-backgrounds.mjs)
 /backgrounds-src/
+
+# Board fonts, copied from @fontsource at build time (scripts/build-fonts.ts)
+/public/fonts/
