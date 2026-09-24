@@ -19,6 +19,10 @@ const PUBLIC_PREFIXES = [
   // worker checks a shared secret for the same reason.
   "/api/screen/",
   "/api/cron/",
+  // TV pairing: a TV asking for a code, and checking whether it was entered.
+  "/api/pair/",
+  // The page a TV opens to be paired.
+  "/pair",
   // The media proxy: immutable asset paths, no session (schema.md §6).
   "/m/",
   // The service worker must be reachable without a session or it can never
