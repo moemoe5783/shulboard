@@ -19,16 +19,20 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Made, and on the way to its page. The box stays up and working until that
+  // page arrives — closing it straight away left the old list on screen for a
+  // second or two, looking as if nothing had happened.
+  const [opening, setOpening] = useState(false);
+  const busy = pending || opening;
 
   const submit = () => {
     const value = name.trim();
-    if (!value) return;
+    if (!value || busy) return;
     setError(null);
     startTransition(async () => {
       const result = await createAlbum(value);
       if (result.ok) {
-        setName("");
-        setCreating(false);
+        setOpening(true);
         router.push(`/media/${result.id}`);
       } else {
         setError(result.error);
@@ -56,6 +60,7 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
             autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
+            readOnly={busy}
             onKeyDown={(event) => {
               if (event.key === "Enter") submit();
               if (event.key === "Escape") setCreating(false);
@@ -64,10 +69,10 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
             placeholder="Kiddush photos"
             className="rounded-control border-rule-firm bg-paper text-body text-ink h-8 min-w-64 flex-1 border px-2"
           />
-          <Button type="button" variant="primary" busy={pending} onClick={submit}>
-            {pending ? "Adding" : "Add album"}
+          <Button type="button" variant="primary" busy={busy} onClick={submit}>
+            {opening ? "Opening album" : pending ? "Adding" : "Add album"}
           </Button>
-          <button type="button" className={buttonClassName("tertiary")} onClick={() => setCreating(false)}>
+          <button type="button" className={buttonClassName("tertiary")} disabled={busy} onClick={() => setCreating(false)}>
             Cancel
           </button>
           {error && (
@@ -121,6 +126,10 @@ function AlbumRow({ album, onOpen, onDeleted }: { album: Album; onOpen: () => vo
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Deleted, and waiting for the list to refresh without it: still working as
+  // far as anyone looking is concerned, so the button doesn't come back.
+  const [gone, setGone] = useState(false);
+  const busy = pending || gone;
 
   if (confirming) {
     return (
@@ -132,19 +141,21 @@ function AlbumRow({ album, onOpen, onDeleted }: { album: Album; onOpen: () => vo
             </span>
             <Button
               className="text-offline"
-              disabled={pending}
+              busy={busy}
               onClick={() =>
                 startTransition(async () => {
                   setError(null);
                   const result = await deleteAlbum(album.id);
-                  if (result.ok) onDeleted();
-                  else setError(result.error);
+                  if (result.ok) {
+                    setGone(true);
+                    onDeleted();
+                  } else setError(result.error);
                 })
               }
             >
-              {pending ? "Deleting" : "Delete album"}
+              {busy ? "Deleting" : "Delete album"}
             </Button>
-            <Button variant="tertiary" onClick={() => setConfirming(false)}>
+            <Button variant="tertiary" disabled={busy} onClick={() => setConfirming(false)}>
               Cancel
             </Button>
             {error && <span className="text-meta text-offline">{error}</span>}

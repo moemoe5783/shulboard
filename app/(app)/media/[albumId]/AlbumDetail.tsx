@@ -365,11 +365,22 @@ function SelectionBar({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Which button started the running action, so that one shows the spinner.
+  const [running, setRunning] = useState<"end" | "keep" | "delete" | null>(null);
+  // What the last action did, said once the selection bar has gone — the
+  // photos changing under it is easy to miss on a long album.
+  const [done, setDone] = useState<string | null>(null);
   const ids = useMemo(() => [...selected], [selected]);
   const count = ids.length;
   const noun = count === 1 ? "photo" : "photos";
 
-  const run = (action: () => Promise<{ ok: true } | { ok: false; error: string }>) =>
+  const run = (
+    which: "end" | "keep" | "delete",
+    action: () => Promise<{ ok: true } | { ok: false; error: string }>,
+    doneMessage: string,
+  ) => {
+    setRunning(which);
+    setDone(null);
     startTransition(async () => {
       setError(null);
       const result = await action();
@@ -378,13 +389,17 @@ function SelectionBar({
         return;
       }
       setConfirming(false);
+      setDone(doneMessage);
       onDone();
     });
+  };
+  const busy = (which: "end" | "keep" | "delete") => pending && running === which;
 
   if (count === 0) {
     return (
       <div className="mt-6 flex items-center justify-between gap-4">
-        <span className="text-meta text-ink-soft">
+        <span className="text-meta text-ink-soft" role="status">
+          {done ? `${done} ` : ""}
           {total} {total === 1 ? "photo" : "photos"}. Tick photos to delete them or set when they stop showing.
         </span>
         <Button variant="tertiary" onClick={onSelectAll}>
@@ -425,11 +440,21 @@ function SelectionBar({
               className="rounded-control border-rule-firm bg-surface text-cell text-ink h-8 border px-2"
             />
           </label>
-          <Button disabled={pending || !date} onClick={() => run(() => setDisplayUntil(albumId, ids, date))}>
-            Set end date
+          <Button
+            busy={busy("end")}
+            disabled={pending || !date}
+            onClick={() =>
+              run("end", () => setDisplayUntil(albumId, ids, date), `${count} ${noun} will stop showing after ${formatDate(date)}.`)
+            }
+          >
+            {busy("end") ? "Saving" : "Set end date"}
           </Button>
-          <Button disabled={pending} onClick={() => run(() => setDisplayUntil(albumId, ids, null))}>
-            Keep showing
+          <Button
+            busy={busy("keep")}
+            disabled={pending}
+            onClick={() => run("keep", () => setDisplayUntil(albumId, ids, null), `${count} ${noun} will keep showing.`)}
+          >
+            {busy("keep") ? "Saving" : "Keep showing"}
           </Button>
         </>
       ) : (
@@ -442,10 +467,15 @@ function SelectionBar({
             <span className="text-meta text-ink">
               Delete {count} {noun}? {count === 1 ? "It" : "They"} leave every album and board.
             </span>
-            <Button className="text-offline" disabled={pending} onClick={() => run(() => deleteAssets(albumId, ids))}>
-              Delete
+            <Button
+              className="text-offline"
+              busy={busy("delete")}
+              disabled={pending}
+              onClick={() => run("delete", () => deleteAssets(albumId, ids), `Deleted ${count} ${noun}.`)}
+            >
+              {busy("delete") ? "Deleting" : "Delete"}
             </Button>
-            <Button variant="tertiary" onClick={() => setConfirming(false)}>
+            <Button variant="tertiary" disabled={pending} onClick={() => setConfirming(false)}>
               Cancel
             </Button>
           </>
@@ -549,6 +579,10 @@ function DeleteAlbum({ albumId, albumName, onDeleted }: { albumId: string; album
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Deleted, and on the way back to the album list: still working until the
+  // page changes, so the button doesn't come back in between.
+  const [gone, setGone] = useState(false);
+  const busy = pending || gone;
 
   if (!confirming) {
     return (
@@ -566,19 +600,21 @@ function DeleteAlbum({ albumId, albumName, onDeleted }: { albumId: string; album
       <div className="flex gap-2">
         <Button
           className="text-offline"
-          disabled={pending}
+          busy={busy}
           onClick={() =>
             startTransition(async () => {
               setError(null);
               const result = await deleteAlbum(albumId);
-              if (result.ok) onDeleted();
-              else setError(result.error);
+              if (result.ok) {
+                setGone(true);
+                onDeleted();
+              } else setError(result.error);
             })
           }
         >
-          {pending ? "Deleting" : "Delete album"}
+          {busy ? "Deleting" : "Delete album"}
         </Button>
-        <Button variant="tertiary" onClick={() => setConfirming(false)}>
+        <Button variant="tertiary" disabled={busy} onClick={() => setConfirming(false)}>
           Cancel
         </Button>
       </div>
