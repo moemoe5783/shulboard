@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
 import { boardLength, numericFace } from "@/lib/board-theme";
-import { catalogId } from "@/lib/fonts";
+import { catalogId, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 
 /*
@@ -35,6 +35,13 @@ import { fontStack } from "@/lib/fonts/stack";
 export const widgetFontSchema = z.string().max(64).default("inherit");
 export type WidgetFont = string;
 
+/** A stored Hebrew choice, read safely: "inherit", "auto", or a Hebrew font
+ *  that exists; anything else is "inherit". */
+export function readHebrewChoice(value: unknown): string {
+  if (value === "auto") return "auto";
+  return typeof value === "string" && hebrewFontById(value) ? value : "inherit";
+}
+
 /** The style fields a widget spreads into its config schema. */
 export const widgetStyleFields = {
   /** The widget's background box: a colour or a gradient
@@ -48,6 +55,10 @@ export const widgetStyleFields = {
   textColor: z.string().max(64).default(""),
   /** The widget's font, or "inherit" to use the board's. */
   font: widgetFontSchema,
+  /** The face the widget's Hebrew is drawn in: "inherit" for the board's
+   *  choice, "auto" for the one matched to the widget's font
+   *  (lib/fonts/stack.ts), or a Hebrew override font's id. */
+  hebrewFont: z.string().max(64).default("inherit"),
   /**
    * Inner padding, as a MULTIPLE of the widget's own text size — not absolute
    * board units. 0.5 means "half the type size". This is what makes the frame
@@ -81,6 +92,7 @@ export type WidgetStyleConfig = {
   backgroundOpacity: number;
   textColor: string;
   font: WidgetFont;
+  hebrewFont: string;
   padding: number;
   radius: number;
   borderWidth: number;
@@ -227,6 +239,7 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
     backgroundOpacity: clamp(num("backgroundOpacity", 100), 0, 100),
     textColor: str("textColor"),
     font: typeof font === "string" && catalogId(font) ? font : "inherit",
+    hebrewFont: readHebrewChoice(config.hebrewFont),
     // padding and titleSize are ratios of the text size now (see the schema).
     // Clamp on read so a document written when they were absolute board units
     // (a padding of 28, a titleSize of 40) is bounded to something sane rather
@@ -294,6 +307,9 @@ export function widgetStyle(
    * fixed height to consume). Omitted only by callers with no box to measure.
    */
   box?: { width: number; height: number },
+  /** The board's own font choices, for an element that changes only one of
+   *  its font or its Hebrew face. */
+  board?: { font?: string; hebrewFont?: string },
 ): CSSProperties {
   const style: CSSProperties = {
     height: "100%",
@@ -314,11 +330,16 @@ export function widgetStyle(
     }
   }
   if (config.textColor) style.color = config.textColor;
-  if (config.font !== "inherit") {
-    style.fontFamily = fontStack(config.font);
+  // The widget's own font or Hebrew face, each falling back to the board's —
+  // an element that only changes its Hebrew keeps the board's font, and one
+  // that only changes its font keeps the board's Hebrew choice.
+  if (config.font !== "inherit" || config.hebrewFont !== "inherit") {
+    const font = config.font !== "inherit" ? config.font : board?.font;
+    const hebrew = config.hebrewFont !== "inherit" ? config.hebrewFont : board?.hebrewFont;
+    style.fontFamily = fontStack(font, hebrew);
     // Numbers follow the widget's font when its digits are one width
-    // (lib/board-theme.ts's TABULAR_FONTS), else stay in Frank Ruhl Libre.
-    (style as Record<string, string>)["--board-numeric-font"] = numericFace(config.font);
+    // (lib/board-theme.ts's hasEvenDigits), else stay in Frank Ruhl Libre.
+    (style as Record<string, string>)["--board-numeric-font"] = numericFace(font, hebrew);
   }
   // padding is a multiple of the widget's own text size (referenceSize is that
   // size, in design units), so the frame scales with the content.

@@ -18,6 +18,7 @@ import {
   PICKABLE_FONTS,
   pickableFont,
 } from "../lib/fonts/index.ts";
+import { fontStack, resolvedHebrew } from "../lib/fonts/stack.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail = "") {
@@ -89,6 +90,25 @@ console.log("\n-- weights ------------------------------------------------------
 check(clampWeight("cormorant-garamond", 300) === 500, "a weight below the minimum is drawn at the minimum");
 check(clampWeight("lato", 600) === 700 || clampWeight("lato", 600) === 400, "a weight the face lacks becomes its nearest", String(clampWeight("lato", 600)));
 check(clampWeight("marcellus", 700) === 400, "a one-weight face stays at its weight");
+
+console.log("\n-- stacks ---------------------------------------------------------");
+check(fontStack("playfair-display") === '"Playfair Display", "Frank Ruhl Libre Hebrew", serif', "a serif gets Frank Ruhl Libre's Hebrew", fontStack("playfair-display"));
+check(fontStack("montserrat") === '"Montserrat", "Heebo Hebrew", sans-serif', "a sans gets Heebo's Hebrew", fontStack("montserrat"));
+check(fontStack("great-vibes").endsWith("cursive"), "a script ends in cursive", fontStack("great-vibes"));
+check(fontStack("cinzel").includes('"Frank Ruhl Libre Hebrew for Cinzel"'), "a capitals-only face gets its own size-matched Hebrew", fontStack("cinzel"));
+check(fontStack("heebo") === '"Heebo", sans-serif', "a Hebrew & English face needs no fallback", fontStack("heebo"));
+check(fontStack("montserrat", "rubik") === '"Rubik Hebrew", "Montserrat", sans-serif', "a Hebrew override comes first, Hebrew only", fontStack("montserrat", "rubik"));
+check(fontStack("heebo", "suez-one").startsWith('"Suez One Hebrew", "Heebo"'), "an override beats even a face's own Hebrew", fontStack("heebo", "suez-one"));
+check(fontStack("montserrat", "auto") === fontStack("montserrat"), '"auto" is the matched fallback');
+check(fontStack("montserrat", "not-a-font") === fontStack("montserrat"), "an unknown override is ignored");
+check(fontStack("sefarim") === '"Frank Ruhl Libre", serif', "a pre-catalog name draws the same face", fontStack("sefarim"));
+check(fontStack("system") === "var(--type-neutral)", "System stays the device font");
+check(fontStack(undefined) === fontStack("assistant"), "no font is Assistant, as before");
+check(resolvedHebrew("playfair-display") === "frank-ruhl-libre" && resolvedHebrew("heebo") === "heebo" && resolvedHebrew("inter", "rubik") === "rubik", "the Hebrew face a stack draws in is known");
+
+console.log("\n-- nikud (measured; confirmed by eye in /fonts-lab) -----------------");
+for (const font of HEBREW_OVERRIDE_FONTS) console.log(`         ${font.nikudOk ? "sets nikud " : "NIKUD POOR "} ${font.name}`);
+check(HEBREW_OVERRIDE_FONTS.some((f) => !f.nikudOk), "the measurement can fail a font (not everything passes)");
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);
