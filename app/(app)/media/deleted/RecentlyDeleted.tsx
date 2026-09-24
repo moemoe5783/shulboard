@@ -99,6 +99,8 @@ export function RecentlyDeleted({
         : done;
     });
 
+  const selectAll = () => setSelected(new Set(photos.map((photo) => photo.id)));
+
   const toggle = (id: string) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -177,12 +179,28 @@ export function RecentlyDeleted({
           Photos
         </h2>
 
+        {photos.length > 0 && picked.length === 0 && (
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <span className="text-meta text-ink-soft">
+              {plural(photos.length, "photo", "photos")}. Tick photos to restore them or delete them for good.
+            </span>
+            <Button variant="tertiary" onClick={selectAll}>
+              Select all
+            </Button>
+          </div>
+        )}
+
         {picked.length > 0 && (
           <div
             className="rounded-panel border-rule-firm bg-verdigris-wash sticky top-0 z-10 mt-3 flex flex-wrap items-center gap-3 border px-4 py-3"
             data-selection-bar
           >
             <span className="text-cell text-ink font-semibold">{plural(picked.length, "photo", "photos")} selected</span>
+            {picked.length < photos.length && (
+              <Button variant="tertiary" disabled={pending} onClick={selectAll}>
+                Select all
+              </Button>
+            )}
             <Button variant="tertiary" disabled={pending} onClick={() => setSelected(new Set())}>
               Clear
             </Button>

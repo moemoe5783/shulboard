@@ -525,6 +525,13 @@ try {
     const thumb = await row("purim-seudah.jpg").locator("img").getAttribute("src");
     check(Boolean(thumb?.includes("/object/sign/assets/")), "its thumbnail is a signed URL, since /m won't serve a deleted photo", thumb ?? "");
 
+    await page.getByRole("button", { name: "Select all" }).click();
+    const ticked = await page.locator("tbody input[type=checkbox]:checked").count();
+    const boxes = await page.locator("tbody input[type=checkbox]").count();
+    check(ticked === boxes && boxes >= 2, "Select all ticks every deleted photo", `${ticked} of ${boxes}`);
+    check(((await page.locator("[data-selection-bar]").textContent()) ?? "").includes(`${boxes} photos selected`), "and the bar counts them");
+    await page.locator("[data-selection-bar]").getByRole("button", { name: "Clear" }).click();
+
     let before = mock.state.writes.length;
     await row("purim-seudah.jpg").getByRole("button", { name: "Restore", exact: true }).click();
     await page.getByRole("status").filter({ hasText: "Restored 1 photo" }).waitFor({ timeout: 10000 }).catch(() => {});
