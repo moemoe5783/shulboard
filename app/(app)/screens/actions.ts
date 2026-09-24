@@ -147,11 +147,13 @@ export async function deleteScreen(formData: FormData): Promise<void> {
  * until it exists, "assign a board" means "this playlist has exactly one
  * item," so the item is replaced rather than added to.
  */
-export async function assignBoard(formData: FormData): Promise<void> {
+export type AssignBoardState = { assigned?: string; at?: number };
+
+export async function assignBoard(_previous: AssignBoardState, formData: FormData): Promise<AssignBoardState> {
   const org = await requireActiveOrg();
   const screenId = String(formData.get("screenId") ?? "");
   const boardId = String(formData.get("boardId") ?? "");
-  if (!boardId) return;
+  if (!boardId) return {};
 
   const supabase = await createClient();
 
@@ -208,7 +210,11 @@ export async function assignBoard(formData: FormData): Promise<void> {
     if (linkError) throw new Error(`Couldn't point the screen at its playlist: ${linkError.message}`);
   }
 
+  const { data: board } = await supabase.from("boards").select("name").eq("id", boardId).maybeSingle();
   revalidatePath(`/screens/${screenId}`);
+  // `at` makes each save a new state, so saving the same board twice still
+  // shows its confirmation afresh.
+  return { assigned: board?.name ?? "the board", at: Date.now() };
 }
 
 export type ConnectTvState = { error?: string; connected?: string };

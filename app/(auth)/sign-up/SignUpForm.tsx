@@ -113,7 +113,7 @@ export function SignUpForm({ from, initialEmail = "" }: { from?: string; initial
         onChange={(event) => setPassword(event.target.value)}
       />
       <div>
-        <Button type="submit" variant="primary" disabled={status === "working"}>
+        <Button type="submit" variant="primary" busy={status === "working"}>
           {status === "working" ? "Creating your account" : "Create account"}
         </Button>
       </div>

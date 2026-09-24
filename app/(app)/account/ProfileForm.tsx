@@ -39,7 +39,7 @@ export function ProfileForm({ name: initial }: { name: string }) {
         />
       </div>
       <div>
-        <Button type="submit" variant="secondary" disabled={status === "saving" || name.trim() === initial}>
+        <Button type="submit" variant="secondary" busy={status === "saving"} disabled={name.trim() === initial}>
           {status === "saving" ? "Saving" : status === "saved" ? "Saved" : "Save name"}
         </Button>
       </div>

@@ -43,7 +43,7 @@ export function NewScreenForm() {
       </SelectField>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" variant="primary" busy={pending}>
           {pending ? "Adding" : "Add screen"}
         </Button>
         <Link href="/screens" className={buttonClassName("tertiary")}>

@@ -63,7 +63,7 @@ export function ForgotPasswordForm({ initialEmail = "", from }: { initialEmail?:
         onChange={(event) => setEmail(event.target.value)}
       />
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="primary" disabled={status === "working"}>
+        <Button type="submit" variant="primary" busy={status === "working"}>
           {status === "working" ? "Sending" : "Email me a reset link"}
         </Button>
         <Link href={SIGN_IN_PATH} className="text-body text-verdigris">

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/Button";
+import { SubmitButton } from "@/components/SubmitButton";
 import { deleteScreen, rotateToken } from "../actions";
 
 /*
@@ -25,9 +26,9 @@ export function ScreenSettings({ screenId }: { screenId: string }) {
         <div className="flex items-center gap-2">
           <form action={rotateToken}>
             <input type="hidden" name="screenId" value={screenId} />
-            <Button type="submit" variant="secondary">
+            <SubmitButton variant="secondary" pendingLabel="Rotating">
               Rotate link
-            </Button>
+            </SubmitButton>
           </form>
           <Button variant="tertiary" onClick={() => setConfirming(null)}>
             Cancel
@@ -47,9 +48,9 @@ export function ScreenSettings({ screenId }: { screenId: string }) {
         <div className="flex items-center gap-2">
           <form action={deleteScreen}>
             <input type="hidden" name="screenId" value={screenId} />
-            <Button type="submit" variant="secondary">
+            <SubmitButton variant="secondary" pendingLabel="Deleting">
               Delete screen
-            </Button>
+            </SubmitButton>
           </form>
           <Button variant="tertiary" onClick={() => setConfirming(null)}>
             Cancel

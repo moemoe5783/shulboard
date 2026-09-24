@@ -23,7 +23,7 @@ export function InviteForm({ canInviteAdmins, emailConfigured }: { canInviteAdmi
           </SelectField>
         </div>
         <div>
-          <Button type="submit" variant="primary" disabled={pending}>
+          <Button type="submit" variant="primary" busy={pending}>
             {pending ? "Inviting" : "Invite"}
           </Button>
         </div>

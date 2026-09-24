@@ -1,7 +1,8 @@
 "use client";
 
 import { startTransition, useActionState, useCallback, useState } from "react";
-import { Button } from "@/components/Button";
+import { Button, Spinner } from "@/components/Button";
+import { useFormStatus } from "react-dom";
 import { Field } from "@/components/Field";
 import { pairingCodeFrom, QrScanner } from "@/components/QrScanner";
 import { connectTv, disconnectTv, type ConnectTvState } from "../actions";
@@ -78,7 +79,7 @@ export function ConnectTvForm({ screenId, initialCode = "" }: { screenId: string
           />
         </div>
         <div>
-          <Button type="submit" variant="primary" disabled={pending}>
+          <Button type="submit" variant="primary" busy={pending}>
             {pending ? "Connecting" : "Connect TV"}
           </Button>
         </div>
@@ -109,13 +110,35 @@ export function DisconnectTv({ screenId }: { screenId: string }) {
         again. Use this to move the screen to a new TV.
       </p>
       <div className="flex flex-wrap gap-3">
-        <button type="submit" className="text-cell rounded-control border-rule-firm text-offline hover:bg-verdigris-wash/40 h-8 border px-3">
-          Disconnect TV
-        </button>
-        <Button variant="tertiary" onClick={() => setConfirming(false)}>
-          Keep it connected
-        </Button>
+        <DisconnectButton />
+        <KeepConnected onKeep={() => setConfirming(false)} />
       </div>
     </form>
+  );
+}
+
+/** Reads the form it sits in, so it can say it's working while the TV is
+ *  disconnected — a second or two, and without this nothing on the page moved. */
+function DisconnectButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending || undefined}
+      className="text-cell rounded-control border-rule-firm text-offline enabled:hover:bg-verdigris-wash/40 inline-flex h-8 items-center gap-2 border px-3 disabled:cursor-progress"
+    >
+      {pending && <Spinner />}
+      {pending ? "Disconnecting" : "Disconnect TV"}
+    </button>
+  );
+}
+
+function KeepConnected({ onKeep }: { onKeep: () => void }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button variant="tertiary" onClick={onKeep} disabled={pending}>
+      Keep it connected
+    </Button>
   );
 }

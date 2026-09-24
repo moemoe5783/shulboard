@@ -64,7 +64,7 @@ export function AlbumsView({ albums }: { albums: Album[] }) {
             placeholder="Kiddush photos"
             className="rounded-control border-rule-firm bg-paper text-body text-ink h-8 min-w-64 flex-1 border px-2"
           />
-          <Button type="button" variant="primary" disabled={pending} onClick={submit}>
+          <Button type="button" variant="primary" busy={pending} onClick={submit}>
             {pending ? "Adding" : "Add album"}
           </Button>
           <button type="button" className={buttonClassName("tertiary")} onClick={() => setCreating(false)}>

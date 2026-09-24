@@ -59,19 +59,46 @@ export function buttonClassName(variant: ButtonVariant = "secondary"): string {
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
+  /** The action it started is still running: the button is disabled, says
+   *  so to a screen reader, and shows a small spinner before its label, so a
+   *  click that takes a second or two never looks like it didn't land. */
+  busy?: boolean;
 };
 
 export function Button({
   variant = "secondary",
   className = "",
   type = "button",
+  busy = false,
+  disabled,
+  children,
   ...props
 }: ButtonProps) {
   return (
     <button
       type={type}
-      className={`${BASE} ${VARIANTS[variant]} ${className}`}
+      className={`${BASE} ${VARIANTS[variant]} ${busy ? "cursor-progress gap-2" : ""} ${className}`}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
       {...props}
-    />
+    >
+      {busy && <Spinner />}
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The busy mark. Load-bearing, which is what earns an icon inside a text
+ * button (design.md §5): it is the answer to a click. Motion answers an action
+ * here, and under reduced motion it stays still — the label change and the
+ * disabled state still say the same thing.
+ */
+export function Spinner() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 motion-safe:animate-spin" fill="none">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }

@@ -135,7 +135,7 @@ export function TwoStepSettings() {
           />
         </div>
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" variant="primary" disabled={working || code.length !== 6}>
+          <Button type="submit" variant="primary" busy={working} disabled={code.length !== 6}>
             {working ? "Checking" : "Turn on"}
           </Button>
           <Button variant="tertiary" onClick={cancel}>
