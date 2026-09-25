@@ -172,6 +172,27 @@ export const HEBREW_FONTS: readonly HebrewFont[] = [
 export const HEBREW_FALLBACK = { serif: "frank-ruhl-libre", other: "heebo" } as const;
 
 /**
+ * Hebrew punctuation a board sets that not every Hebrew face has: sof pasuk,
+ * maqaf, geresh, gershayim and paseq. Ten of the Hebrew faces have no sof
+ * pasuk or paseq at all (measured, scripts/build-fonts.ts).
+ */
+export const HEBREW_PUNCTUATION: Record<string, number> = {
+  "sof pasuk": 0x05c3,
+  maqaf: 0x05be,
+  geresh: 0x05f3,
+  gershayim: 0x05f4,
+  paseq: 0x05c0,
+};
+
+/**
+ * The last Hebrew face in every stack whose Hebrew face lacks one of those, or
+ * any nikud point: Frank Ruhl Libre after a serif, Assistant after anything
+ * else. The build confirms both have every nikud point and every mark above,
+ * and fails if that ever stops being true.
+ */
+export const HEBREW_MARKS_FALLBACK = { serif: "frank-ruhl-libre", other: "assistant" } as const;
+
+/**
  * Digit-only families of the two fallbacks (unicode-range 0–9 only), for the
  * faces whose figures are old-style with no lining alternative: in a time,
  * zmanim, date or countdown widget their digits are drawn in the matched

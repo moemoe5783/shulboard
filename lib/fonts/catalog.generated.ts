@@ -23,6 +23,9 @@ export type BuiltFont = {
   hebrew: boolean;
   /** Has every nikud point and positions them (GPOS mark). */
   nikud: boolean;
+  /** Hebrew punctuation and nikud points it has no glyph for — drawn from
+   *  the marks fallback (lib/fonts/catalog.ts, HEBREW_MARKS_FALLBACK). */
+  hebrewMissing: string[];
   metrics: { capHeight: number; xHeight: number; hebrewHeight: number | null };
 };
 
@@ -60,6 +63,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.6,
@@ -113,6 +117,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.708,
       "xHeight": 0.515,
@@ -165,6 +170,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.653,
       "xHeight": 0.405,
@@ -215,6 +221,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.625,
       "xHeight": 0.386,
@@ -264,6 +271,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.77,
       "xHeight": 0.53,
@@ -298,6 +306,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7002,
       "xHeight": 0.5,
@@ -346,6 +355,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.66,
       "xHeight": 0.481,
@@ -385,6 +395,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.481,
@@ -436,6 +447,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.5,
@@ -488,6 +500,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.5732,
       "xHeight": 0.4199,
@@ -541,6 +554,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.75,
       "xHeight": 0.46,
@@ -580,6 +594,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7275,
       "xHeight": 0.5459,
@@ -633,6 +648,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.517,
@@ -739,6 +755,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7165,
       "xHeight": 0.5065,
@@ -776,6 +793,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.702,
       "xHeight": 0.378,
@@ -815,6 +833,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.71,
       "xHeight": 0.519,
@@ -854,6 +873,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.676,
       "xHeight": 0.46,
@@ -893,6 +913,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.5,
@@ -932,6 +953,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.66,
       "xHeight": 0.5,
@@ -1041,6 +1063,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.697,
       "xHeight": 0.548,
@@ -1075,6 +1098,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.476,
@@ -1109,6 +1133,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.7,
@@ -1146,6 +1171,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.81,
       "xHeight": 0.578,
@@ -1180,6 +1206,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.807,
       "xHeight": 0.357,
@@ -1214,6 +1241,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.6885,
       "xHeight": 0.3345,
@@ -1248,6 +1276,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7446,
       "xHeight": 0.353,
@@ -1285,6 +1314,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.72,
       "xHeight": 0.332,
@@ -1322,6 +1352,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": false,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7005,
       "xHeight": 0.3551,
@@ -1369,6 +1400,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.66,
       "xHeight": 0.468,
@@ -1454,6 +1486,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.6152,
       "xHeight": 0.4541,
@@ -1503,6 +1536,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.714,
       "xHeight": 0.536,
@@ -1587,6 +1621,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.665,
       "xHeight": 0.44,
@@ -1636,6 +1674,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.7109,
       "xHeight": 0.5283,
@@ -1683,6 +1725,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.66,
       "xHeight": 0.478,
@@ -1751,6 +1794,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.52,
@@ -1924,6 +1971,11 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": false,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq",
+      "U+05C7"
+    ],
     "metrics": {
       "capHeight": 0.698,
       "xHeight": 0.516,
@@ -1965,6 +2017,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.674,
       "xHeight": 0.523,
@@ -2006,6 +2062,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.666,
       "xHeight": 0.523,
@@ -2047,6 +2107,11 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "gershayim",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.6889,
       "xHeight": 0.3641,
@@ -2132,6 +2197,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.7,
       "xHeight": 0.5,
@@ -2195,6 +2264,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.758,
       "xHeight": 0.662,
@@ -2244,6 +2317,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.714,
       "xHeight": 0.536,
@@ -2292,6 +2366,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.782,
       "xHeight": 0.546,
@@ -2341,6 +2419,7 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": false,
+    "hebrewMissing": [],
     "metrics": {
       "capHeight": 0.7021,
       "xHeight": 0.519,
@@ -2385,6 +2464,10 @@ export const BUILT_FONTS: Record<string, BuiltFont> = {
     "latin": true,
     "hebrew": true,
     "nikud": true,
+    "hebrewMissing": [
+      "sof pasuk",
+      "paseq"
+    ],
     "metrics": {
       "capHeight": 0.695,
       "xHeight": 0.566,

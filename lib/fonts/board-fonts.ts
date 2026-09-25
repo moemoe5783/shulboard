@@ -1,6 +1,6 @@
 import { BUILT_FONTS, FONT_FACES_CSS, type BuiltFace } from "./catalog.generated.ts";
 import { DIGIT_FAMILIES } from "./catalog.ts";
-import { boldWeight, catalogId, clampWeight, digitFallbackFor, fontInfo } from "./index.ts";
+import { boldWeight, catalogId, clampWeight, digitFallbackFor, fontInfo, hebrewMarksFallbackFor } from "./index.ts";
 import { boardFontRoles, resolveElementFont, type FontRole } from "./roles.ts";
 import { hebrewFamily, hebrewOverride, resolvedHebrew } from "./stack.ts";
 
@@ -112,6 +112,14 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
       // for an override or a fallback, or the face itself.
       const family = hebrewOverride(hebrew) || hebrewId !== id ? hebrewFamily(hebrewId, id) : name;
       addFace(family, hebrewWeight, HEBREW_SAMPLE);
+      // The marks fallback its stack ends with, if its Hebrew lacks some
+      // punctuation (lib/fonts/stack.ts).
+      const marks = hebrewMarksFallbackFor(id, hebrewId);
+      if (marks) {
+        const marksWeight = clampWeight(marks, weight);
+        for (const face of filesFor(marks, marksWeight, (subset) => subset === "hebrew")) files.add(face.url);
+        addFace(hebrewFamily(marks, id), marksWeight, "\u05C3\u05C0");
+      }
     };
 
     /** A font and its Hebrew, as drawn at the text weights. */
