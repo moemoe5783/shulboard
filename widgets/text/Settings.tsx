@@ -39,6 +39,7 @@ function TextLayout({ config: raw, onChange }: WidgetSettingsProps<TextConfig>) 
           onChange={(event) => onChange({ align: event.target.value as TextConfig["align"] })}
           className={PANEL_CONTROL}
         >
+          <option value="start">Automatic — by language</option>
           <option value="left">Left</option>
           <option value="center">Centre</option>
           <option value="right">Right</option>

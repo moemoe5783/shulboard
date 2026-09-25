@@ -36,6 +36,8 @@ const CANVAS = { width: 1920, height: 1080 };
 const SCALE = 1280 / 1920;
 const MIXED = "Mincha מנחה 6:45, Shabbos שבת";
 const PASUK = "בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ׃";
+/** The marks not every face has: maqaf, paseq, sof pasuk, gershayim, geresh. */
+const MARKS_LINE = "וְרוּחַ אֱלֹהִים מְרַחֶפֶת עַל־פְּנֵי ׀ הַמָּיִם׃ רש״י, ר׳ יוחנן";
 
 const WEIGHT_NAMES: Record<number, string> = {
   100: "Thin",
@@ -115,9 +117,15 @@ function NikudSection({ only }: { only: string | null }) {
                 <span className="text-ink block text-[14px]">{font.label ? `${font.label} (${font.name})` : font.name}</span>
                 {info.measured.nikudOk ? "Sets nikud" : "Nikud may not show properly"}
                 {font.group === "legacy" ? ", kept for boards that use it" : ""}
+                {info.measured.hebrewMissing.length > 0 && (
+                  <span className="block">No {info.measured.hebrewMissing.join(", ")}: from the stack&rsquo;s marks face</span>
+                )}
               </td>
-              <td dir="rtl" lang="he" className="text-ink py-3" style={{ fontFamily: `"${font.name}"`, fontSize: 64 * SCALE, lineHeight: 1.6 }}>
-                {PASUK}
+              {/* The face's board stack, as a board draws it — so a mark the
+                  face lacks comes from the marks face at its end. */}
+              <td dir="rtl" lang="he" className="text-ink py-3" style={{ fontFamily: fontStack(font.id), fontSize: 64 * SCALE, lineHeight: 1.6 }}>
+                <div>{PASUK}</div>
+                <div data-lab-marks>{MARKS_LINE}</div>
               </td>
             </tr>
           ))}

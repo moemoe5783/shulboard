@@ -28,7 +28,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { join } from "node:path";
 import * as fontkit from "fontkit";
 import { decompress } from "wawoff2";
-import { DIGIT_FAMILIES, ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
+import { DIGIT_FAMILIES, ENGLISH_FONTS, HEBREW_FONTS, HEBREW_MARKS_FALLBACK, HEBREW_PUNCTUATION } from "../lib/fonts/catalog.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const OUT = join(ROOT, "public/fonts");
@@ -52,6 +52,7 @@ type Built = {
   latin: boolean;
   hebrew: boolean;
   nikud: boolean;
+  hebrewMissing: string[];
   metrics: { capHeight: number; xHeight: number; hebrewHeight: number | null };
 };
 
@@ -182,6 +183,7 @@ async function build(
 
   let hebrew = false;
   let nikud = false;
+  let hebrewMissing: string[] = [];
   let hebrewHeight: number | null = null;
   if (withHebrew) {
     const hebrewFile = Object.entries(local).find(([key]) => key.startsWith("hebrew-normal"))?.[1];
@@ -189,6 +191,10 @@ async function build(
       const hf = await open(hebrewFile);
       hebrew = all(hf, 0x05d0, 0x05ea);
       nikud = NIKUD.every((c) => has(hf, c)) && (hf.availableFeatures ?? []).includes("mark");
+      hebrewMissing = [
+        ...Object.entries(HEBREW_PUNCTUATION).filter(([, c]) => !has(hf, c)).map(([name]) => name),
+        ...NIKUD.filter((c) => !has(hf, c)).map((c) => `U+${c.toString(16).toUpperCase().padStart(4, "0")}`),
+      ];
       hebrewHeight = Math.round((["ב", "ה", "מ", "ר", "ש"].reduce((sum, c) => sum + top(hf, c), 0) / 5) * 10000) / 10000;
     }
   }
@@ -204,6 +210,7 @@ async function build(
     latin: all(base, 0x41, 0x5a) && all(base, 0x61, 0x7a) && all(base, 0x30, 0x39),
     hebrew,
     nikud,
+    hebrewMissing,
     metrics: {
       capHeight: Math.round(top(base, "H") * 10000) / 10000,
       xHeight: Math.round(top(base, "x") * 10000) / 10000,
@@ -338,6 +345,9 @@ export type BuiltFont = {
   hebrew: boolean;
   /** Has every nikud point and positions them (GPOS mark). */
   nikud: boolean;
+  /** Hebrew punctuation and nikud points it has no glyph for — drawn from
+   *  the marks fallback (lib/fonts/catalog.ts, HEBREW_MARKS_FALLBACK). */
+  hebrewMissing: string[];
   metrics: { capHeight: number; xHeight: number; hebrewHeight: number | null };
 };
 
@@ -359,8 +369,17 @@ console.log(`fonts: ${Object.keys(built).length} families, ${files} files in pub
 // that can't — old-style figures with no lining alternative, or a missing
 // digit — flagged for a decision (drop it, or special-case it).
 const flags: string[] = [];
+for (const id of Object.values(HEBREW_MARKS_FALLBACK)) {
+  if (built[id].hebrewMissing.length || !built[id].nikud) {
+    throw new Error(`the Hebrew marks fallback ${id} lacks ${built[id].hebrewMissing.join(", ") || "nikud positioning"}`);
+  }
+}
 for (const font of [...ENGLISH_FONTS, ...HEBREW_FONTS]) {
   const b = built[font.id];
+  if (b.hebrewMissing.length) {
+    const serif = "generic" in font ? font.generic === "serif" : font.category === "serif";
+    flags.push(`${font.name}: no ${b.hebrewMissing.join(", ")} — drawn from ${serif ? "Frank Ruhl Libre" : "Assistant"}`);
+  }
   if (!b.digits) flags.push(`${font.name}: no complete digit set`);
   else if (!b.liningDigits) {
     const fallback = ("generic" in font ? font.generic === "serif" : font.category === "serif") ? "Frank Ruhl Libre" : "Heebo";

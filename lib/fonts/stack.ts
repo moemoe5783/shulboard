@@ -1,5 +1,5 @@
 import { HEBREW_ALIASES } from "./catalog.generated.ts";
-import { catalogId, fontInfo, hebrewFallbackFor, hebrewFont } from "./index.ts";
+import { catalogId, fontInfo, hebrewFallbackFor, hebrewFont, hebrewMarksFallbackFor } from "./index.ts";
 
 /*
  * A board font as CSS: the chosen face, the Hebrew that goes with it, and a
@@ -17,6 +17,12 @@ import { catalogId, fontInfo, hebrewFallbackFor, hebrewFont } from "./index.ts";
  * as the Latin beside them (scripts/build-fonts.ts). Its file only downloads
  * when a board actually has Hebrew text. A face with its own Hebrew (Hebrew &
  * English) needs no fallback.
+ *
+ * LAST, A FACE FOR THE MARKS. Ten Hebrew faces have no sof pasuk or paseq
+ * (one no gershayim, one no qamats qatan). A stack whose Hebrew face lacks any
+ * ends with Frank Ruhl Libre (after a serif) or Assistant (the rest), which
+ * the build confirms have them all — so those marks never fall to a device
+ * font.
  *
  * A HEBREW OVERRIDE goes first, so its Hebrew wins even over a face that has
  * Hebrew of its own; being Hebrew-only, it leaves the Latin to the chosen face.
@@ -54,6 +60,14 @@ export function fontStack(font: string | null | undefined, hebrew?: string | nul
   parts.push(`"${info.name}"`);
   const fallback = override ? null : hebrewFallbackFor(info.id);
   if (fallback) parts.push(`"${hebrewFamily(fallback, info.id)}"`);
+  // Hebrew punctuation or nikud the Hebrew face above lacks — sof pasuk and
+  // paseq, in ten faces — from a face that has it all, before the device's
+  // own font would get it.
+  const marks = hebrewMarksFallbackFor(info.id, override ?? fallback ?? info.id);
+  if (marks) {
+    const family = `"${hebrewFamily(marks, info.id)}"`;
+    if (!parts.includes(family)) parts.push(family);
+  }
   parts.push(info.generic);
   return parts.join(", ");
 }

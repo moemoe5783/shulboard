@@ -49,6 +49,7 @@ function TitleText({ config, onChange }: WidgetSettingsProps<TitleConfig>) {
           onChange={(event) => onChange({ align: event.target.value as TitleConfig["align"] })}
           className={PANEL_CONTROL}
         >
+          <option value="start">Automatic — by language</option>
           <option value="left">Left</option>
           <option value="center">Centre</option>
           <option value="right">Right</option>

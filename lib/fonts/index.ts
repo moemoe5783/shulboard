@@ -2,6 +2,7 @@ import { BUILT_FONTS, type BuiltFont } from "./catalog.generated.ts";
 import {
   ENGLISH_FONTS,
   HEBREW_FALLBACK,
+  HEBREW_MARKS_FALLBACK,
   HEBREW_FONTS,
   type EnglishFont,
   type FontCategory,
@@ -34,6 +35,9 @@ type Measured = {
   variable: boolean;
   /** Sets nikud properly. Measured, then confirmed by eye in /fonts-lab. */
   nikudOk: boolean;
+  /** Hebrew punctuation and nikud points it has no glyph for (sof pasuk,
+   *  paseq…) — drawn from the marks fallback (hebrewMarksFallbackFor). */
+  hebrewMissing: readonly string[];
 };
 
 /** A font the main picker offers: an English face, or a face with both
@@ -66,6 +70,7 @@ const measured = (id: string): Measured => {
     latin: built.latin,
     hebrew: built.hebrew,
     nikudOk: built.nikud,
+    hebrewMissing: built.hebrewMissing,
   };
 };
 
@@ -259,6 +264,21 @@ export function digitFallbackFor(stored: string | null | undefined): "frank-ruhl
   const info = fontInfo(stored);
   if (!info || info.measured.liningDigits) return null;
   return info.generic === "serif" ? HEBREW_FALLBACK.serif : HEBREW_FALLBACK.other;
+}
+
+/**
+ * The last Hebrew face a stack needs, if any: when the Hebrew face it draws in
+ * (`hebrewId`) lacks some Hebrew punctuation or nikud, Frank Ruhl Libre after
+ * a serif and Assistant after anything else, both confirmed complete by the
+ * build. Null when the Hebrew face has everything, or is that fallback.
+ */
+export function hebrewMarksFallbackFor(stored: string | null | undefined, hebrewId: string | null): string | null {
+  if (!hebrewId) return null;
+  const hebrewInfo = fontInfo(hebrewId);
+  if (!hebrewInfo || hebrewInfo.measured.hebrewMissing.length === 0) return null;
+  const info = fontInfo(stored);
+  const marks = info?.generic === "serif" ? HEBREW_MARKS_FALLBACK.serif : HEBREW_MARKS_FALLBACK.other;
+  return marks === hebrewId ? null : marks;
 }
 
 /** The Hebrew fallback a face gets when nothing overrides it: Frank Ruhl

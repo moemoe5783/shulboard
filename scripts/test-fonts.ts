@@ -101,11 +101,27 @@ check(clampWeight("marcellus", 700) === 400, "a one-weight face stays at its wei
 
 console.log("\n-- stacks ---------------------------------------------------------");
 check(fontStack("playfair-display") === '"Playfair Display", "Frank Ruhl Libre Hebrew", serif', "a serif gets Frank Ruhl Libre's Hebrew", fontStack("playfair-display"));
-check(fontStack("montserrat") === '"Montserrat", "Heebo Hebrew", sans-serif', "a sans gets Heebo's Hebrew", fontStack("montserrat"));
+check(fontStack("montserrat") === '"Montserrat", "Heebo Hebrew", "Assistant Hebrew", sans-serif',
+  "a sans gets Heebo's Hebrew, then Assistant for the sof pasuk and paseq Heebo lacks", fontStack("montserrat"));
 check(fontStack("great-vibes").endsWith("cursive"), "a script ends in cursive", fontStack("great-vibes"));
 check(fontStack("cinzel").includes('"Frank Ruhl Libre Hebrew for Cinzel"'), "a capitals-only face gets its own size-matched Hebrew", fontStack("cinzel"));
-check(fontStack("heebo") === '"Heebo", sans-serif', "a Hebrew & English face needs no fallback", fontStack("heebo"));
-check(fontStack("montserrat", "rubik") === '"Rubik Hebrew", "Montserrat", sans-serif', "a Hebrew override comes first, Hebrew only", fontStack("montserrat", "rubik"));
+check(fontStack("heebo") === '"Heebo", "Assistant Hebrew", sans-serif', "a Hebrew & English face gets no matched fallback — only the marks face for what it lacks", fontStack("heebo"));
+check(fontStack("assistant") === '"Assistant", sans-serif' && fontStack("frank-ruhl-libre") === '"Frank Ruhl Libre", serif',
+  "and one that has every mark gets nothing after it");
+check(fontStack("montserrat", "rubik") === '"Rubik Hebrew", "Montserrat", "Assistant Hebrew", sans-serif', "a Hebrew override comes first, Hebrew only", fontStack("montserrat", "rubik"));
+check(fontStack("playfair-display", "suez-one").endsWith('"Frank Ruhl Libre Hebrew", serif'), "after a serif the marks face is Frank Ruhl Libre", fontStack("playfair-display", "suez-one"));
+{
+  // Every stack draws every Hebrew mark from some face that has it.
+  const MARKS = ["sof pasuk", "maqaf", "geresh", "gershayim", "paseq"];
+  const covering = new Set(["frank-ruhl-libre", "assistant"]);
+  const gaps = [...PICKABLE_FONTS.map((f) => [f.id, "auto"]), ...HEBREW_OVERRIDE_FONTS.map((h) => ["inter", h.id])].filter(([font, hebrew]) => {
+    const stack = fontStack(font, hebrew);
+    const hebrewId = hebrew === "auto" ? (hebrewFallbackFor(font) ?? font) : hebrew;
+    const missing = BUILT_FONTS[hebrewId].hebrewMissing.filter((m) => MARKS.includes(m));
+    return missing.length > 0 && ![...covering].some((id) => stack.includes(id === "assistant" ? '"Assistant' : '"Frank Ruhl Libre'));
+  });
+  check(gaps.length === 0, "no stack leaves sof pasuk, maqaf, geresh, gershayim or paseq to a device font", gaps.map((g) => g.join("+")).join(", ") || "none");
+}
 check(fontStack("heebo", "suez-one").startsWith('"Suez One Hebrew", "Heebo"'), "an override beats even a face's own Hebrew", fontStack("heebo", "suez-one"));
 check(fontStack("montserrat", "auto") === fontStack("montserrat"), '"auto" is the matched fallback');
 check(fontStack("montserrat", "not-a-font") === fontStack("montserrat"), "an unknown override is ignored");
@@ -191,8 +207,12 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
   const doc = (themeOverrides: Record<string, unknown>, widgets: { type: string; config: Record<string, unknown> }[]) => ({ themeOverrides, widgets });
   const english = boardFonts([doc(newBoardFontOverrides(), [{ type: "title", config: { text: "Kiddush" } }, { type: "text", config: { text: "After davening" } }])], info);
   const families = new Set(english.files.map((url) => url.split("/")[2]));
-  check([...families].sort().join(",") === "inter,montserrat", "a Modern board with English text: Montserrat and Inter, nothing else", [...families].join(", "));
-  check(english.files.every((url) => !url.includes("/hebrew-")), "and no Hebrew file, with no Hebrew on it");
+  check([...families].sort().join(",") === "assistant,heebo,inter,montserrat",
+    "a Modern board: Montserrat and Inter, their matched Hebrew (Heebo) and its marks face (Assistant), nothing else", [...families].join(", "));
+  check(english.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")) && english.files.some((url) => url.startsWith("/fonts/assistant/hebrew-")),
+    "the matched fallback's Hebrew file is bundled even with no Hebrew in the text — Hebrew can arrive as data (captions, zmanim labels, feeds)");
+  check(english.files.filter((url) => url.includes("/hebrew-")).length === 2 && english.files.every((url) => !url.includes("/assistant/latin")),
+    "each once, deduplicated across roles and elements, and only the marks face's Hebrew file");
   check(english.stylesheet.startsWith("/fonts/faces."), "the stylesheet is listed, for a reboot offline", english.stylesheet);
 
   const hebrew = boardFonts([doc(newBoardFontOverrides(), [{ type: "text", config: { text: "מנחה Mincha 6:45" } }])], info);
@@ -202,9 +222,16 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
 
   const override = boardFonts([doc({ font: "inter", hebrewFont: "suez-one" }, [{ type: "text", config: { text: "שבת" } }])], info);
   check(override.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")) && !override.files.some((url) => url.startsWith("/fonts/heebo/")),
-    "a Hebrew override loads the override and not the fallback");
+    "a Hebrew override is bundled in place of the fallback it replaces");
   const unused = boardFonts([doc({ font: "inter" }, [{ type: "text", config: { text: "Hello" } }])], info);
-  check(!unused.files.some((url) => url.includes("suez-one")), "an override nobody chose loads nothing");
+  check(!unused.files.some((url) => url.includes("suez-one")) && !unused.files.some((url) => /\/(?!heebo\/|assistant\/)[^/]+\/hebrew-/.test(url)),
+    "an override nobody chose is never bundled — only the matched fallback is");
+  const perRole = boardFonts([doc({ font: "inter", headingFont: "playfair-display", headingHebrewFont: "auto" }, [{ type: "title", config: { text: "x" } }])], info);
+  check(perRole.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")) && perRole.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/hebrew-")),
+    "each role's resolved Hebrew is bundled: Heebo for the Inter body, Frank Ruhl Libre for the Playfair heading");
+  const simcha = boardFonts([doc(fontThemePatch(FONT_THEMES.find((t) => t.id === "simcha")!), [{ type: "text", config: { text: "Hello" } }])], info);
+  check(simcha.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")),
+    "even a role no element uses yet: a Simcha board with no title still bundles its heading Hebrew (Suez One)");
 
   const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
   check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre Digits"),

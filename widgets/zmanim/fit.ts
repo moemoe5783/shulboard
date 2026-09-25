@@ -1,16 +1,19 @@
 /*
- * How the Zmanim table sizes itself — WIDTH-DRIVEN TYPE, VERTICAL SCROLL OR PAGE.
+ * How the Zmanim table sizes itself — EVERY ROW SHOWS, OR THE EDITOR SAYS SO.
  *
- * The type size is set by the box's WIDTH: as large as it can be while the
- * widest row's full text still fits across the box (plan.md §5c / the original
- * brief: "the width of the text should be completely visible"). A wider box
- * means bigger type, a narrower box smaller — and the properties panel's type
- * field is a live readout of that size, with typing a size resizing the box to
- * reach it.
+ * The type is as large as it can be while the widest row's full text fits
+ * across the box ("the width of the text should be completely visible") AND
+ * every configured row, with the credit line, fits down it. A wider box means
+ * bigger type; so does a taller one, until the width stops it. The properties
+ * panel's type field is a live readout of that size.
  *
- * The box's HEIGHT never changes the type. When the rows are taller than the
- * box, the table either PAGES through whole rows or SCROLLS continuously — the
- * widget's own choice — never shrinking the text to cram them in.
+ * A ZMAN IS NEVER SILENTLY DROPPED. A theme with larger faces, a longer label,
+ * a shorter box: the type shrinks to keep every row — down to a minimum a room
+ * can still read (ZMANIM_MIN_READABLE_UNITS). Only below that does the table
+ * page or scroll through its rows (the widget's own choice), and then the
+ * element carries a warning in the editor saying how many don't fit
+ * (Renderer.tsx, `data-editor-hint`), so nobody publishes a board that hides
+ * zmanim without having been told.
  *
  * Pure functions so the arithmetic is testable with no DOM
  * (scripts/test-zmanim-fit.ts); the Renderer measures the pixels and calls in.
@@ -41,4 +44,31 @@ export function rowsPerPage(availableHeightPx: number, rowHeightPx: number): num
 export function pageCount(total: number, perPage: number): number {
   if (perPage <= 0) return 1;
   return Math.max(1, Math.ceil(total / perPage));
+}
+
+/** The smallest the type goes to keep every row, in board design units: below
+ *  this a lobby can't read it, and the table pages instead (with a warning in
+ *  the editor). A box too narrow for even this still gets its width-driven size
+ *  — a row's text is never cut off. */
+export const ZMANIM_MIN_READABLE_UNITS = 20;
+
+/**
+ * The type size that shows every row: the largest the width allows and the
+ * height allows, but not below the readable minimum (unless the width demands
+ * it). `fits` says whether every row made it at that size.
+ *
+ * `heightPerFontPx` is the whole table's height (every row and the credit line)
+ * per CSS pixel of type — it scales with the type, so one measurement answers
+ * for every size.
+ */
+export function zmanimFit(
+  input: { boxWidthPx: number; boxHeightPx: number; widthPerFontPx: number; heightPerFontPx: number },
+  bounds: { minPx: number; readablePx: number; maxPx: number },
+): { fontPx: number; fits: boolean } {
+  const { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx } = input;
+  const byWidth = widthPerFontPx > 0 ? boxWidthPx / widthPerFontPx : bounds.maxPx;
+  const byHeight = heightPerFontPx > 0 ? boxHeightPx / heightPerFontPx : bounds.maxPx;
+  const floor = Math.min(bounds.readablePx, byWidth);
+  const fontPx = Math.max(bounds.minPx, Math.min(bounds.maxPx, Math.max(Math.min(byWidth, byHeight), floor)));
+  return { fontPx, fits: heightPerFontPx <= 0 || heightPerFontPx * fontPx <= boxHeightPx + 0.5 };
 }
