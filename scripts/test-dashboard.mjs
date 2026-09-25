@@ -423,6 +423,25 @@ try {
       await page.waitForTimeout(1500);
     }
 
+    // Publish straight after an edit — inside autosave's second — publishes
+    // that edit too: after a reload there's nothing left to publish.
+    {
+      await page.reload({ waitUntil: "networkidle" });
+      const widget = page.locator("[data-editor-surface] [data-widget-id]").first();
+      await widget.click();
+      await page.keyboard.press("Shift+ArrowDown");
+      await page.waitForFunction(() => /Unpublished changes/.test(document.querySelector("[data-publish-state]")?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
+      await page.keyboard.press("Shift+ArrowDown");
+      const edited = await widget.evaluate((el) => el.style.top);
+      await page.getByRole("button", { name: /^Publish/ }).click();
+      await page.waitForFunction(() => /^Published/.test(document.querySelector("[data-publish-state]")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      await page.reload({ waitUntil: "networkidle" });
+      const state = (await page.locator("[data-publish-state]").textContent().catch(() => "")) ?? "";
+      const top = await page.locator("[data-editor-surface] [data-widget-id]").first().evaluate((el) => el.style.top);
+      check(top === edited && /No changes to publish/.test(state), "Publish right after an edit publishes that edit too", `${state}; top ${top} vs ${edited}`);
+    }
+
     await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
     check((await page.getByLabel("Timezone").count()) === 0, "settings don't ask for a timezone");
     check(/Times are shown in Eastern Time/.test(await page.locator("body").textContent()), "they say the one the address gave");

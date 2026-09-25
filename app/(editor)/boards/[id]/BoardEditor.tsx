@@ -154,6 +154,9 @@ export function BoardEditor({
     };
   }, []);
 
+  /** The save on its way to the server, if one is — Publish waits for it. */
+  const savingRef = useRef<Promise<void> | null>(null);
+
   const flushSave = useCallback(() => {
     const next = pendingDocRef.current;
     if (!next) return;
@@ -170,8 +173,13 @@ export function BoardEditor({
       // catch turns back into a recoverable one — the draft stays in the
       // store and the next edit retries.
       let result: Awaited<ReturnType<typeof saveBoardDoc>>;
+      const call = saveBoardDoc(boardId, next);
+      savingRef.current = call.then(
+        () => undefined,
+        () => undefined,
+      );
       try {
-        result = await saveBoardDoc(boardId, next);
+        result = await call;
       } catch {
         result = { ok: false, error: "Couldn't save — check your connection." };
       }
@@ -398,11 +406,20 @@ export function BoardEditor({
         saveState={saveState}
         isSaving={isSaving}
         publishState={publishState}
-        onPublished={(result) =>
+        prepareToPublish={async () => {
+          // Publish sends the editor's own document (actions.ts), which also
+          // saves it. A save already under way lands first, so it can't put
+          // an older draft back afterwards; a waiting autosave is left be — it
+          // saves the same document, and still does if publishing fails.
+          await savingRef.current;
+          return useEditor.getState().doc;
+        }}
+        onPublished={(result, published) =>
           setPublishState({
             publishedAt: result.publishedAt,
             screenCount: result.screenCount,
-            pendingChanges: false,
+            // An edit made while it published is still to publish.
+            pendingChanges: useEditor.getState().doc !== published,
           })
         }
         onDiscarded={(reverted) => {
@@ -488,6 +505,7 @@ function Header({
   saveState,
   isSaving,
   publishState,
+  prepareToPublish,
   onPublished,
   onDiscarded,
 }: {
@@ -496,7 +514,8 @@ function Header({
   saveState: "idle" | "saving" | "saved" | "error";
   isSaving: boolean;
   publishState: PublishState;
-  onPublished: (result: { publishedAt: string; screenCount: number }) => void;
+  prepareToPublish: () => Promise<BoardDoc>;
+  onPublished: (result: { publishedAt: string; screenCount: number }, published: BoardDoc) => void;
   onDiscarded: (doc: BoardDoc) => void;
 }) {
   const label =
@@ -531,6 +550,7 @@ function Header({
         <PublishControls
           boardId={boardId}
           state={publishState}
+          prepareToPublish={prepareToPublish}
           onPublished={onPublished}
           onDiscarded={onDiscarded}
         />

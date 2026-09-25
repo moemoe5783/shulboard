@@ -63,9 +63,20 @@ export async function saveBoardDoc(boardId: string, doc: unknown): Promise<SaveR
 }
 
 /**
- * Publish — copies the draft to published_doc, stores its hash, and builds
- * the screens that show this board immediately rather than waiting for the
- * cron sweep. docs/plan.md: "the build must not block publishing," so the
+ * Publish — the document the editor is showing, saved as the draft and
+ * copied to published_doc in one write; its hash stored; and the screens
+ * built.
+ *
+ * FROM THE EDITOR'S DOCUMENT, NOT THE STORED DRAFT. Autosave waits a second
+ * after the last edit, so publishing "the draft" published whatever the last
+ * save had caught: change the background, then the caption size, press
+ * Publish, and the screen got the new background and the old caption — while
+ * the editor said there was nothing left to publish. The editor now hands
+ * over what it holds, re-validated here like any save. Called with no
+ * document it publishes the stored draft, as before.
+ *
+ * The screens that show this board are built immediately rather than
+ * waiting for the cron sweep. docs/plan.md: "the build must not block publishing," so the
  * builds run in `after()`, scheduled once the response above has already gone
  * out — a build that fails or times out here never undoes the publish that
  * already committed, and the daily cron worker picks up anything that didn't
@@ -75,7 +86,7 @@ export type PublishResult =
   | { ok: true; publishedAt: string; screenCount: number }
   | { ok: false; error: string };
 
-export async function publishBoard(boardId: string): Promise<PublishResult> {
+export async function publishBoard(boardId: string, doc?: unknown): Promise<PublishResult> {
   const user = await requireUser();
   const supabase = await createClient();
 
@@ -91,7 +102,7 @@ export async function publishBoard(boardId: string): Promise<PublishResult> {
 
   let parsed: BoardDoc;
   try {
-    parsed = parseBoardDoc(board.doc);
+    parsed = parseBoardDoc(doc === undefined ? board.doc : doc);
   } catch (cause) {
     const message = cause instanceof BoardDocError ? cause.message : "That board document isn't valid.";
     return { ok: false, error: message };
@@ -102,6 +113,8 @@ export async function publishBoard(boardId: string): Promise<PublishResult> {
   const { error: updateError } = await supabase
     .from("boards")
     .update({
+      // The draft is what was published, so nothing is left unpublished.
+      ...(doc === undefined ? {} : { doc: boardDocAsJson(parsed), updated_by: user.id }),
       published_doc: boardDocAsJson(parsed),
       published_hash: hashBoardDoc(parsed),
       published_at: publishedAt,
