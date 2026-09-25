@@ -39,7 +39,11 @@ const PAGE_SECONDS = 8;
 const SCROLL_SECONDS_PER_ROW = 2.4;
 
 const LABEL_GAP = "1em";
-const GRID_COLUMNS = "1fr max-content max-content max-content";
+// Label, hour, and ":MM AM" as one run. The hour right-aligns in its own
+// track, so every row's colon sits at one x; minutes and meridiem are one
+// left-aligned run after it, so the AM/PM follows its minutes naturally
+// (and may shift a few pixels row to row in a face without tabular figures).
+const GRID_COLUMNS = "1fr max-content max-content";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -398,10 +402,10 @@ function useZmanimLayout(options: {
 }
 
 /**
- * One row: the provider's own label and time string, verbatim (§5c). Four grid
- * cells so every row's label, hour, minutes and meridiem share one column — the
- * hour right-aligns in its own `max-content` track, so a "7" and an "11" put
- * their colons at the same x and the outer edge is straight. Nothing wraps.
+ * One row: the provider's own label and time string, verbatim (§5c). Three grid
+ * cells — label, hour, and the rest (":MM AM") — so every row's hour right-aligns
+ * in its own `max-content` track: a "7" and an "11" put their colons at the same
+ * x, and the minutes start on one line. Nothing wraps.
  */
 function Row({ row, label }: { row: ResolvedZman; label: string }) {
   const parts = splitTimeColumns(row.display);
@@ -420,7 +424,7 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
     return (
       <>
         {labelCell}
-        <span className={timeClass} style={{ ...time, ...gap, gridColumn: "span 3", justifySelf: "end" }}>
+        <span className={timeClass} style={{ ...time, ...gap, gridColumn: "span 2", justifySelf: "end" }}>
           <Digits text={row.display} weight={600} />
         </span>
       </>
@@ -433,10 +437,8 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
       <span key="hours" className={timeClass} style={{ ...time, justifySelf: "end", ...gap }}>
         <Digits text={parts.hours} weight={600} />
       </span>
-      <span key="minutes" className={timeClass} style={time}>
+      <span key="rest" className={timeClass} style={{ ...time, whiteSpace: "pre" }}>
         <Digits text={parts.minutes} weight={600} />
-      </span>
-      <span key="meridiem" className={timeClass} style={{ ...time, whiteSpace: "pre", justifySelf: "end" }}>
         {parts.meridiem}
       </span>
     </>

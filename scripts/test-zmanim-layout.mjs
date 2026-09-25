@@ -6,8 +6,9 @@
  *
  *  1. ALIGNMENT. "7:22 PM and 11:21 AM differ in digit count, so
  *     right-aligning the whole string makes the two-digit hour hang out."
- *     The hour, the ":MM" and the meridiem each get a shared grid track, so
- *     the colons land on one x and the outer edge is straight.
+ *     The hour gets its own grid track, right-aligned, so the colons land on
+ *     one x; ":MM AM" is one left-aligned run after it (the AM/PM may shift
+ *     a few pixels row to row in a face without tabular figures).
  *  2. CONFIGURED SIZE, WIDTH-CAPPED, HEIGHT NEVER RESIZES. The type renders at
  *     the configured size; a narrower box shrinks it (width-cap) but a shorter
  *     box does NOT — that was the bug (widgets/zmanim/fit.ts).
@@ -104,9 +105,9 @@ async function stopServer(child) {
 /**
  * Everything one rendered table can say about itself.
  *
- * Cells come back in document order, four per row (label, hours, minutes,
- * meridiem — reversed for a mirrored table), so the chunking below is the
- * Renderer's own emit order rather than a guess about selectors.
+ * Cells come back in document order, three per row (label, hours, and ":MM AM"
+ * — reversed for a mirrored table), so the chunking below is the Renderer's
+ * own emit order rather than a guess about selectors.
  */
 async function readTable(page) {
   return page.evaluate(() => {
@@ -120,16 +121,16 @@ async function readTable(page) {
     const mirrored = getComputedStyle(grid).direction === "rtl";
     const cells = [...grid.children];
     const rows = [];
-    for (let at = 0; at + 3 < cells.length; at += 4) {
-      const [label, a, b, c] = cells.slice(at, at + 4);
-      // Emit order mirrors, so name the pieces by what they contain rather
-      // than by position: the minutes cell is the one starting with a colon.
-      const time = mirrored ? [c, b, a] : [a, b, c];
+    // Three cells a row: label, hour, and ":MM AM" as one run.
+    for (let at = 0; at + 2 < cells.length; at += 3) {
+      const [label, a, rest] = cells.slice(at, at + 3);
+      // Emit order mirrors, so name the pieces by position in reading order.
+      const time = mirrored ? [rest, a] : [a, rest];
       rows.push({
         labelRect: label.getBoundingClientRect(),
         hours: { text: time[0].textContent, rect: time[0].getBoundingClientRect() },
         minutes: { text: time[1].textContent, rect: time[1].getBoundingClientRect() },
-        meridiem: { text: time[2].textContent, rect: time[2].getBoundingClientRect() },
+        meridiem: { text: "", rect: time[1].getBoundingClientRect() },
       });
     }
 
@@ -223,15 +224,14 @@ try {
       [...hourWidths].join(" and "),
     );
 
-    // The time is LTR in both label forms: hour, colon, minutes, meridiem
-    // from left to right, so the hour's inner edge is its RIGHT edge, the
-    // colon is the minutes cell's LEFT, and the meridiem's RIGHT is the
-    // column's aligned outer edge.
-    const alignedEnd = table.rows.map((row) => row.meridiemRight);
+    // The time is LTR in both label forms: hour, then ":MM AM" as one run,
+    // so the hour's inner edge is its RIGHT edge and the colon is the run's
+    // LEFT. The AM/PM follows its minutes; its right edge may move a few
+    // pixels row to row, by design.
     check(
-      spread(alignedEnd) < EPSILON,
-      `${script}: the column's aligned edge is straight to within a sub-pixel`,
-      `${spread(alignedEnd).toFixed(3)}px across 11 rows`,
+      table.rows.every((row) => /^:\d\d\s+[AP]M$/.test(row.minutes)),
+      `${script}: minutes and AM/PM are one run after the colon`,
+      table.rows.slice(0, 3).map((row) => JSON.stringify(row.minutes)).join(" "),
     );
 
     const colon = table.rows.map((row) => row.minutesLeft);
