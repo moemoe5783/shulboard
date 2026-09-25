@@ -17,10 +17,11 @@ import { Digits } from "../Digits";
 import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
+import { EditorWarning } from "../EditorWarning";
 import type { WidgetRendererProps } from "../types";
 import { onFontsChange, resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
 import { splitTimeColumns } from "./display-time";
-import { pageCount, rowsPerPage, zmanimFontPx } from "./fit";
+import { pageCount, rowsPerPage, ZMANIM_MIN_READABLE_UNITS, zmanimFit } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 
 /** The footnote block, relative to a row's own type size. Small — a sentence of
@@ -120,9 +121,14 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   const { rowHeightPx, availableHeightPx, contentHeightPx } = layout;
+  // Rows the box can't show at once even at the smallest readable size. The
+  // display pages (or scrolls) through them; the editor is told, on the
+  // element itself, so hiding zmanim is never a surprise.
+  const shown = availableHeightPx > 0 && rowHeightPx > 0 ? Math.min(rows.length, rowsPerPage(availableHeightPx, rowHeightPx)) : rows.length;
+  const hidden = rows.length - shown;
 
   return (
-    <div ref={boxRef} className="relative flex h-full w-full flex-col overflow-hidden">
+    <div ref={boxRef} className="relative flex h-full w-full flex-col overflow-hidden" data-zmanim-hidden={hidden}>
       {config.overflow === "scroll" ? (
         <ScrollRegion
           availableHeightPx={availableHeightPx}
@@ -142,6 +148,12 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
           rows={rows}
           labelOf={labelOf}
         />
+      )}
+
+      {hidden > 0 && (
+        <EditorWarning>
+          {hidden === 1 ? "1 zman doesn\u2019t fit" : `${hidden} zmanim don\u2019t fit`} — make the box taller or remove some
+        </EditorWarning>
       )}
 
       {/* Footnotes (opt-in) and the source credit — held out of the rows region
@@ -317,10 +329,13 @@ function useZmanimLayout(options: {
       const rowHeightPerFontPx = grid.getBoundingClientRect().height / rowCount / ref;
       const chromePerFontPx = chromeRef.current ? chromeRef.current.getBoundingClientRect().height / ref : 0;
 
-      const fontPx = zmanimFontPx(
-        { boxWidthPx, widthPerFontPx },
+      // Every row and the credit line, per pixel of type: the height the whole
+      // table needs, so the type can shrink to show all of it (./fit.ts).
+      const { fontPx } = zmanimFit(
+        { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx: rowHeightPerFontPx * rowCount + chromePerFontPx },
         {
           minPx: resolveDesignPx(minFontUnits, canvasWidth, box),
+          readablePx: resolveDesignPx(ZMANIM_MIN_READABLE_UNITS, canvasWidth, box),
           maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 400, canvasWidth, box),
         },
       );

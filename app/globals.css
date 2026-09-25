@@ -179,3 +179,27 @@
 [data-editor-surface] [data-editor-hint] {
   visibility: visible;
 }
+
+/*
+ * Any element whose content doesn't all fit its box — a candle lighting list
+ * at its smallest size, fixed-size text that runs long — says so on the canvas,
+ * not only in the properties panel when it happens to be selected. The frame
+ * measures it (components/board/BoardRenderer.tsx, data-overflowing); a screen
+ * never shows this. The zmanim table, which pages instead of clipping, says so
+ * itself (widgets/EditorWarning.tsx).
+ */
+[data-editor-surface] [data-overflowing="true"]::after {
+  content: "This doesn\2019t all fit \2014  make the box bigger or show less";
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 10;
+  padding: 0.3em 0.6em;
+  background: var(--stale);
+  color: var(--surface);
+  font-family: var(--type-ui);
+  font-size: max(11px, 0.9cqw);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}

@@ -9,7 +9,7 @@
  *      whole rows only, at least one per page.
  */
 
-import { pageCount, rowsPerPage, zmanimFontPx } from "../widgets/zmanim/fit.ts";
+import { pageCount, rowsPerPage, zmanimFit, zmanimFontPx } from "../widgets/zmanim/fit.ts";
 
 const results: { ok: boolean; label: string }[] = [];
 function check(ok: boolean, label: string, detail: string | number | null | undefined = "") {
@@ -59,6 +59,19 @@ console.log("\n-- rule 2: vertical paging, whole rows ----------------------");
 }
 
 console.log("");
+console.log("\n-- every row fits, down to the readable minimum ----------------");
+{
+  const bounds = { minPx: 4, readablePx: 12, maxPx: 200 };
+  const tall = zmanimFit({ boxWidthPx: 600, boxHeightPx: 2000, widthPerFontPx: 10, heightPerFontPx: 15 }, bounds);
+  check(tall.fontPx === 60 && tall.fits, "a tall box: the width decides (600 / 10)", String(tall.fontPx));
+  const short = zmanimFit({ boxWidthPx: 600, boxHeightPx: 300, widthPerFontPx: 10, heightPerFontPx: 15 }, bounds);
+  check(short.fontPx === 20 && short.fits, "a short box: the height decides (300 / 15), every row fits", String(short.fontPx));
+  const tiny = zmanimFit({ boxWidthPx: 600, boxHeightPx: 90, widthPerFontPx: 10, heightPerFontPx: 15 }, bounds);
+  check(tiny.fontPx === 12 && !tiny.fits, "too short even at the readable minimum: held there, and it says it doesn't fit", String(tiny.fontPx));
+  const narrow = zmanimFit({ boxWidthPx: 80, boxHeightPx: 90, widthPerFontPx: 10, heightPerFontPx: 15 }, bounds);
+  check(narrow.fontPx === 8, "a box too narrow for the minimum still gets its width-driven size — no row cut off", String(narrow.fontPx));
+}
+
 const failed = results.filter((r) => !r.ok).length;
 console.log(`${results.length - failed}/${results.length} passed`);
 process.exit(failed > 0 ? 1 : 0);
