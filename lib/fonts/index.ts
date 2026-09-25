@@ -29,6 +29,9 @@ type Measured = {
   liningDigits: boolean;
   latin: boolean;
   hebrew: boolean;
+  /** One variable file covers its weights (instances in between exist);
+   *  false: separate files, and a weight between them is drawn with one. */
+  variable: boolean;
   /** Sets nikud properly. Measured, then confirmed by eye in /fonts-lab. */
   nikudOk: boolean;
 };
@@ -59,6 +62,7 @@ const measured = (id: string): Measured => {
     digitsEqual: built.digitsEqual,
     digitEm: built.digitEm,
     liningDigits: built.liningDigits,
+    variable: built.faces.some((face) => face.weight.includes(" ")),
     latin: built.latin,
     hebrew: built.hebrew,
     nikudOk: built.nikud,

@@ -6,7 +6,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { digitWidthVars, numericFace } from "../lib/board-theme.ts";
+import { digitWidthVars, matchedWeight, numericFace } from "../lib/board-theme.ts";
 import { join } from "node:path";
 import { BUILT_FONTS } from "../lib/fonts/catalog.generated.ts";
 import { ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
@@ -173,6 +173,10 @@ console.log("\n-- old-style figures: times take the fallback's digits ----------
   for (const id of ["inter", "playfair-display", "dancing-script", "caveat", "heebo"]) {
     check(numericFace(id) === fontStack(id), `${id}: lining figures, its own digits in times too`);
   }
+  check(matchedWeight(600, [300, 400, 700]) === 700 && matchedWeight(450, [300, 400, 700]) === 400 && matchedWeight(350, [400, 700]) === 400,
+    "a static face's in-between weight is the file CSS font matching picks");
+  check(digitWidthVars("karantina")["--board-digit-600"] === digitWidthVars("karantina")["--board-digit-700"],
+    "so Karantina's digit box at 600 is its 700 file's, the one drawn");
   check(Object.keys(digitWidthVars("marcellus")).length === 0, "Marcellus's time digits are Frank Ruhl Libre's, tabular — no boxes");
   check(Object.keys(digitWidthVars("pinyon-script")).length === 9, "Pinyon Script's are Heebo's, boxed to Heebo's widest digit");
   const css = readFileSync(join("public/fonts", readdirSync("public/fonts").find((f) => f.startsWith("faces."))!), "utf8");

@@ -37,8 +37,9 @@ const WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
  * For a face WITHOUT tabular figures (no tnum, measured at build time): its
  * widest digit at every weight from 100 to 900, as `--board-digit-<weight>` custom properties, in em.
  * Measured per weight — a variable face's digits widen as it gets bolder — and
- * filled in between the measured weights by straight-line interpolation (and
- * held flat beyond them). Empty for a face with tnum, whose digits
+ * filled in between: a variable face by straight-line interpolation, a static
+ * face with the file the browser actually draws that weight with
+ * (matchedWeight) — and held flat beyond them. Empty for a face with tnum, whose digits
  * `lining-nums tabular-nums` already lines up — every digit box is then `auto`
  * (widgets/Digits.tsx).
  */
@@ -51,10 +52,16 @@ export function digitWidthVars(font: string | undefined): Record<string, string>
     .map(([weight, em]) => [Number(weight), em] as const)
     .sort((a, b) => a[0] - b[0]);
   if (measured.length === 0) return {};
+  const variable = info.measured.variable;
   const at = (weight: number) => {
     if (weight <= measured[0][0]) return measured[0][1];
     const last = measured[measured.length - 1];
     if (weight >= last[0]) return last[1];
+    const exact = measured.find(([w]) => w === weight);
+    if (exact) return exact[1];
+    // A static face has no weight in between: the browser draws the file CSS
+    // font matching picks, so the box is that file's widest digit.
+    if (!variable) return measured.find(([w]) => w === matchedWeight(weight, measured.map(([w]) => w)))![1];
     const upper = measured.findIndex(([w]) => w >= weight);
     const [w0, e0] = measured[upper - 1];
     const [w1, e1] = measured[upper];
@@ -63,6 +70,25 @@ export function digitWidthVars(font: string | undefined): Record<string, string>
   const vars: Record<string, string> = {};
   for (const weight of WEIGHT_STEPS) vars[`--board-digit-${weight}`] = `${Math.round(at(weight) * 10000) / 10000}em`;
   return vars;
+}
+
+/**
+ * The weight a browser draws `wanted` at from a static face's weights — CSS
+ * font matching: an exact weight; for 400–500, heavier up to 500, then
+ * lighter, then heavier; below 400, lighter then heavier; above 500, heavier
+ * then lighter.
+ */
+export function matchedWeight(wanted: number, available: readonly number[]): number {
+  const sorted = [...available].sort((a, b) => a - b);
+  if (sorted.includes(wanted)) return wanted;
+  const lighter = sorted.filter((w) => w < wanted).reverse();
+  const heavier = sorted.filter((w) => w > wanted);
+  if (wanted >= 400 && wanted <= 500) {
+    const upTo500 = heavier.filter((w) => w <= 500);
+    return upTo500[0] ?? lighter[0] ?? heavier[0];
+  }
+  if (wanted < 400) return lighter[0] ?? heavier[0];
+  return heavier[0] ?? lighter[0];
 }
 
 /** The digit box width for text at a weight: its face's widest digit when the
