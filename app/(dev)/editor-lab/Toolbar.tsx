@@ -80,11 +80,11 @@ export function Toolbar({
 
       {/* The board's fonts and font theme, from anywhere: it lives in the
           board's settings, which otherwise need everything deselected. */}
-      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("fonts")} data-open-board-fonts>
-        Fonts
-      </button>
       <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("board")} data-open-board-settings>
         Board
+      </button>
+      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("fonts")} data-open-board-fonts>
+        Fonts
       </button>
 
       <Divider />
