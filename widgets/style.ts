@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
-import { boardLength, digitWidthVars, numericFace, numericWeight } from "@/lib/board-theme";
+import { boardLength, boardPercent, digitWidthVars, numericFace, numericWeight } from "@/lib/board-theme";
 import { boldWeight, catalogId, clampWeight, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 import { isFontRole, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
@@ -440,7 +440,7 @@ export function widgetBoxStyle(config: WidgetStyleConfig, canvasWidth: number): 
 export function frameShadow(strength: number): string | undefined {
   const s = Math.max(0, Math.min(100, strength)) / 50;
   if (s <= 0) return undefined;
-  return `0 ${(0.4 * s).toFixed(3)}cqw ${(1.6 * s).toFixed(3)}cqw rgba(0, 0, 0, ${Math.min(0.6, 0.28 * s).toFixed(3)})`;
+  return `0 ${boardPercent(Number((0.4 * s).toFixed(3)))} ${boardPercent(Number((1.6 * s).toFixed(3)))} rgba(0, 0, 0, ${Math.min(0.6, 0.28 * s).toFixed(3)})`;
 }
 
 /**

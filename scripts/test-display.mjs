@@ -578,6 +578,63 @@ try {
   }
   console.log("");
 
+  // ---- G. A TV browser with no container query units ------------------------
+  console.log("G. On a browser with no cqw, sizes still reach the screen");
+  {
+    const qrBundle = (captionSize, hash) => {
+      const bundle = bundleFixture({ version: 1, hash, title: "QR" });
+      bundle.boards[0].doc.widgets.push({
+        id: "44444444-4444-4444-8444-444444444444",
+        type: "qr-code",
+        x: 60, y: 10, w: 30, h: 70, rotation: 0, z: 2,
+        locked: false, hidden: false, opacity: 1, groupId: null, styleOverrides: {},
+        config: { value: "https://example.org/donate", caption: "Scan to donate", captionSize },
+      });
+      return bundle;
+    };
+    for (const legacy of [false, true]) {
+      const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, serviceWorkers: "block" });
+      // A browser without cqw, as far as the page can tell (lib/board-theme.ts).
+      if (legacy) {
+        await context.addInitScript(() => {
+          const supports = CSS.supports.bind(CSS);
+          CSS.supports = (...args) => (/cq[whib]|cqmin|cqmax/.test(args.join(" ")) ? false : supports(...args));
+        });
+      }
+      const page = await context.newPage();
+      page.on("pageerror", (e) => check(false, "no page errors", e.message));
+      let current = qrBundle(32, "qr-32");
+      await context.route("**/api/screen/*/bundle", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", headers: { etag: `"${current.contentHash}"` }, body: JSON.stringify(current) }),
+      );
+      await context.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+      await context.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+      const read = () =>
+        page.evaluate(() => {
+          const span = document.querySelector("[data-qr-code] > span");
+          const svg = document.querySelector("[data-qr-code] svg")?.getBoundingClientRect();
+          return {
+            px: span ? parseFloat(getComputedStyle(span).fontSize) : null,
+            fallback: document.querySelector("[data-board-unit-fallback]") !== null,
+            svg: svg ? { w: svg.width, h: svg.height } : null,
+          };
+        });
+      await page.goto(DISPLAY, { waitUntil: "networkidle" });
+      await page.waitForSelector("[data-qr-code] > span", { timeout: 15000 }).catch(() => {});
+      const small = await read();
+      current = qrBundle(120, "qr-120");
+      await page.reload({ waitUntil: "networkidle" });
+      await page.waitForFunction(() => parseFloat(getComputedStyle(document.querySelector("[data-qr-code] > span")).fontSize) > 100, null, { timeout: 15000 }).catch(() => {});
+      const large = await read();
+      const label = legacy ? "without cqw (pixel fallback)" : "with cqw";
+      check(small.fallback === legacy && large.fallback === legacy, `${label}: the board ${legacy ? "uses" : "doesn't need"} the fallback`);
+      check(Math.abs((small.px ?? 0) - 32) < 0.6 && Math.abs((large.px ?? 0) - 120) < 0.6, `${label}: a QR caption at 32 then 120 draws at 32px then 120px`, `${small.px}px, ${large.px}px`);
+      check(large.svg && large.svg.w > 100 && large.svg.h > 100, `${label}: and the code still fills its space`, JSON.stringify(large.svg));
+      await context.close();
+    }
+  }
+  console.log("");
+
   // ---- D. A big album: the board goes up before every photo is here --------
   console.log("D. A gallery of many photos starts before they've all downloaded");
   {

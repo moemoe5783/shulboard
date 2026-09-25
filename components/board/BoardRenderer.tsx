@@ -1,12 +1,12 @@
 "use client";
 
-import { createElement, useEffect, useRef, type CSSProperties, type HTMLAttributes } from "react";
+import { Fragment, createElement, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes } from "react";
 import { BoardAssetsProvider, type BoardFiles } from "@/lib/board-assets";
 import { BoardLocationProvider, type BoardLocation } from "@/lib/board-location";
 import { BoardZmanimProvider, type BoardZmanim } from "@/lib/board-zmanim";
 import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import type { BoardAlbums } from "@/lib/media/album-photos";
-import { boardLength, boardRootStyle } from "@/lib/board-theme";
+import { BOARD_CQW_VAR, BOARD_UNIT_VAR, boardLength, boardPercent, boardRootStyle, supportsContainerUnits } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
 import { boardFontRoles, type BoardFontRoles } from "@/lib/fonts/roles";
 import { fontStack } from "@/lib/fonts/stack";
@@ -75,6 +75,31 @@ export type BoardRendererProps = {
   files?: BoardFiles | null;
 };
 
+/**
+ * One design unit in pixels, on a browser with no `cqw` — null everywhere
+ * else (lib/board-theme.ts, boardLength). Measured off the board root and
+ * kept current as it resizes. Starts null on every browser so the server's
+ * HTML and the first client render agree.
+ */
+function useBoardUnitFallback(canvasWidth: number) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [unitPx, setUnitPx] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || supportsContainerUnits() || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      // The layout width, before any transform — what `cqw` is a percentage of.
+      const width = parseFloat(getComputedStyle(root).width);
+      if (width > 0 && canvasWidth > 0) setUnitPx(width / canvasWidth);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [canvasWidth]);
+  return { rootRef, unitPx };
+}
+
 /** Widget types the document may contain that are not widgets. A group is a row
  *  carrying membership and a bounding box; it has no renderer and never will. */
 const NON_RENDERING_TYPES = new Set(["group"]);
@@ -92,12 +117,15 @@ export function BoardRenderer({
 }: BoardRendererProps) {
   // The board's heading, body, accent and quote fonts (lib/fonts/roles.ts).
   const roles = boardFontRoles(doc.themeOverrides);
+  const { rootRef, unitPx } = useBoardUnitFallback(canvas.width);
   return (
     <BoardLocationProvider location={location}>
       <BoardZmanimProvider zmanim={zmanim}>
         <BoardAssetsProvider albums={albums} files={files}>
         <div
+          ref={rootRef}
           className={`relative overflow-hidden ${className}`}
+          data-board-unit-fallback={unitPx === null ? undefined : ""}
           style={{
             // The container every board length is measured against. `cqw`
             // resolves to the nearest container ancestor, so this must be the
@@ -106,9 +134,13 @@ export function BoardRenderer({
             // instead of the board.
             containerType: "size",
             ...boardRootStyle(doc),
+            ...(unitPx === null ? {} : { [BOARD_UNIT_VAR]: `${unitPx}px`, [BOARD_CQW_VAR]: `${(unitPx * canvas.width) / 100}px` }),
             ...style,
           }}
         >
+          {/* Remounted once when the pixel fallback starts, so every widget
+              that measured itself in the first pass measures again. */}
+          <Fragment key={unitPx === null ? "cq" : "px"}>
           {doc.widgets
             .filter((widget) => !widget.hidden && !NON_RENDERING_TYPES.has(widget.type))
             .map((widget) => (
@@ -120,6 +152,7 @@ export function BoardRenderer({
                 extra={widgetProps?.(widget)}
               />
             ))}
+          </Fragment>
         </div>
         </BoardAssetsProvider>
       </BoardZmanimProvider>
@@ -343,7 +376,7 @@ function UnknownWidget({ type }: { type: string }) {
   // usually enough: the board came from a deploy this device has not picked up.
   return (
     <div className="border-current/25 flex h-full w-full items-center justify-center border border-dashed opacity-50">
-      <span style={{ fontSize: "1.5cqw" }}>
+      <span style={{ fontSize: boardPercent(1.5) }}>
         {manifest ? manifest.name : "This widget"} needs a newer version. Reload the screen.
       </span>
     </div>
