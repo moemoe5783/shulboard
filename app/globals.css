@@ -180,6 +180,23 @@
   visibility: visible;
 }
 
+/* A note on an element (widgets/EditorNote.tsx) — "Showing 11 zmanim in 3
+   pages" — shows for a few seconds after the element changes size, and while
+   it's hovered; otherwise it keeps out of the way of the board. */
+[data-editor-surface] [data-editor-note] {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+[data-editor-surface] [data-editor-note][data-flash],
+[data-editor-surface] [data-widget-id]:hover [data-editor-note] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-editor-surface] [data-editor-note] {
+    transition: none;
+  }
+}
+
 /*
  * Any element whose content doesn't all fit its box — a candle lighting list
  * at its smallest size, fixed-size text that runs long — says so on the canvas,
@@ -202,4 +219,11 @@
   line-height: 1.2;
   text-align: center;
   pointer-events: none;
+  /* One clipped line, never wider or taller than the box: a note that
+     overflowed the box itself would keep the box "overflowing" forever and
+     stop the text from shrinking back. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 100%;
 }

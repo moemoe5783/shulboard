@@ -365,7 +365,7 @@ export function BoardEditor({
           setPublishState((previous) => ({ ...previous, pendingChanges: false }));
         }}
       />
-      <Toolbar onFit={fit} canvas={canvas} />
+      <Toolbar onFit={fit} />
 
       <div className="flex min-h-0 flex-1">
         <LayersPanel onContextMenu={setMenu} />

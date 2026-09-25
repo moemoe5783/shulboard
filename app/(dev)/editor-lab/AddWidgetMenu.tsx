@@ -29,7 +29,50 @@ const MENU_ITEM =
   "text-cell rounded-control text-ink hover:bg-verdigris-wash/40 " +
   "flex w-full flex-col items-start px-2 py-1 text-left";
 
-export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: number } }) {
+/** The registry by category, in menu order. */
+export const WIDGET_GROUPS = CATEGORY_ORDER.map((category) => ({
+  category,
+  name: CATEGORY_NAMES[category],
+  widgets: WIDGET_MANIFESTS.filter((manifest) => manifest.category === category),
+})).filter((group) => group.widgets.length > 0);
+
+/**
+ * Add an element at its default size, centred on `at` (design units) — or on
+ * the middle of the canvas, which is where a person is looking — and kept
+ * inside the canvas. The toolbar's menu and the right-click menu both add
+ * through here.
+ */
+export function addWidget(id: string, at?: { x: number; y: number }) {
+  const manifest = WIDGET_MANIFESTS.find((m) => m.id === id);
+  if (!manifest) return;
+
+  const store = useEditor.getState();
+  const { canvas } = store;
+  const w = Math.min(manifest.defaultSize.w, canvas.width);
+  const h = Math.min(manifest.defaultSize.h, canvas.height);
+  const cx = at?.x ?? canvas.width / 2;
+  const cy = at?.y ?? canvas.height / 2;
+
+  const widget = boardWidgetSchema.parse({
+    id: crypto.randomUUID(),
+    type: manifest.id,
+    ...rectToWidget(
+      {
+        x: Math.round(Math.max(0, Math.min(cx - w / 2, canvas.width - w))),
+        y: Math.round(Math.max(0, Math.min(cy - h / 2, canvas.height - h))),
+        w,
+        h,
+      },
+      canvas,
+    ),
+    z: store.doc.widgets.length,
+    config: defaultConfig(manifest),
+  });
+
+  store.addWidgets([widget], `Add ${manifest.name.toLowerCase()}`);
+}
+
+export function AddWidgetMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDetailsElement>(null);
   const summaryRef = useRef<HTMLElement>(null);
@@ -63,37 +106,9 @@ export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: num
   }, [open]);
 
   function add(id: string) {
-    const manifest = WIDGET_MANIFESTS.find((m) => m.id === id);
-    if (!manifest) return;
-
-    const store = useEditor.getState();
-    const { defaultSize } = manifest;
-
-    // Dropped in the middle of the canvas, which is where a person is looking.
-    const widget = boardWidgetSchema.parse({
-      id: crypto.randomUUID(),
-      type: manifest.id,
-      ...rectToWidget(
-        {
-          x: (canvas.width - defaultSize.w) / 2,
-          y: (canvas.height - defaultSize.h) / 2,
-          w: defaultSize.w,
-          h: defaultSize.h,
-        },
-        canvas,
-      ),
-      z: store.doc.widgets.length,
-      config: defaultConfig(manifest),
-    });
-
-    store.addWidgets([widget], `Add ${manifest.name.toLowerCase()}`);
+    addWidget(id);
     setOpen(false);
   }
-
-  const grouped = CATEGORY_ORDER.map((category) => ({
-    category,
-    widgets: WIDGET_MANIFESTS.filter((manifest) => manifest.category === category),
-  })).filter((group) => group.widgets.length > 0);
 
   return (
     <details
@@ -115,12 +130,12 @@ export function AddWidgetMenu({ canvas }: { canvas: { width: number; height: num
         className="rounded-panel border-rule bg-surface absolute top-9 left-0 z-30 w-64 overflow-y-auto overscroll-contain border p-1 shadow-menu"
         style={{ maxHeight }}
       >
-        {grouped.map((group, index) => (
+        {WIDGET_GROUPS.map((group, index) => (
           <div
             key={group.category}
             className={index > 0 ? "border-rule mt-1 border-t pt-1" : undefined}
           >
-            <p className="text-meta text-ink-soft px-2 py-1">{CATEGORY_NAMES[group.category]}</p>
+            <p className="text-meta text-ink-soft px-2 py-1">{group.name}</p>
             {group.widgets.map((manifest) => (
               <button key={manifest.id} type="button" onClick={() => add(manifest.id)} className={MENU_ITEM}>
                 <span>{manifest.name}</span>

@@ -35,13 +35,7 @@ export function nextZoomStep(zoom: number, direction: 1 | -1): number {
     : (ZOOM_STEPS[(index === -1 ? ZOOM_STEPS.length : index) - 2] ?? ZOOM_STEPS[0]);
 }
 
-export function Toolbar({
-  onFit,
-  canvas,
-}: {
-  onFit: () => void;
-  canvas: { width: number; height: number };
-}) {
+export function Toolbar({ onFit }: { onFit: () => void }) {
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
   const snapEnabled = useEditor((s) => s.snapEnabled);
@@ -69,7 +63,7 @@ export function Toolbar({
       className={`font-ui flex h-10 shrink-0 items-center gap-1 border-b px-2 ${CHROME_RULE}`}
       data-history-count={historyCount}
     >
-      <AddWidgetMenu canvas={canvas} />
+      <AddWidgetMenu />
 
       <Divider />
 
@@ -78,13 +72,12 @@ export function Toolbar({
 
       <Divider />
 
-      {/* The board's fonts and font theme, from anywhere: it lives in the
-          board's settings, which otherwise need everything deselected. */}
-      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("board")} data-open-board-settings>
-        Board
-      </button>
-      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("fonts")} data-open-board-fonts>
-        Fonts
+      {/* The board's background and fonts, from anywhere: they live in the
+          board's settings, which otherwise need everything deselected. One
+          button; the panel's own tabs choose between them, and it opens on
+          whichever tab was used last. */}
+      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel()} data-open-board-theme>
+        Board theme
       </button>
 
       <Divider />

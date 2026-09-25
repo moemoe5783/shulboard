@@ -99,6 +99,17 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     mode: config.overflow,
   });
 
+  const { rowHeightPx, availableHeightPx, contentHeightPx } = layout;
+  // Rows the box can't show at once. The display pages (or scrolls) through
+  // them; the editor says so on the element — information, not a fault.
+  const shown = availableHeightPx > 0 && rowHeightPx > 0 ? Math.min(rows.length, rowsPerPage(availableHeightPx, rowHeightPx)) : rows.length;
+  const hidden = rows.length - shown;
+  const pages = pageCount(rows.length, Math.max(1, shown));
+  // The editor's note flashes for a few seconds when the box or the rows
+  // change what fits (a resize, a row added), not all the time.
+  const flash = useFlash(`${shown}/${rows.length}/${Math.round(availableHeightPx)}/${Math.round(layout.fontPx)}`);
+
+
   // The widget's appearance is applied by BoardRenderer.WidgetFrame around this
   // Renderer (widgets/style.ts); this returns only the table.
 
@@ -126,13 +137,6 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     );
   }
 
-  const { rowHeightPx, availableHeightPx, contentHeightPx } = layout;
-  // Rows the box can't show at once. The display pages (or scrolls) through
-  // them; the editor says so on the element — information, not a fault.
-  const shown = availableHeightPx > 0 && rowHeightPx > 0 ? Math.min(rows.length, rowsPerPage(availableHeightPx, rowHeightPx)) : rows.length;
-  const hidden = rows.length - shown;
-  const pages = pageCount(rows.length, Math.max(1, shown));
-
   return (
     <div ref={boxRef} className="relative flex h-full w-full flex-col overflow-hidden" data-zmanim-hidden={hidden}>
       {config.overflow === "scroll" ? (
@@ -157,7 +161,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
       )}
 
       {hidden > 0 && (
-        <EditorNote>
+        <EditorNote flash={flash}>
           {config.overflow === "scroll"
             ? `Scrolling through ${rows.length} zmanim, ${shown} at a time`
             : `Showing ${rows.length} zmanim in ${pages} pages`}{" "}
@@ -452,4 +456,18 @@ function distinctFootnotes(rows: readonly ResolvedZman[]): string[] {
     if (row.footnote) seen.add(row.footnote);
   }
   return [...seen];
+}
+
+/** True for a few seconds each time `key` changes after the first render. */
+function useFlash(key: string, ms = 4000): boolean {
+  const [flash, setFlash] = useState(false);
+  const first = useRef(key);
+  useEffect(() => {
+    if (key === first.current) return;
+    first.current = "";
+    setFlash(true);
+    const timer = setTimeout(() => setFlash(false), ms);
+    return () => clearTimeout(timer);
+  }, [key, ms]);
+  return flash;
 }
