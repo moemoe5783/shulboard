@@ -8,7 +8,7 @@ import { BoardBackgroundField } from "@/components/editor/BackgroundField";
 import { DimensionsField } from "@/components/editor/DimensionsField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
-import { useElementFontSize } from "@/components/editor/useElementFontSize";
+import { readFontSize, useElementFontSize } from "@/components/editor/useElementFontSize";
 import { FontSelect, HebrewFontSelect } from "./FontSelects";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardBackground } from "@/lib/board-background";
@@ -217,7 +217,15 @@ function Body({
               <SizingToggle
                 mode={config.sizingMode ?? manifest.sizing.mode}
                 recommended={manifest.sizing.recommended}
-                onChange={(mode) => setWidgetConfig(ids, { sizingMode: mode })}
+                onChange={(mode) => {
+                  // Leaving fit: start Fixed or Hug at the size fit was
+                  // showing, so the text doesn't jump to some stored default.
+                  const current = config.sizingMode ?? manifest.sizing.mode;
+                  const read = current === "fit" && mode !== "fit" && ids.length === 1 ? readFontSize(ids[0]) : null;
+                  const { minFontSize = 8, maxFontSize = 400 } = manifest.sizing;
+                  const fitted = read === null ? null : Math.min(maxFontSize, Math.max(minFontSize, read));
+                  setWidgetConfig(ids, fitted !== null ? { sizingMode: mode, size: fitted } : { sizingMode: mode });
+                }}
               />
             )}
 
@@ -228,7 +236,7 @@ function Body({
                 size={config.size}
                 onChange={(size) => setWidgetConfig(ids, { size })}
                 // Editable-in-fit (resize the box to the typed size) only for a
-                // widget whose ONLY mode is fit — zmanim, candle lighting, title.
+                // widget whose ONLY mode is fit — zmanim, candle lighting.
                 // A widget that also offers Fixed (userToggleable) keeps fit
                 // read-only: setting a number there means switching to Fixed,
                 // which is the whole point of having the toggle. Single

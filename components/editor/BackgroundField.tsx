@@ -132,7 +132,7 @@ export function BoardBackgroundField({
               max={MAX_BACKGROUND_DIM}
               step={5}
               onChange={setDim}
-              format={(v) => `${v}%`}
+              unit="%"
             />
           )}
           <Library value={value} onPick={pickLibrary} />
@@ -249,7 +249,7 @@ function GradientEditor({ value, onChange }: { value: string; onChange: (value: 
         </select>
       </label>
       {spec.type === "linear" && (
-        <SliderField label="Direction" value={spec.angle} min={0} max={359} onChange={(angle) => update({ angle })} format={(v) => `${v}°`} />
+        <SliderField label="Direction" value={spec.angle} min={0} max={359} onChange={(angle) => update({ angle })} unit="°" />
       )}
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Colours</span>

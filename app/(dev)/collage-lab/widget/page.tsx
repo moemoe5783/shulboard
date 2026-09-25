@@ -91,10 +91,15 @@ function Inner() {
   };
 
   // The Artsy style, from the query: ?style=artsy&artsyFrame=wood&…
-  const look: Record<string, string | boolean> = {};
-  for (const key of ["style", "artsyFrame", "artsyTilt", "artsyOverlap", "artsyBackdrop", "artsyShadow"]) {
+  const look: Record<string, string | boolean | number> = {};
+  for (const key of ["style", "artsyFrame", "artsyTilt", "artsyOverlap", "artsyBackdrop", "artsyShadow", "photoFrame"]) {
     const value = params.get(key);
     if (value) look[key] = value;
+  }
+  // Each photo's corners and shadow: ?photoFrame=shadow&photoRadius=24&photoShadowStrength=80
+  for (const key of ["photoRadius", "photoShadowStrength"]) {
+    const value = params.get(key);
+    if (value !== null && Number.isFinite(Number(value))) look[key] = Number(value);
   }
   if (params.get("artsyFasteners") === "false") look.artsyFasteners = false;
 

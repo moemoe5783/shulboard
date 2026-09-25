@@ -86,22 +86,28 @@ export function Settings({ config: raw, onChange }: WidgetSettingsProps<QrCodeCo
   );
 }
 
-/** The code's colours, margin and caption size — the Appearance tab's Code section. */
+/** The caption's size, at the top of the Appearance tab's Text section with
+ *  the rest of the text settings. */
+function QrCaptionText({ config: raw, onChange }: WidgetSettingsProps<QrCodeConfig>) {
+  const config = readConfig(qrCodeConfigSchema, raw);
+  if (!config.caption) return null;
+  return (
+    <SliderField
+      label="Caption size"
+      value={config.captionSize}
+      min={8}
+      max={200}
+      onChange={(captionSize) => onChange({ captionSize })}
+    />
+  );
+}
+
+/** The code's colours and margin — the Appearance tab's Code section. */
 function QrCodeLook({ config: raw, onChange }: WidgetSettingsProps<QrCodeConfig>) {
   const config = readConfig(qrCodeConfigSchema, raw);
   const problem = colourProblem(config.darkColor, config.lightColor);
   return (
     <div className="flex flex-col gap-4">
-      {config.caption && (
-        <SliderField
-          label="Caption size"
-          value={config.captionSize}
-          min={8}
-          max={200}
-          onChange={(captionSize) => onChange({ captionSize })}
-        />
-      )}
-
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Colours</span>
         <div className="flex items-center gap-2">
@@ -111,9 +117,12 @@ function QrCodeLook({ config: raw, onChange }: WidgetSettingsProps<QrCodeConfig>
         {problem && <span className="text-meta text-stale">{problem}</span>}
       </div>
 
-      <SliderField label="Margin" value={config.margin} min={0} max={8} onChange={(margin) => onChange({ margin })} format={(v) => `${v} squares`} />
+      <SliderField label="Margin" value={config.margin} min={0} max={8} onChange={(margin) => onChange({ margin })} unit="squares" />
     </div>
   );
 }
 
-export const appearance: AppearanceSection<QrCodeConfig>[] = [{ id: "code", label: "Code", Component: QrCodeLook }];
+export const appearance: AppearanceSection<QrCodeConfig>[] = [
+  { id: "code", label: "Code", Component: QrCodeLook },
+  { id: "text", label: "Text", Component: QrCaptionText },
+];

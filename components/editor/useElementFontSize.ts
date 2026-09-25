@@ -24,7 +24,9 @@ function subscribe(widgetId: string | null, onChange: () => void): () => void {
   return () => observer.disconnect();
 }
 
-function readFontSize(widgetId: string | null): number | null {
+/** The same reading, once — for a one-off, like seeding a fixed size from the
+ *  fitted one when a widget leaves fit mode. */
+export function readFontSize(widgetId: string | null): number | null {
   if (!widgetId) return null;
   const el = document.querySelector<HTMLElement>(`[data-widget-id="${widgetId}"] [data-fitted-size]`);
   const raw = el?.dataset.fittedSize;

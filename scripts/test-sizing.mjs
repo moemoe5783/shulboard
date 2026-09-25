@@ -133,29 +133,40 @@ try {
     await settle();
   };
 
-  // ---- fit-only widget: editable, and typing a size resizes the box ------
+  // ---- title: fit by default, with the Sizing toggle -----------------------
 
   await widget(TITLE_ID).click();
   await settle();
   await openSizeTab();
-  check(!(await typeSizeInput().isDisabled()), "a fit-only widget's type size is editable — it drives the box");
   const titleSize = Number(await typeSizeInput().inputValue());
   check(titleSize > 0, "title's type size shows a real computed number, not zero", `${titleSize}`);
+  check(await typeSizeInput().isDisabled(), "in fit it's read-only — the box sets it");
   check(
-    (await page.locator("span", { hasText: "Sizing" }).count()) === 0,
-    "no Sizing toggle appears for a widget with only one mode",
+    (await page.locator("button", { hasText: "Fixed size" }).count()) === 1,
+    "a title offers the Sizing toggle (Fit to box / Fixed size / Hug height)",
   );
 
   const beforeTitle = await fontSizeOf(widget(TITLE_ID));
-  await typeSizeInput().fill(String(titleSize * 2));
+  await page.locator("button", { hasText: "Fixed size" }).click();
+  await settle();
+  const seeded = Number(await typeSizeInput().inputValue());
+  check(
+    Math.abs(seeded - titleSize) <= 1,
+    "switching to Fixed starts at the size fit was showing, so nothing jumps",
+    `${titleSize} -> ${seeded}`,
+  );
+  check(!(await typeSizeInput().isDisabled()), "and the size is editable");
+  await typeSizeInput().fill(String(Math.round(titleSize / 2)));
   await typeSizeInput().blur();
   await settle();
   const afterTitle = await fontSizeOf(widget(TITLE_ID));
   check(
-    afterTitle > beforeTitle,
-    "typing a bigger type size resizes the box, so the fit renders bigger text",
+    afterTitle < beforeTitle,
+    "typing a smaller size renders the title smaller",
     `${beforeTitle.toFixed(1)}px -> ${afterTitle.toFixed(1)}px`,
   );
+  await page.locator("button", { hasText: "Fit to box" }).click();
+  await settle();
 
   // ---- fixed mode: editable, wired to config.size -------------------------
 

@@ -16,6 +16,11 @@ export const titleConfigSchema = z.object({
   align: z.enum(["left", "center", "right"]).default("left"),
   /** Sub-line size, as a fraction of the title's. */
   subtitleScale: z.number().min(0.1).max(1).default(0.45),
+  /** The title's size in design units. Read in `fixed` and `hug` modes; `fit`
+   *  computes its own. */
+  size: z.number().min(8).max(400).default(96),
+  /** Fit to box (the default), Fixed size or Hug height — docs/sizing.md §2. */
+  sizingMode: z.enum(["fit", "fixed", "hug"]).default("fit"),
   // Background, colour, font, padding, radius, border, shadow and header —
   // shared appearance for every widget (../style.ts).
   ...widgetStyleFields,
@@ -36,9 +41,10 @@ export const manifest: WidgetManifest<TitleConfig> = {
   /**
    * docs/sizing.md §2: a title's whole job is to be as legible as its space
    * allows, and nobody designing signage thinks in points — they think "big
-   * enough to read from the back." Not toggleable: there's no case where a
-   * fixed-size title is what someone wants instead.
+   * enough to read from the back." So fit is the default. It is toggleable
+   * all the same: two titles meant to match, or one that should stay one size
+   * whatever its wording, want Fixed size.
    */
-  sizing: { mode: "fit", userToggleable: false, minFontSize: 8, maxFontSize: 400 },
+  sizing: { mode: "fit", userToggleable: true, minFontSize: 8, maxFontSize: 400 },
   instanceLabel: (config) => config.text || "Title",
 };

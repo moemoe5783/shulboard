@@ -132,7 +132,7 @@ export function AppearanceControls({
             min={0}
             max={100}
             onChange={(transparency) => onChange({ backgroundOpacity: 100 - transparency })}
-            format={(v) => `${v}%`}
+            unit="%"
           />
         )}
       </div>
@@ -143,22 +143,25 @@ export function AppearanceControls({
         {active === "shape" && (
           <>
             {addedTo("shape")}
-      {/* Corner radius (absolute) + padding (relative to the text size). */}
+      {/* Corner radius (absolute) + padding (relative to the text size), named
+          for what they do rather than what CSS calls them. */}
       <SliderField
-        label="Corner radius"
+        label="Rounded corners"
+        hint="How round the frame's corners are."
         value={config.radius}
         min={0}
         max={160}
         onChange={(radius) => onChange({ radius })}
       />
       <SliderField
-        label="Padding"
+        label="Space inside the frame"
+        hint="Room between the frame's edge and what's in it."
         value={Math.round(config.padding * 100)}
         min={0}
         max={200}
         step={5}
         onChange={(pct) => onChange({ padding: pct / 100 })}
-        format={(v) => `${v}%`}
+        unit="%"
       />
 
       {/* Border. */}
@@ -197,15 +200,30 @@ export function AppearanceControls({
       </div>
 
       {/* Shadow — a floating look. Board content, so allowed (design.md §1b). */}
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={config.shadow}
-          onChange={(event) => onChange({ shadow: event.target.checked })}
-          className={PANEL_CHECKBOX}
-        />
-        <span className="text-cell text-paper">Drop shadow</span>
-      </label>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={config.shadow}
+            onChange={(event) => onChange({ shadow: event.target.checked })}
+            className={PANEL_CHECKBOX}
+          />
+          <span className="text-cell text-paper">Shadow behind the frame</span>
+        </label>
+        {config.shadow && (
+          <div className="pl-6">
+            <SliderField
+              label="Shadow strength"
+              hint="Light and close, or dark and spread out."
+              value={config.shadowStrength}
+              min={5}
+              max={100}
+              unit="%"
+              onChange={(shadowStrength) => onChange({ shadowStrength })}
+            />
+          </div>
+        )}
+      </div>
 
           </>
         )}
@@ -233,7 +251,7 @@ export function AppearanceControls({
             max={300}
             step={5}
             onChange={(pct) => onChange({ titleSize: pct / 100 })}
-            format={(v) => `${v}%`}
+            unit="%"
           />
         )}
       </div>

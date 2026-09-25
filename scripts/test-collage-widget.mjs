@@ -138,6 +138,42 @@ try {
   const worstRatio = Math.max(...large.cells.map((c) => Math.abs(c.rect.w / c.rect.h / c.natural - 1)));
   check(worstRatio < 0.01, "every photo renders at its own aspect ratio — not cropped, not stretched", `worst ${(worstRatio * 100).toFixed(2)}% off`);
 
+  {
+    // A shadow under each photo sits on the photo's own shape: the <img> box is
+    // the picture, not the cell, so its shadow and corners follow it.
+    const shadowed = await browser.newPage({ viewport: { width: 1200, height: 1100 } });
+    await shadowed.goto(`${BASE}/collage-lab/widget?count=20&interval=60&transition=none&photoFrame=shadow&photoRadius=24&photoShadowStrength=80`, {
+      waitUntil: "networkidle",
+    });
+    await shadowed.waitForSelector('[data-lab-board="large"] [data-collage-layer="entering"] img');
+    await sleep(600);
+    const photos = await shadowed.evaluate(() => {
+      const layer = document.querySelector('[data-lab-board="large"] [data-collage-layer="entering"]');
+      const shadows = [...layer.querySelectorAll("[data-photo-shadow]")];
+      return [...layer.querySelectorAll("img")].map((img, i) => {
+        const r = img.getBoundingClientRect();
+        const s = shadows[i]?.getBoundingClientRect();
+        return {
+          box: r.width / r.height,
+          natural: img.naturalWidth / img.naturalHeight,
+          // The shadow's box against the photo's, edge by edge, in px.
+          offBy: s ? Math.max(Math.abs(s.left - r.left), Math.abs(s.top - r.top), Math.abs(s.width - r.width), Math.abs(s.height - r.height)) : Infinity,
+          shadow: shadows[i] ? getComputedStyle(shadows[i]).boxShadow : "none",
+          radius: getComputedStyle(img).borderTopLeftRadius,
+          // A shadow drawn under every photo, never over one.
+          under: shadows[i] ? img.compareDocumentPosition(shadows[i]) & Node.DOCUMENT_POSITION_PRECEDING : 0,
+        };
+      });
+    });
+    const worst = Math.max(...photos.map((p) => Math.abs(p.box / p.natural - 1)));
+    check(photos.length > 1 && photos.every((p) => p.shadow !== "none"), "Shadow puts a shadow under every photo", photos[0]?.shadow);
+    check(worst < 0.01, "each photo's box is the photo's own shape", `worst ${(worst * 100).toFixed(2)}% off`);
+    check(photos.every((p) => p.offBy <= 1), "and its shadow is exactly the photo's box", `worst ${Math.max(...photos.map((p) => p.offBy)).toFixed(1)}px`);
+    check(photos.every((p) => p.under), "every shadow is drawn before every photo, so none falls across a neighbour");
+    check(photos.every((p) => parseFloat(p.radius) > 0), "and its rounded corners are on the photo too", photos[0]?.radius);
+    await shadowed.close();
+  }
+
   // gutter 12 design units on a 960px-wide board of a 1920 canvas = 6px.
   const gapPx = 12 * (960 / 1920);
   let closest = Infinity;

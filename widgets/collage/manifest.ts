@@ -81,6 +81,9 @@ export const collageConfigSchema = z.object({
     .catch(1),
   /** An optional thin border or soft shadow on each photo. */
   photoFrame: z.enum(["none", "border", "shadow"]).default("none").catch("none"),
+  /** How dark and wide that shadow is, 0–100. 50 is the soft shadow every
+   *  collage had before this was adjustable. */
+  photoShadowStrength: z.number().min(0).max(100).default(50).catch(50),
   // Background, colour, font, padding, border, shadow, header — shared
   // appearance for every widget (../style.ts). The widget frame's radius is
   // separate from `photoRadius`, which rounds the individual photos.
