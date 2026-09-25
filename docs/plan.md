@@ -222,6 +222,18 @@ Org-level design tokens (palette, 2–3 font pairings, spacing scale, border
 radius). Widgets inherit by default, override per instance. This is what makes a
 shul's boards look coherent instead of like a ransom note.
 
+**Board fonts — built.** A curated, self-hosted catalog (`lib/fonts`, woff2
+from pinned @fontsource packages, no font host at runtime) with automatic
+Hebrew: an English face's stack names Frank Ruhl Libre (serifs) or Heebo
+(the rest) as Hebrew-only, size-matched families that download only when
+Hebrew appears; a board or element can override the Hebrew face. A board
+has four font roles — heading, body, accent, quote — and six one-click font
+themes fill them (`lib/fonts/themes.ts`); new boards start on Modern. Times
+line up in every face (`widgets/Digits.tsx`). A bundle lists exactly the
+font files its boards use and a screen caches and loads them before first
+paint (`lib/fonts/board-fonts.ts`). `/fonts-lab` is where it's tuned by eye;
+`npm run test:fonts` and `test:fonts-lab` hold it.
+
 **The dashboard's own visual direction is specified separately in
 `dashboard-design-spec.md`** — tokens, type, layout wireframes, and the
 anti-generic prohibitions. Read that before building any UI.
