@@ -86,6 +86,15 @@ export const widgetStyleFields = {
   /** How strong that shadow is, 0–100: 50 is the soft shadow every frame had
    *  before this was adjustable. */
   shadowStrength: z.number().min(0).max(100).default(50),
+  /** Line spacing, as a multiple of each element's own (1 = as designed).
+   *  The frame scales the tight and snug leadings every Renderer uses, so a
+   *  zmanim table's rows, a title's lines and a caption all open up together. */
+  lineSpacing: z.number().min(0.6).max(2.5).default(1),
+  /** The space under the header, as a multiple of the header's size. */
+  titleGap: z.number().min(0).max(2).default(0.35),
+  /** Where the header sits: centred (as always), each line to its own
+   *  language's start, or left or right. */
+  titleAlign: z.enum(["center", "start", "left", "right"]).default("center"),
   /** An optional header shown above the widget — "" for none. */
   title: z.string().max(120).default(""),
   /** The header's size, as a MULTIPLE of the widget's own text size (like
@@ -108,6 +117,9 @@ export type WidgetStyleConfig = {
   borderColor: string;
   shadow: boolean;
   shadowStrength: number;
+  lineSpacing: number;
+  titleGap: number;
+  titleAlign: "center" | "start" | "left" | "right";
   title: string;
   titleSize: number;
 };
@@ -261,6 +273,9 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
     borderColor: str("borderColor"),
     shadow: config.shadow === true,
     shadowStrength: clamp(num("shadowStrength", 50), 0, 100),
+    lineSpacing: clamp(num("lineSpacing", 1), 0.6, 2.5),
+    titleGap: clamp(num("titleGap", 0.35), 0, 2),
+    titleAlign: (["center", "start", "left", "right"] as const).find((a) => a === config.titleAlign) ?? "center",
     title: str("title"),
     titleSize: clamp(num("titleSize", 1.3), 0.3, 4),
   };
@@ -342,6 +357,13 @@ export function widgetStyle(
     }
   }
   if (config.textColor) style.color = config.textColor;
+  // Line spacing: the leadings Renderers use (Tailwind's leading-tight and
+  // leading-snug read these), scaled — so their props stay {config, canvas}.
+  if (config.lineSpacing !== 1) {
+    const vars = style as Record<string, string>;
+    vars["--leading-tight"] = String(Math.round(1.25 * config.lineSpacing * 1000) / 1000);
+    vars["--leading-snug"] = String(Math.round(1.375 * config.lineSpacing * 1000) / 1000);
+  }
   // The widget's font: its own, a role by name, or its role's default
   // (lib/fonts/roles.ts). Set only when it differs from the body font the
   // board root already carries, so an element following the body inherits it.

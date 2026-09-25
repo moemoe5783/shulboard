@@ -92,13 +92,25 @@ function QrCaptionText({ config: raw, onChange }: WidgetSettingsProps<QrCodeConf
   const config = readConfig(qrCodeConfigSchema, raw);
   if (!config.caption) return null;
   return (
-    <SliderField
-      label="Caption size"
-      value={config.captionSize}
-      min={8}
-      max={200}
-      onChange={(captionSize) => onChange({ captionSize })}
-    />
+    <div className="flex flex-col gap-4">
+      <SliderField
+        label="Caption size"
+        value={config.captionSize}
+        min={8}
+        max={200}
+        onChange={(captionSize) => onChange({ captionSize })}
+      />
+      <SliderField
+        label="Space above the caption"
+        hint="How far the caption sits below the code."
+        value={Math.round(config.captionGap * 100)}
+        min={0}
+        max={300}
+        step={5}
+        onChange={(pct) => onChange({ captionGap: pct / 100 })}
+        unit="%"
+      />
+    </div>
   );
 }
 

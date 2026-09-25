@@ -199,6 +199,7 @@ function Body({
               showsTimes: Boolean(manifest?.showsTimes),
               // Text and Title draw their main text at the chosen weight.
               weighted: manifest?.category === "text",
+              lineSpacing: manifest?.lineSpacing !== false,
             }}
             onChange={(patch: Partial<WidgetStyleConfig>) => setWidgetConfig(ids, patch)}
             onFontPreview={(patch) => setFontPreview(patch ? { kind: "widgets", ids, patch } : null)}

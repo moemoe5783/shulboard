@@ -72,7 +72,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<QrCodeConf
         <span
           dir="auto"
           className="shrink-0 text-center leading-tight"
-          style={{ fontSize: boardLength(config.captionSize, canvas.width), marginTop: "0.3em" }}
+          style={{ fontSize: boardLength(config.captionSize, canvas.width), marginTop: `${config.captionGap}em` }}
         >
           {config.caption}
         </span>

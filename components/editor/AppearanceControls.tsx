@@ -64,7 +64,7 @@ export function AppearanceControls({
   config: WidgetStyleConfig;
   /** The board's font roles, which one this element takes by default, and
    *  whether it shows times (no script faces offered). */
-  fonts?: { roles: BoardFontRoles; role: FontRole; showsTimes: boolean; weighted: boolean };
+  fonts?: { roles: BoardFontRoles; role: FontRole; showsTimes: boolean; weighted: boolean; lineSpacing?: boolean };
   onChange: (patch: Partial<WidgetStyleConfig>) => void;
   /** A font hovered in a picker, shown on the canvas only — no undo entry
    *  until it's clicked (lib/editor/store.ts, fontPreview). */
@@ -257,17 +257,57 @@ export function AppearanceControls({
           />
         </label>
         {config.title !== "" && (
-          <SliderField
-            label="Header size"
-            value={Math.round(config.titleSize * 100)}
-            min={50}
-            max={300}
-            step={5}
-            onChange={(pct) => onChange({ titleSize: pct / 100 })}
-            unit="%"
-          />
+          <>
+            <SliderField
+              label="Header size"
+              value={Math.round(config.titleSize * 100)}
+              min={50}
+              max={300}
+              step={5}
+              onChange={(pct) => onChange({ titleSize: pct / 100 })}
+              unit="%"
+            />
+            <SliderField
+              label="Space under the header"
+              hint="How far the header sits above what's under it."
+              value={Math.round(config.titleGap * 100)}
+              min={0}
+              max={200}
+              step={5}
+              onChange={(pct) => onChange({ titleGap: pct / 100 })}
+              unit="%"
+            />
+            <label className="flex flex-col gap-1">
+              <span className={PANEL_LABEL}>Header alignment</span>
+              <select
+                value={config.titleAlign}
+                onChange={(event) => onChange({ titleAlign: event.target.value as WidgetStyleConfig["titleAlign"] })}
+                className={PANEL_CONTROL}
+                data-header-align
+              >
+                <option value="center">Centre</option>
+                <option value="start">Automatic — by language</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+          </>
         )}
       </div>
+
+      {/* Line spacing — every line the element draws, rows of a table too. */}
+      {fonts?.lineSpacing !== false && (
+        <SliderField
+          label="Line spacing"
+          hint="Room between lines and rows."
+          value={Math.round(config.lineSpacing * 100)}
+          min={60}
+          max={250}
+          step={5}
+          onChange={(pct) => onChange({ lineSpacing: pct / 100 })}
+          unit="%"
+        />
+      )}
 
       {/* Text colour. */}
       <div className="flex flex-col gap-2">

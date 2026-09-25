@@ -292,9 +292,9 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
                 unicodeBidi: "plaintext",
                 background: "rgba(0, 0, 0, 0.45)",
                 color: "#ffffff",
-                fontSize: boardLength(28, canvas.width),
-                padding: boardLength(12, canvas.width),
-                lineHeight: 1.2,
+                fontSize: boardLength(config.captionSize, canvas.width),
+                padding: boardLength(config.captionPadding, canvas.width),
+                lineHeight: "var(--leading-tight, 1.25)",
               }}
             >
               {current.photo.caption}

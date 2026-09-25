@@ -315,7 +315,7 @@ try {
   // given its own font afterwards keeps it.
   {
     console.log("\nApplying a font theme in the editor");
-    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1800 } });
     page.on("pageerror", (e) => check(false, "no page errors", e.message));
     await page.goto(`${BASE}/font-parity?font=assistant`, { waitUntil: "networkidle" });
     await page.waitForTimeout(500);
@@ -430,6 +430,33 @@ try {
     const after = await read();
     check(after.fitted > before.fitted && after.fitted < 400 && after.gridW <= after.boxW + 1,
       "switched to scroll and made wider, the type grows with the box — not to the 400 maximum", `${before.fitted} -> ${after.fitted}`);
+
+    // Line spacing and the header, from Appearance → Text.
+    const rowGap = () =>
+      zmanim.evaluate((w) => {
+        const cells = [...w.querySelector(".grid").children];
+        return cells[4].getBoundingClientRect().top - cells[0].getBoundingClientRect().top;
+      });
+    const tight = await rowGap();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    await page.locator('[data-appearance-tab="text"]').click();
+    await page.getByRole("spinbutton", { name: "Line spacing" }).fill("160");
+    await page.getByRole("spinbutton", { name: "Line spacing" }).blur();
+    await page.waitForTimeout(400);
+    const loose = await rowGap();
+    const sizeNow = await read();
+    check(loose / sizeNow.fitted > (tight / after.fitted) * 1.4, "Line spacing at 160% opens the rows up", `${tight.toFixed(1)}px -> ${loose.toFixed(1)}px a row`);
+    await page.locator("input[placeholder='No header']").fill("Zmanim");
+    await page.locator("[data-header-align]").selectOption("left");
+    await page.getByRole("spinbutton", { name: "Space under the header" }).fill("100");
+    await page.getByRole("spinbutton", { name: "Space under the header" }).blur();
+    await page.waitForTimeout(300);
+    const header = await zmanim.evaluate((w) => {
+      const h = [...w.querySelectorAll("div")].find((d) => d.textContent === "Zmanim" && d.children.length === 0);
+      const cs = getComputedStyle(h);
+      return { align: cs.textAlign, gap: parseFloat(cs.marginBottom), size: parseFloat(cs.fontSize) };
+    });
+    check(header.align === "left" && Math.abs(header.gap - header.size) < 1, "the header takes its alignment and its space underneath", JSON.stringify(header));
     await page.close();
   }
 } finally {

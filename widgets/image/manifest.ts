@@ -49,6 +49,8 @@ export const manifest: WidgetManifest<ImageConfig> = {
   defaultSize: { w: 640, h: 480 },
   isPro: false,
   settingsSchema: imageConfigSchema,
+  // No shared line spacing: no text to space.
+  lineSpacing: false,
   /**
    * §3c: the bundle names its assets so the service worker can cache every one
    * before the board is allowed to swap to it — and the atomic swap depends on

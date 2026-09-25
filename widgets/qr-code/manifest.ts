@@ -29,6 +29,9 @@ export const qrCodeConfigSchema = z.object({
   caption: z.string().max(120).default(""),
   /** The caption's size, in design units. */
   captionSize: z.number().min(8).max(200).default(32),
+  /** The space between the code and its caption, as a multiple of the
+   *  caption's size. */
+  captionGap: z.number().min(0).max(3).default(0.3),
   // Frame appearance for every widget (../style.ts) — separate from the code's
   // own two colours above.
   ...widgetStyleFields,
