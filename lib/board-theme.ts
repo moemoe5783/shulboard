@@ -1,7 +1,8 @@
 import { boardBackgroundCss, type BoardBackground } from "./board-background";
 import type { CSSProperties } from "react";
 import type { BoardDoc } from "@/lib/board-doc";
-import { fontInfo } from "@/lib/fonts";
+import { digitFallbackFor, fontInfo } from "@/lib/fonts";
+import { DIGIT_FAMILIES } from "@/lib/fonts/catalog";
 import { DEFAULT_FONT, fontStack } from "@/lib/fonts/stack";
 import { boardFontRoles } from "@/lib/fonts/roles";
 
@@ -42,7 +43,9 @@ const WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
  * (widgets/Digits.tsx).
  */
 export function digitWidthVars(font: string | undefined): Record<string, string> {
-  const info = fontInfo(font ?? DEFAULT_FONT);
+  // A face with old-style figures draws its time digits in the fallback
+  // (numericFace), so the boxes are the fallback's.
+  const info = fontInfo(digitFallbackFor(font ?? DEFAULT_FONT) ?? font ?? DEFAULT_FONT);
   if (!info || info.measured.hasTabularNums) return {};
   const measured = Object.entries(info.measured.digitEm)
     .map(([weight, em]) => [Number(weight), em] as const)
@@ -69,11 +72,23 @@ export function digitWidthVar(weight: number): string {
   return `var(--board-digit-${step}, auto)`;
 }
 
-/** The face numbers are set in: the text's own. Times, zmanim and countdowns
- *  line up through `tabular-nums` and, where a face needs them, digit boxes
- *  (digitWidthVars) — not by switching to another face. */
+/**
+ * The face a time, a zman or a countdown is set in: the text's own. Its digits
+ * line up through `lining-nums tabular-nums` and, where a face needs them,
+ * digit boxes (digitWidthVars).
+ *
+ * THE ONE EXCEPTION: a face whose figures are old-style with no lining set
+ * (Marcellus, Pinyon Script, Parisienne, Suez One — and Alef, kept for boards
+ * that use it) would draw a column of times at uneven heights whatever the
+ * widths. So its stack starts with the matched fallback's digit-only family
+ * (DIGIT_FAMILIES — Frank Ruhl Libre for a serif, Heebo otherwise): the
+ * digits come from the fallback, AM and PM and the colon from the face.
+ * This is only in the times; everywhere else the face keeps its own figures.
+ */
 export function numericFace(font: string | undefined, hebrew?: string | null): string {
-  return fontStack(font, hebrew);
+  const stack = fontStack(font, hebrew);
+  const fallback = digitFallbackFor(font ?? DEFAULT_FONT);
+  return fallback ? `"${DIGIT_FAMILIES[fallback]}", ${stack}` : stack;
 }
 
 /**

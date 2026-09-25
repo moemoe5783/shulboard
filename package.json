@@ -54,7 +54,7 @@
     "test:emails": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/build-emails.ts --check",
     "test:dashboard": "node scripts/test-dashboard.mjs",
     "test:upload": "node scripts/test-upload-browser.mjs",
-    "test:fonts": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-fonts.ts",
+    "test:fonts": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/alias-loader.mjs --experimental-strip-types scripts/test-fonts.ts",
     "test:preview-photos": "node scripts/test-preview-photos.mjs",
     "test:cdn-purge": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-cdn-purge.ts",
     "test:collage-player": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/alias-loader.mjs --experimental-strip-types scripts/test-collage-player.ts"

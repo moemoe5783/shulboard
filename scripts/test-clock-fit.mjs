@@ -149,10 +149,11 @@ try {
     for (const [query, expected, why] of [
       ["font=heebo", "Heebo", "a widget set in Heebo shows its time in Heebo"],
       ["font=rubik", "Rubik", "and Rubik"],
-      ["font=alef", "Alef", "a widget set in Alef (no tabular figures) keeps Alef"],
+      ["font=alef", "Heebo Digits", "a widget set in Alef (old-style figures) takes Heebo's digits"],
       ["boardFont=davidLibre", "David Libre", "a board set in David Libre shows its clocks in it"],
-      ["boardFont=suezOne", "Suez One", "a board set in Suez One keeps Suez One"],
-      ["boardFont=heebo&font=alef", "Alef", "a widget's own font wins over the board's"],
+      ["boardFont=suezOne", "Frank Ruhl Libre Digits", "a board set in Suez One takes Frank Ruhl Libre's digits"],
+      ["boardFont=heebo&font=alef", "Heebo Digits", "a widget's own font wins over the board's"],
+      ["boardFont=heebo&font=inter", "Inter", "and a lining face keeps its own digits"],
     ]) {
       const clock = await open(`w=40&h=20&${query}`);
       check(clock.family === expected, why, clock.family);
@@ -164,6 +165,14 @@ try {
     check(/em$/.test(alef.digitBox), "Alef (no tnum) gets a digit box", alef.digitBox);
     check(rubik.digitBox === "" || rubik.digitBox === "auto", "Rubik gets none", rubik.digitBox || "unset");
     check(new Set(alef.digitWidths).size === 1, "and its digits share one width", alef.digitWidths.join(" "));
+
+    // Old-style figures, no lining set: the digits come from the matched
+    // fallback (a digit-only family first in the stack), the rest from the face.
+    const suez = await open("w=40&h=20&font=suezOne");
+    check(suez.family === "Frank Ruhl Libre Digits", "a Suez One clock draws its digits in Frank Ruhl Libre", suez.family);
+    const pinyon = await open("w=40&h=20&font=pinyon-script");
+    check(pinyon.family === "Heebo Digits", "a Pinyon Script clock draws its digits in Heebo", pinyon.family);
+    check(new Set(pinyon.digitWidths).size === 1, "boxed to Heebo's widest digit", pinyon.digitWidths.join(" "));
   }
 } finally {
   await browser.close();

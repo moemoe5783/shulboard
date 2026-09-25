@@ -5,7 +5,8 @@
  * Run with: npm run test:fonts
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { digitWidthVars, numericFace } from "../lib/board-theme.ts";
 import { join } from "node:path";
 import { BUILT_FONTS } from "../lib/fonts/catalog.generated.ts";
 import { ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
@@ -80,7 +81,9 @@ for (const id of ["frank-ruhl-libre", "heebo"]) {
   const [lo, hi] = weight.split(" ").map(Number);
   check(lo <= 300 && hi >= 900, `${id} covers 300–900 for matching weights`, weight);
 }
-check(HEBREW_OVERRIDE_FONTS.length === 16, "16 Hebrew override fonts", String(HEBREW_OVERRIDE_FONTS.length));
+check(HEBREW_OVERRIDE_FONTS.length === 15, "15 Hebrew override fonts (the spec's 16, less Alef)", String(HEBREW_OVERRIDE_FONTS.length));
+check(!HEBREW_OVERRIDE_FONTS.some((f) => f.id === "alef") && !PICKABLE_FONTS.some((f) => f.id === "alef"), "Alef is in no picker");
+check(catalogId("alef") === "alef" && catalogId("alef") !== null, "but a board that uses Alef still resolves it");
 check(HEBREW_OVERRIDE_FONTS.find((f) => f.id === "noto-serif-hebrew")?.nikudOk === true, "Noto Serif Hebrew sets nikud");
 
 console.log("\n-- boards saved before the catalog -------------------------------");
@@ -150,6 +153,28 @@ console.log("\n-- font roles and themes ----------------------------------------
   const fresh = boardFontRoles(newBoardFontOverrides());
   check(fresh.heading.font === "montserrat" && fresh.body.font === "inter", "a new board starts on Modern (Montserrat / Inter)");
   check(!("accentFont" in newBoardFontOverrides()), "and stores nothing for the roles Modern leaves out");
+}
+
+console.log("\n-- old-style figures: times take the fallback's digits ---------------");
+{
+  for (const [id, family] of [
+    ["marcellus", "Frank Ruhl Libre Digits"],
+    ["suez-one", "Frank Ruhl Libre Digits"],
+    ["pinyon-script", "Heebo Digits"],
+    ["parisienne", "Heebo Digits"],
+    ["alef", "Heebo Digits"],
+  ] as const) {
+    check(numericFace(id).startsWith(`"${family}", `), `${id}: its times' digits come from ${family}`, numericFace(id));
+    check(!fontStack(id).includes("Digits"), `${id}: everywhere else it keeps its own figures`);
+  }
+  for (const id of ["inter", "playfair-display", "dancing-script", "caveat", "heebo"]) {
+    check(numericFace(id) === fontStack(id), `${id}: lining figures, its own digits in times too`);
+  }
+  check(Object.keys(digitWidthVars("marcellus")).length === 0, "Marcellus's time digits are Frank Ruhl Libre's, tabular — no boxes");
+  check(Object.keys(digitWidthVars("pinyon-script")).length === 9, "Pinyon Script's are Heebo's, boxed to Heebo's widest digit");
+  const css = readFileSync(join("public/fonts", readdirSync("public/fonts").find((f) => f.startsWith("faces."))!), "utf8");
+  check(/font-family:"Heebo Digits"[^}]*unicode-range:U\+0030-0039/.test(css) && /font-family:"Frank Ruhl Libre Digits"[^}]*unicode-range:U\+0030-0039/.test(css),
+    "the digit families cover 0–9 and nothing else");
 }
 
 const failed = results.filter((r) => !r.ok).length;

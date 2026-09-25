@@ -24,6 +24,9 @@ type Measured = {
   digitsEqual: boolean;
   /** Widest digit (em) per offered weight. */
   digitEm: Record<number, number>;
+  /** Its digits, as drawn, are lining. False: old-style with no lining set
+   *  (Marcellus, the scripts, Suez One) — times take the fallback's digits. */
+  liningDigits: boolean;
   latin: boolean;
   hebrew: boolean;
   /** Sets nikud properly. Measured, then confirmed by eye in /fonts-lab. */
@@ -55,6 +58,7 @@ const measured = (id: string): Measured => {
     hasTabularNums: built.hasTabularNums,
     digitsEqual: built.digitsEqual,
     digitEm: built.digitEm,
+    liningDigits: built.liningDigits,
     latin: built.latin,
     hebrew: built.hebrew,
     nikudOk: built.nikud,
@@ -228,6 +232,15 @@ export function clampWeight(stored: string | null | undefined, weight: number | 
 /** The Hebrew fallback a face gets when nothing overrides it: Frank Ruhl
  *  Libre for serifs, Heebo for everything else. A face with its own Hebrew
  *  needs none. */
+/** For a face with old-style figures and no lining set, the fallback whose
+ *  digits a time is drawn in: Frank Ruhl Libre for a serif, Heebo otherwise.
+ *  Null for every other face. */
+export function digitFallbackFor(stored: string | null | undefined): "frank-ruhl-libre" | "heebo" | null {
+  const info = fontInfo(stored);
+  if (!info || info.measured.liningDigits) return null;
+  return info.generic === "serif" ? HEBREW_FALLBACK.serif : HEBREW_FALLBACK.other;
+}
+
 export function hebrewFallbackFor(stored: string | null | undefined): string | null {
   const info = fontInfo(stored);
   if (!info) return HEBREW_FALLBACK.other;
