@@ -162,8 +162,8 @@ async function readTable(page) {
       partialRows,
       gridCount: widget.querySelectorAll(".grid").length,
       hidden: Number(widget.querySelector("[data-zmanim-hidden]")?.getAttribute("data-zmanim-hidden") ?? -1),
-      warning: widget.querySelector("[data-editor-warning]")?.textContent ?? null,
-      warningEditorOnly: widget.querySelector("[data-editor-warning]")?.hasAttribute("data-editor-hint") ?? null,
+      note: widget.querySelector("[data-editor-note]")?.textContent ?? null,
+      noteEditorOnly: widget.querySelector("[data-editor-note]")?.hasAttribute("data-editor-hint") ?? null,
       // The scrolling track is the viewport's own child in scroll mode.
       animation: viewport?.firstElementChild ? getComputedStyle(viewport.firstElementChild).animationName : "none",
       attributionText: attribution ? attribution.textContent : null,
@@ -260,13 +260,12 @@ try {
     );
   }
 
-  console.log("\n-- ITEM 2: the width sets the size, until every row needs the height --");
+  console.log("\n-- ITEM 2: the box WIDTH sets the size, height never does ----");
 
   {
-    // Wider box, bigger type — the width drives it, ~proportionally, while
-    // there's height to spare (narrow boxes, so the height isn't what stops it).
-    const narrow = await open("script=english&w=14&h=95");
-    const wide = await open("script=english&w=28&h=95");
+    // Wider box, bigger type — the width drives it, ~proportionally.
+    const narrow = await open("script=english&w=30&h=95");
+    const wide = await open("script=english&w=60&h=95");
     check(
       Number(wide?.rowFontPx) > Number(narrow?.rowFontPx),
       "a wider box renders bigger type",
@@ -277,48 +276,67 @@ try {
   }
 
   {
-    // EVERY ROW SHOWS. Same width, a third the height: the type shrinks until
-    // all eleven rows fit, rather than paging some of them out of sight — a
-    // theme with bigger faces or a shorter box must never silently hide zmanim.
+    // HEIGHT NEVER RESIZES: same width, two very different heights -> same type.
+    // This is the exact bug the report named — a shorter box must not shrink it.
     const short = await open("script=english&w=60&h=30");
     const tall = await open("script=english&w=60&h=95");
     check(
-      (short?.rowFontPx ?? 0) < (tall?.rowFontPx ?? 0),
-      "a shorter box shrinks the type to keep every row",
+      Math.abs((short?.rowFontPx ?? 0) - (tall?.rowFontPx ?? -1)) < 0.5,
+      "a third the box height leaves the type size unchanged — height never resizes",
       `${short?.rowFontPx?.toFixed(1)}px (short) vs ${tall?.rowFontPx?.toFixed(1)}px (tall)`,
     );
-    check((short?.visibleWholeRows ?? 0) === 11 && (short?.partialRows ?? 1) === 0, "and all eleven show, none clipped", `${short?.visibleWholeRows} of 11`);
-    check(short?.hidden === 0 && !short?.warning, "with no warning, since nothing is hidden");
   }
 
-  console.log("\n-- ITEM 3: past the readable minimum, it pages — and says so -");
+  console.log("\n-- ITEM 3: vertical overflow pages whole rows ---------------");
 
   {
-    // A box too short even at the smallest readable size: `page` shows whole
-    // rows a page at a time, and the element carries a warning for the editor
-    // saying how many don't fit. Never hidden without that.
+    // Narrow width (so the type is small) and vary only the height: a short box
+    // can't fit all eleven rows, so `page` shows a page of WHOLE rows — fewer
+    // than eleven, none clipped — and the type is unchanged from the tall box
+    // that fits them all (paging, not shrinking).
     const short = await open("overflow=page&script=english&w=20&h=25");
     const tall = await open("overflow=page&script=english&w=20&h=95");
     check(
       (short?.visibleWholeRows ?? 0) > 0 && (short?.visibleWholeRows ?? 0) < 11,
-      "a box too short at the readable minimum shows a page of some rows",
+      "a short box shows a page of some — not all — rows",
       `${short?.visibleWholeRows} of 11 visible`,
     );
     check((short?.partialRows ?? 1) === 0, "and no partial row peeks past the clip", `${short?.partialRows} partial`);
     check(
-      // The pages cycle, so the rows on screen at this moment may be the last
-      // page's few; the count is the page size's complement.
-      (short?.hidden ?? 0) > 0 && (short?.hidden ?? 0) < 11 &&
-        (short?.warning ?? "").startsWith(`${short?.hidden} zmanim don\u2019t fit — make the box taller or remove some`),
-      "and the element says how many don't fit, for the editor",
-      `${short?.warning ?? "no warning"} (hidden ${short?.hidden}, visible ${short?.visibleWholeRows})`,
-    );
-    check(short?.warningEditorOnly === true, "a warning shown only on the editor's canvas, never on a screen");
-    check(
-      (tall?.visibleWholeRows ?? 0) === 11 && tall?.hidden === 0,
-      "while a tall box shows all eleven at once, with no warning",
+      (tall?.visibleWholeRows ?? 0) === 11,
+      "while a tall box shows all eleven at once",
       `${tall?.visibleWholeRows} of 11`,
     );
+    check(
+      Math.abs((short?.rowFontPx ?? 0) - (tall?.rowFontPx ?? -1)) < 0.5,
+      "and paging did not change the type size",
+      `${short?.rowFontPx?.toFixed(1)}px vs ${tall?.rowFontPx?.toFixed(1)}px`,
+    );
+  }
+
+  console.log("\n-- ITEM 3a: paging says so in the editor, as information ------");
+
+  {
+    const short = await open("overflow=page&script=english&w=20&h=25");
+    const tall = await open("overflow=page&script=english&w=20&h=95");
+    check(/^Showing 11 zmanim in \d+ pages — make the box taller to show more at once$/.test(short?.note ?? ""),
+      "a paging table carries a note for the editor: how many zmanim, in how many pages", short?.note ?? "no note");
+    check(short?.noteEditorOnly === true, "shown only on the editor's canvas, never on a screen");
+    check(tall?.note === null && tall?.hidden === 0, "and a table that fits carries none");
+  }
+
+  console.log("\n-- ITEM 3d: Shrink to fit (opt-in) keeps every row, to a floor --");
+
+  {
+    const shrunk = await open("overflow=shrink&script=english&w=60&h=60");
+    const paged = await open("overflow=page&script=english&w=60&h=60");
+    check((paged?.visibleWholeRows ?? 11) < 11, "(set-up: at this size, paging shows only some rows)", `${paged?.visibleWholeRows} of 11`);
+    check((shrunk?.visibleWholeRows ?? 0) === 11 && (shrunk?.rowFontPx ?? 99) < (paged?.rowFontPx ?? 0),
+      "Shrink to fit makes the type smaller so all eleven show", `${shrunk?.rowFontPx?.toFixed(1)}px vs ${paged?.rowFontPx?.toFixed(1)}px`);
+    const floor = await open("overflow=shrink&script=english&w=60&h=12");
+    // 32 design units on the lab's 1280px-wide board of a 1920 canvas.
+    check(Math.abs((floor?.rowFontPx ?? 0) - 32 * (1280 / 1920)) < 0.6, "but never below its readable floor (32 units)", `${floor?.rowFontPx?.toFixed(1)}px`);
+    check(/pages/.test(floor?.note ?? ""), "and past it, it pages — and says so", floor?.note ?? "no note");
   }
 
   console.log("\n-- ITEM 3b: scroll is available and runs when it overflows --");

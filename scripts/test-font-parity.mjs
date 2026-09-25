@@ -321,8 +321,12 @@ try {
     await page.waitForTimeout(500);
     const titleFamily = async () => (await widgetFont(page, "editor", TITLE_ID))?.fontFamily ?? "";
     const before = await titleFamily();
-    await page.keyboard.press("Escape");
+    // The board's fonts are a tab of their own, opened from the toolbar with
+    // an element still selected.
+    await page.locator(`[data-parity-half="editor"] [data-widget-id="${TITLE_ID}"]`).click();
+    await page.locator("[data-open-board-fonts]").click();
     await page.waitForSelector("[data-font-theme]");
+    check((await page.locator('[data-board-tab="fonts"]').getAttribute("aria-selected")) === "true", "the toolbar's Fonts button opens the board's Fonts tab");
     await page.locator('[data-font-theme="warm"]').click();
     await page.waitForTimeout(300);
     check(/^"Rubik Hebrew[^"]*", "?Outfit"?,/.test(await titleFamily()), "one click on Warm sets the title in Outfit, Rubik for Hebrew", await titleFamily());
@@ -386,6 +390,46 @@ try {
     await page.locator("[data-weight-select]").selectOption("900");
     await page.waitForTimeout(200);
     check((await widgetFont(page, "editor", TITLE_ID))?.fontWeight === "900", "and a chosen weight draws the title at it");
+    await page.close();
+  }
+
+  // A zmanim table keeps fitting its box after a frame preset and after being
+  // switched to scroll and resized — the grid it measures is the one on screen.
+  {
+    console.log("\nZmanim after presets and a switch to scroll");
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1400 } });
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    await page.goto(`${BASE}/font-parity?font=assistant`, { waitUntil: "networkidle" });
+    await page.locator("summary", { hasText: "Add element" }).click();
+    await page.getByRole("button", { name: /^Zmanim/ }).first().click();
+    await page.waitForTimeout(600);
+    const zmanim = page.locator('[data-parity-half="editor"] [data-widget-id]').last();
+    const at = await zmanim.boundingBox();
+    await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2);
+    const read = () =>
+      zmanim.evaluate((w) => {
+        const grid = w.querySelector(".grid").getBoundingClientRect();
+        return { fitted: Number(w.querySelector("[data-fitted-size]").dataset.fittedSize), gridW: grid.width, boxW: w.getBoundingClientRect().width };
+      });
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    await page.locator('[data-appearance-tab="presets"]').click();
+    await page.locator('button[title="Card"]').click();
+    await page.waitForTimeout(400);
+    const carded = await read();
+    check(carded.fitted > 8 && carded.fitted < 400 && carded.gridW <= carded.boxW + 1, "after a frame preset the table still fits its box", JSON.stringify(carded));
+    await page.getByRole("button", { name: "Options", exact: true }).click();
+    await page.locator("select").filter({ hasText: "Scroll continuously" }).selectOption("scroll");
+    await page.waitForTimeout(400);
+    const before = await read();
+    const handle = await page.locator(".moveable-control.moveable-se").first().boundingBox();
+    await page.mouse.move(handle.x + 3, handle.y + 3);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 200, handle.y + 60, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    const after = await read();
+    check(after.fitted > before.fitted && after.fitted < 400 && after.gridW <= after.boxW + 1,
+      "switched to scroll and made wider, the type grows with the box — not to the 400 maximum", `${before.fitted} -> ${after.fitted}`);
     await page.close();
   }
 } finally {

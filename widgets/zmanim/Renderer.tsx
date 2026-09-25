@@ -12,16 +12,16 @@ import {
 } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
+import { boardFontSize, NUMERIC_FONT, NUMERIC_WEIGHT } from "@/lib/board-theme";
 import { Digits } from "../Digits";
 import { useSecond } from "@/lib/tick";
 import { resolveZmanimTable, type ResolvedZman } from "@/lib/zmanim/resolve-zmanim";
 import { EmptyLocation } from "../hebrew/EmptyLocation";
-import { EditorWarning } from "../EditorWarning";
+import { EditorNote } from "../EditorNote";
 import type { WidgetRendererProps } from "../types";
 import { onFontsChange, resolveDesignPx, resolveDesignUnits } from "../useFitFontSize";
 import { splitTimeColumns } from "./display-time";
-import { pageCount, rowsPerPage, ZMANIM_MIN_READABLE_UNITS, zmanimFit } from "./fit";
+import { pageCount, rowsPerPage, ZMANIM_SHRINK_MIN_UNITS, zmanimFit, zmanimFontPx } from "./fit";
 import { manifest, type ZmanimConfig } from "./manifest";
 
 /** The footnote block, relative to a row's own type size. Small — a sentence of
@@ -91,6 +91,8 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
     canvasWidth: canvas.width,
     rowCount: rows.length,
     signature: `${rows.map(labelOf).join("|")}::${footnotes.join("|")}`,
+    shrink: config.overflow === "shrink",
+    mode: config.overflow,
   });
 
   // The widget's appearance is applied by BoardRenderer.WidgetFrame around this
@@ -121,11 +123,11 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
   }
 
   const { rowHeightPx, availableHeightPx, contentHeightPx } = layout;
-  // Rows the box can't show at once even at the smallest readable size. The
-  // display pages (or scrolls) through them; the editor is told, on the
-  // element itself, so hiding zmanim is never a surprise.
+  // Rows the box can't show at once. The display pages (or scrolls) through
+  // them; the editor says so on the element — information, not a fault.
   const shown = availableHeightPx > 0 && rowHeightPx > 0 ? Math.min(rows.length, rowsPerPage(availableHeightPx, rowHeightPx)) : rows.length;
   const hidden = rows.length - shown;
+  const pages = pageCount(rows.length, Math.max(1, shown));
 
   return (
     <div ref={boxRef} className="relative flex h-full w-full flex-col overflow-hidden" data-zmanim-hidden={hidden}>
@@ -151,9 +153,12 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ZmanimConfig>) 
       )}
 
       {hidden > 0 && (
-        <EditorWarning>
-          {hidden === 1 ? "1 zman doesn\u2019t fit" : `${hidden} zmanim don\u2019t fit`} — make the box taller or remove some
-        </EditorWarning>
+        <EditorNote>
+          {config.overflow === "scroll"
+            ? `Scrolling through ${rows.length} zmanim, ${shown} at a time`
+            : `Showing ${rows.length} zmanim in ${pages} pages`}{" "}
+          — make the box taller to show more at once
+        </EditorNote>
       )}
 
       {/* Footnotes (opt-in) and the source credit — held out of the rows region
@@ -286,8 +291,13 @@ function useZmanimLayout(options: {
   canvasWidth: number;
   rowCount: number;
   signature: string;
+  /** Shrink the type so every row fits (config.overflow "shrink"). */
+  shrink: boolean;
+  /** Page, scroll or shrink — a change mounts a different grid, so the
+   *  measurement starts again with it. */
+  mode: string;
 }): ZmanimLayout {
-  const { boxRef, gridRef, chromeRef, canvasWidth, rowCount, signature } = options;
+  const { boxRef, gridRef, chromeRef, canvasWidth, rowCount, signature, shrink, mode } = options;
   const [layout, setLayout] = useState<ZmanimLayout>({
     fontPx: 0,
     rowHeightPx: 0,
@@ -298,12 +308,16 @@ function useZmanimLayout(options: {
 
   useIsomorphicLayoutEffect(() => {
     const box = boxRef.current;
-    const grid = gridRef.current;
-    if (!box || !grid || rowCount === 0) return;
+    if (!box || !gridRef.current || rowCount === 0) return;
 
     const minFontUnits = manifest.sizing.minFontSize ?? 6;
 
     const measure = () => {
+      // The grid as it is NOW, read on every measure: switching between page
+      // and scroll mounts a new one, and measuring the old, detached grid read
+      // a width of 0 — the type jumped to its 400 maximum and stayed there.
+      const grid = gridRef.current;
+      if (!grid || !grid.isConnected) return;
       const boxWidthPx = box.clientWidth;
       const boxHeightPx = box.clientHeight;
       // A zero-size content area (e.g. a frame whose padding briefly consumes a
@@ -325,20 +339,26 @@ function useZmanimLayout(options: {
       grid.style.width = "max-content";
       const widthPerFontPx = grid.getBoundingClientRect().width / ref;
       grid.style.width = previousWidth;
+      // Nothing measurable (a grid not laid out yet): keep the size it has
+      // rather than read 0 as "any size fits".
+      if (widthPerFontPx <= 0) return;
 
       const rowHeightPerFontPx = grid.getBoundingClientRect().height / rowCount / ref;
       const chromePerFontPx = chromeRef.current ? chromeRef.current.getBoundingClientRect().height / ref : 0;
 
-      // Every row and the credit line, per pixel of type: the height the whole
-      // table needs, so the type can shrink to show all of it (./fit.ts).
-      const { fontPx } = zmanimFit(
-        { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx: rowHeightPerFontPx * rowCount + chromePerFontPx },
-        {
-          minPx: resolveDesignPx(minFontUnits, canvasWidth, box),
-          readablePx: resolveDesignPx(ZMANIM_MIN_READABLE_UNITS, canvasWidth, box),
-          maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 400, canvasWidth, box),
-        },
-      );
+      const bounds = {
+        minPx: resolveDesignPx(minFontUnits, canvasWidth, box),
+        maxPx: resolveDesignPx(manifest.sizing.maxFontSize ?? 400, canvasWidth, box),
+      };
+      // Width-driven, the box height never touching it (./fit.ts) — unless the
+      // element is set to shrink to fit, when every row and the credit line
+      // must fit down it too, to a readable floor.
+      const fontPx = shrink
+        ? zmanimFit(
+            { boxWidthPx, boxHeightPx, widthPerFontPx, heightPerFontPx: rowHeightPerFontPx * rowCount + chromePerFontPx },
+            { ...bounds, readablePx: resolveDesignPx(ZMANIM_SHRINK_MIN_UNITS, canvasWidth, box) },
+          ).fontPx
+        : zmanimFontPx({ boxWidthPx, widthPerFontPx }, bounds);
       box.style.fontSize = `${fontPx}px`;
 
       const rowHeightPx = rowHeightPerFontPx * fontPx;
@@ -372,7 +392,7 @@ function useZmanimLayout(options: {
       stopFonts();
       if (pendingFrame.current !== null) cancelAnimationFrame(pendingFrame.current);
     };
-  }, [boxRef, gridRef, chromeRef, canvasWidth, rowCount, signature]);
+  }, [boxRef, gridRef, chromeRef, canvasWidth, rowCount, signature, shrink, mode]);
 
   return layout;
 }
@@ -387,8 +407,8 @@ function Row({ row, label }: { row: ResolvedZman; label: string }) {
   const parts = splitTimeColumns(row.display);
 
   const gap: CSSProperties = { paddingLeft: LABEL_GAP };
-  const time: CSSProperties = { fontFamily: NUMERIC_FONT };
-  const timeClass = "numeric font-semibold leading-snug whitespace-nowrap";
+  const time: CSSProperties = { fontFamily: NUMERIC_FONT, fontWeight: NUMERIC_WEIGHT };
+  const timeClass = "numeric leading-snug whitespace-nowrap";
 
   const labelCell = (
     <span key="label" className="min-w-0 overflow-hidden leading-snug whitespace-nowrap opacity-80">

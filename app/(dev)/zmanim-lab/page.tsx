@@ -86,7 +86,7 @@ function buildDoc(options: {
 function ZmanimLabInner() {
   const params = useSearchParams();
   const script = params.get("script") === "transliteration" ? "transliteration" : "english";
-  const overflow = params.get("overflow") === "scroll" ? "scroll" : "page";
+  const overflow = params.get("overflow") === "scroll" ? "scroll" : params.get("overflow") === "shrink" ? "shrink" : "page";
   const w = Number(params.get("w") ?? 60);
   const h = Number(params.get("h") ?? 60);
   // `pad` (frame padding as a multiple of the type size), `bg` (a background
