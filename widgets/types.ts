@@ -102,6 +102,9 @@ export type WidgetManifest<TConfig = Record<string, unknown>> = {
    *  out script faces, and a face with old-style figures sets its digits in
    *  the matched fallback (lib/board-theme.ts, numericFace). */
   showsTimes?: boolean;
+  /** False where the shared Line spacing control would mean nothing (a
+   *  one-line clock, a picture) or the widget has its own (Text). */
+  lineSpacing?: false;
   /** Shown in the add-widget menu. Sentence case. */
   name: string;
   /** One line in the add-widget menu, saying what it puts on the board. */

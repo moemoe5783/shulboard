@@ -23,6 +23,9 @@ export const galleryConfigSchema = z.object({
   order: z.enum(["album", "shuffle"]).default("album"),
   /** Show the photo's caption over the image. */
   showCaption: z.boolean().default(false),
+  /** The caption's size, and the space around it, in board design units. */
+  captionSize: z.number().min(12).max(120).default(28).catch(28),
+  captionPadding: z.number().min(0).max(80).default(12).catch(12),
   /** How one photo gives way to the next — the collage's effects
    *  (../collage/transitions.ts), applied to a single photo. A gallery saved
    *  before this crossfades. */

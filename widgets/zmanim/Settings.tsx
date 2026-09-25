@@ -46,7 +46,7 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
         </select>
         <span className={PANEL_LABEL}>
           The box&rsquo;s width sets the type size (bigger box, bigger text — set it exactly on the Size tab). The
-          height never shrinks the text.
+          height doesn&rsquo;t shrink the text unless you choose Shrink to fit below.
         </span>
       </label>
 
@@ -59,9 +59,11 @@ export function Settings({ config, onChange }: WidgetSettingsProps<ZmanimConfig>
         >
           <option value="page">Page through them</option>
           <option value="scroll">Scroll continuously</option>
+          <option value="shrink">Shrink to fit</option>
         </select>
         <span className={PANEL_LABEL}>
-          When more rows are chosen than fit the height — page a screenful at a time, or scroll like a departures board.
+          When more rows are chosen than fit the height — page a screenful at a time, scroll like a departures board, or
+          make the text smaller so they all show (never smaller than a room can read; past that it pages).
         </span>
       </label>
 

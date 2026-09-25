@@ -84,12 +84,14 @@ export const zmanimConfigSchema = z.object({
    *  relative padding and header scale against (widgets/style.ts). */
   size: z.number().min(8).max(400).default(32),
   /**
-   * What happens when more rows are chosen than fit the box height. Never
-   * shrinks the type (the width sets that) — instead:
-   *  - `page`: show a screenful of whole rows, then cycle to the next.
+   * What happens when more rows are chosen than fit the box height:
+   *  - `page` (default): show a screenful of whole rows, then cycle to the next.
+   *    The type stays width-driven.
    *  - `scroll`: scroll the rows continuously, like a departures board.
+   *  - `shrink`: shrink the type until every row fits, down to a floor a room
+   *    can read (./fit.ts, ZMANIM_SHRINK_MIN_UNITS); past that, page.
    */
-  overflow: z.enum(["page", "scroll"]).default("page"),
+  overflow: z.enum(["page", "scroll", "shrink"]).default("page"),
   provider: zmanimProviderSchema,
   /**
    * Which form the row labels take: the English name, or the Hebrew zman name
@@ -157,7 +159,7 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
    * SIZING — WIDTH-DRIVEN TYPE, VERTICAL SCROLL/PAGE (widgets/zmanim/fit.ts and
    * Renderer.tsx). The box's WIDTH sets the type size (as large as fits the
    * widest row across it); the box's HEIGHT never rescales the type — extra rows
-   * scroll or page (config.overflow), never shrink.
+   * scroll or page (config.overflow) — unless the element opts into `shrink`.
    *
    * `mode: "fit"` so the panel's "Type size" field is a LIVE readout of the
    * rendered size and resizes the BOX to a typed size (PropertiesPanel) — which

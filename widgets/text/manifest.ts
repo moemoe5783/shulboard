@@ -43,6 +43,8 @@ export const manifest: WidgetManifest<TextConfig> = {
   defaultSize: { w: 720, h: 240 },
   isPro: false,
   settingsSchema: textConfigSchema,
+  // No shared line spacing: it has its own (Settings.tsx).
+  lineSpacing: false,
   dataNeeds: () => [],
   sizing: { mode: "fixed", userToggleable: true, minFontSize: 8, maxFontSize: 400 },
   /** The first line, shortened — what the layers panel calls it. */

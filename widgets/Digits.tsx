@@ -2,27 +2,26 @@ import { Fragment } from "react";
 import { digitWidthVar } from "@/lib/board-theme";
 
 /*
- * A string with numbers in it — a time, a countdown, a date — set so its
- * digits line up in a column whatever font the board uses (docs/plan.md §5
- * numbers; CLAUDE.md's column-of-times rule).
+ * A string with numbers in it — a time, a countdown, a date — set in the
+ * font's own lining figures (`lining-nums tabular-nums`: even height, and even
+ * width where the face has tabular figures).
  *
- * Two mechanisms, and the font decides which one does the work:
- *
- *  - `lining-nums tabular-nums` on every digit. A face with both features
- *    draws its digits even-height AND even-width, and nothing more is needed;
- *    a feature a face lacks is simply ignored.
- *  - A fixed-width box per digit, only for a face WITHOUT tabular figures: as
- *    wide as that face's widest digit AT THIS WEIGHT, measured (lining figures
- *    where it has them) in the font files at build time
- *    (scripts/build-fonts.ts). The board root and the widget frame publish
- *    those widths as `--board-digit-<weight>` only for such a face
- *    (lib/board-theme.ts, digitWidthVars); for every other face the variable
- *    is unset and the box is `auto`, i.e. the digit's own tabular width.
+ * BOXED ONLY WHERE DIGITS TICK IN PLACE. A zmanim table already lines its
+ * times up on its grid (hour track right-aligned to the colon, minutes and
+ * AM/PM in their own tracks — widgets/zmanim/Renderer.tsx), and a clock or a
+ * date changing width once a minute is fine. But a display whose digits change
+ * every second — a clock showing seconds — would shimmy in a face without
+ * tabular figures, so there, and only there, `boxed` puts each digit in a
+ * fixed-width box as wide as the face's widest digit AT THIS WEIGHT, measured
+ * in the font files at build time (scripts/build-fonts.ts, published as
+ * `--board-digit-<weight>` by lib/board-theme.ts's digitWidthVars; `auto`, the
+ * digit's own width, for a face with tabular figures).
  *
  * Colons, spaces and AM/PM stay natural width. Splitting is display only: the
  * characters rendered are exactly the input's, in order.
  */
-export function Digits({ text, weight = 400 }: { text: string; weight?: number }) {
+export function Digits({ text, weight = 400, boxed = false }: { text: string; weight?: number; boxed?: boolean }) {
+  if (!boxed) return <span data-digits style={{ fontVariantNumeric: "lining-nums tabular-nums" }}>{text}</span>;
   const width = digitWidthVar(weight);
   return (
     <>

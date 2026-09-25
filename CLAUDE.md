@@ -132,17 +132,16 @@ Environment variables: @docs/environment.md
   6.97px spread to 0.00px under `tabular-nums` while the UI face is 3.08px
   either way. A column of board times gets its clean edge from setting the face.
   On a board that face is `NUMERIC_FONT` (lib/board-theme.ts): the chosen font,
-  whatever it is — there is no swap to another face. Digits are set
-  `lining-nums tabular-nums` (`widgets/Digits.tsx`), which is enough in a face
-  with tnum; a face without it gets a box per digit as wide as its widest
-  digit at that weight, measured in the font files at build time
-  (`scripts/build-fonts.ts`, `--board-digit-<weight>`). The one exception is a
+  in its own lining figures (`lining-nums tabular-nums`, `widgets/Digits.tsx`).
+  Digits are boxed to the face's widest digit (measured per weight at build
+  time, `--board-digit-<weight>`) only where they tick in place — a clock
+  showing seconds; the zmanim grid and a once-a-minute clock don't need it. A
   face whose figures are old-style with no lining set (Marcellus, Pinyon
-  Script, Parisienne, Suez One, and Alef for boards that already use it): in
-  a time widget only, its digits come from the matched fallback — Frank Ruhl
-  Libre for a serif, Heebo otherwise — through a digit-only family at the
-  front of the stack (`numericFace`, `DIGIT_FAMILIES`). The build report
-  lists those faces. Script faces aren't offered in time widgets' pickers.
+  Script, Parisienne, Suez One, and Alef for boards that already use it) sets
+  the WHOLE time in its matched fallback — Frank Ruhl Libre for a serif, Heebo
+  otherwise — at a weight tuned to match (`numericFace`, `numericWeight`,
+  `TIME_FALLBACK_WEIGHT`, tuned in /fonts-lab). Script faces aren't offered in
+  time widgets' pickers.
   **The face is necessary and not sufficient.** Figures of equal width still
   do not line up when the strings are different lengths: `7:22 PM` against
   `11:21 AM` puts the two-digit hour a digit out past the one-digit ones,

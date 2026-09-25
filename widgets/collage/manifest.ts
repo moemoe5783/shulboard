@@ -119,6 +119,8 @@ export const manifest: WidgetManifest<CollageConfig> = {
   defaultSize: { w: 960, h: 540 },
   isPro: false,
   settingsSchema: collageConfigSchema,
+  // No shared line spacing: no text to space.
+  lineSpacing: false,
   dataNeeds,
   sizing: { mode: "fit", userToggleable: false },
   instanceLabel: () => "Collage",

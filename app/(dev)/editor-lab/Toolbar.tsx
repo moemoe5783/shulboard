@@ -61,6 +61,7 @@ export function Toolbar({
   // How many steps can be undone — for tests that check an action (a font
   // hovered in a picker) left nothing in the history.
   const historyCount = useEditor((s) => s.history.past.length);
+  const openBoardPanel = useEditor((s) => s.openBoardPanel);
 
   return (
     <div
@@ -74,6 +75,17 @@ export function Toolbar({
 
       <Command id="undo" run={run} label="Undo" />
       <Command id="redo" run={run} label="Redo" />
+
+      <Divider />
+
+      {/* The board's fonts and font theme, from anywhere: it lives in the
+          board's settings, which otherwise need everything deselected. */}
+      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("fonts")} data-open-board-fonts>
+        Fonts
+      </button>
+      <button type="button" className={CHROME_BUTTON} onClick={() => openBoardPanel("board")} data-open-board-settings>
+        Board
+      </button>
 
       <Divider />
 

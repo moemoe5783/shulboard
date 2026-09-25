@@ -193,15 +193,22 @@ export const HEBREW_PUNCTUATION: Record<string, number> = {
 export const HEBREW_MARKS_FALLBACK = { serif: "frank-ruhl-libre", other: "assistant" } as const;
 
 /**
- * Digit-only families of the two fallbacks (unicode-range 0–9 only), for the
- * faces whose figures are old-style with no lining alternative: in a time,
- * zmanim, date or countdown widget their digits are drawn in the matched
- * fallback, lining and tabular, while their letters (AM, PM) stay their own
- * (lib/board-theme.ts, numericFace). Everywhere else they keep their figures.
+ * The faces whose figures are old-style with no lining set draw a WHOLE TIME
+ * (digits, colon, AM/PM) in the matched fallback — Frank Ruhl Libre for a
+ * serif, Heebo otherwise — in time, zmanim, date and countdown widgets only
+ * (lib/board-theme.ts, numericFace). This is the fallback's weight for each,
+ * chosen by eye in /fonts-lab (?section=timefallback) to stand as dark as the
+ * face's own semibold text beside it: Suez One is a very heavy face, so Frank
+ * Ruhl Libre at its heaviest; Marcellus's semibold sits with Frank Ruhl Libre
+ * 600 and Alef's bold with Heebo 600; the scripts are hairline, so Heebo at
+ * its lightest offered, 400.
  */
-export const DIGIT_FAMILIES: Record<(typeof HEBREW_FALLBACK)[keyof typeof HEBREW_FALLBACK], string> = {
-  "frank-ruhl-libre": "Frank Ruhl Libre Digits",
-  heebo: "Heebo Digits",
+export const TIME_FALLBACK_WEIGHT: Readonly<Record<string, number>> = {
+  marcellus: 600,
+  "suez-one": 900,
+  "pinyon-script": 400,
+  parisienne: 400,
+  alef: 600,
 };
 
 export const HEBREW_GROUPS: { id: HebrewGroup; label: string }[] = [

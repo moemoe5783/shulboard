@@ -26,6 +26,8 @@
  */
 
 import { useSearchParams } from "next/navigation";
+import type { BoardZmanim } from "@/lib/board-zmanim";
+import { buildCache } from "../zmanim-lab/fixture";
 import { fontTheme, fontThemePatch, type FontTheme } from "@/lib/fonts/themes";
 import { Suspense } from "react";
 import { BoardEditor } from "@/app/(editor)/boards/[id]/BoardEditor";
@@ -104,6 +106,9 @@ function buildDoc(font: string, theme?: FontTheme): BoardDoc {
   });
 }
 
+/** The zmanim lab's synthetic day, so a zmanim element added here has rows. */
+const ZMANIM: BoardZmanim = { provider: "chabad", hasChabadLocation: true, chabadZmanim: buildCache("english") };
+
 const definedOnly = (patch: Record<string, string | undefined>) =>
   Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 
@@ -125,6 +130,7 @@ function FontParityInner() {
           canvas={CANVAS}
           doc={boardDocAsJson(doc)}
           location={DEMO_LOCATION}
+          zmanim={ZMANIM}
           publishState={{ publishedAt: null, screenCount: 0, pendingChanges: true }}
         />
       </div>
@@ -138,6 +144,7 @@ function FontParityInner() {
           doc={doc}
           canvas={CANVAS}
           location={DEMO_LOCATION}
+          zmanim={ZMANIM}
           widgetProps={(widget) => ({ "data-widget-id": widget.id })}
           style={{
             aspectRatio: `${CANVAS.width} / ${CANVAS.height}`,

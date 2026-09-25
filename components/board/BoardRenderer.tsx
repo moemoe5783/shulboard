@@ -296,13 +296,14 @@ function WidgetFrame({
               fontFamily: headerFont,
               flexShrink: 0,
               fontWeight: "var(--board-weight-semibold, 600)",
-              textAlign: "center",
+              textAlign: style.titleAlign,
+              unicodeBidi: "plaintext",
               lineHeight: 1.1,
               // titleSize is a multiple of the widget's own text size, capped
               // against the box height so it can't consume a short box (same
               // reason as padding — widgets/style.ts).
               fontSize: boardLength(headerSize, canvas.width),
-              marginBottom: boardLength(headerSize * 0.35, canvas.width),
+              marginBottom: boardLength(headerSize * style.titleGap, canvas.width),
             }}
           >
             {style.title}

@@ -107,4 +107,35 @@ function GalleryLook({ config: raw, onChange }: WidgetSettingsProps<GalleryConfi
   );
 }
 
-export const appearance: AppearanceSection<GalleryConfig>[] = [{ id: "photo", label: "Photo", Component: GalleryLook }];
+/** The caption's size and the space around it — at the top of the
+ *  Appearance tab's Text section. */
+function GalleryCaption({ config: raw, onChange }: WidgetSettingsProps<GalleryConfig>) {
+  const config = readGalleryConfig(raw);
+  if (!config.showCaption) {
+    return <p className={PANEL_LABEL}>Captions are off. Turn on Show captions in Options to set their size here.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <SliderField
+        label="Caption size"
+        value={config.captionSize}
+        min={12}
+        max={120}
+        onChange={(captionSize) => onChange({ captionSize })}
+      />
+      <SliderField
+        label="Space around the caption"
+        hint="Room between the caption's words and the edge of its band."
+        value={config.captionPadding}
+        min={0}
+        max={80}
+        onChange={(captionPadding) => onChange({ captionPadding })}
+      />
+    </div>
+  );
+}
+
+export const appearance: AppearanceSection<GalleryConfig>[] = [
+  { id: "photo", label: "Photo", Component: GalleryLook },
+  { id: "text", label: "Text", Component: GalleryCaption },
+];

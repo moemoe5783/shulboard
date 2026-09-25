@@ -1,5 +1,5 @@
 import { BUILT_FONTS, FONT_FACES_CSS, type BuiltFace } from "./catalog.generated.ts";
-import { DIGIT_FAMILIES } from "./catalog.ts";
+import { TIME_FALLBACK_WEIGHT } from "./catalog.ts";
 import { boldWeight, catalogId, clampWeight, digitFallbackFor, fontInfo, hebrewMarksFallbackFor } from "./index.ts";
 import { boardFontRoles, resolveElementFont, type FontRole } from "./roles.ts";
 import { hebrewFamily, hebrewOverride, resolvedHebrew } from "./stack.ts";
@@ -20,7 +20,8 @@ import { hebrewFamily, hebrewOverride, resolvedHebrew } from "./stack.ts";
  * text in (regular and semibold; a variable face is one file for both), its
  * Latin files; the Hebrew face drawn with it (override, matched fallback, or
  * the face's own) — its Hebrew file ALWAYS, deduplicated; a
- * time widget whose face has old-style figures, the fallback's digits; and
+ * time widget whose face has old-style figures, the fallback it sets its times
+ * in, at the tuned weight; and
  * Frank Ruhl Libre for the Hebrew-calendar widgets, which set it themselves.
  *
  * WHY HEBREW IS ALWAYS BUNDLED. Whether a board draws Hebrew can't be read
@@ -156,13 +157,11 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
       // A header line is set in the heading font (components/board/BoardRenderer.tsx).
       if (typeof config.title === "string" && config.title !== "") addFont(roles.heading.font, roles.heading.hebrew);
       if (meta?.showsTimes) {
+        // A face with old-style figures sets its times wholly in the matched
+        // fallback, at a tuned weight (lib/board-theme.ts, numericFace).
         const fallback = digitFallbackFor(resolved.font);
-        if (fallback) {
-          for (const wanted of TEXT_WEIGHTS) {
-            for (const face of filesFor(fallback, wanted, (subset) => subset === "latin")) files.add(face.url);
-            addFace(DIGIT_FAMILIES[fallback], wanted, "0123456789");
-          }
-        }
+        const id = catalogId(resolved.font);
+        if (fallback && id) addFont(fallback, resolved.hebrew, [TIME_FALLBACK_WEIGHT[id] ?? 600]);
       }
       if (SEFARIM_TYPES.has(widget.type)) addFont("frank-ruhl-libre", "auto");
     }

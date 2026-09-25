@@ -81,7 +81,8 @@ try {
         digitWidths: [...span.querySelectorAll("[data-digit]")].map((d) => Math.round(d.getBoundingClientRect().width * 10) / 10),
         // The clock sets its digits at 600 (widgets/clock/Renderer.tsx).
         digitBox: getComputedStyle(span).getPropertyValue("--board-digit-600").trim(),
-        numeric: span.querySelector("[data-digit]") ? getComputedStyle(span.querySelector("[data-digit]")).fontVariantNumeric : "",
+        numeric: span.querySelector("[data-digit], [data-digits]") ? getComputedStyle(span.querySelector("[data-digit], [data-digits]")).fontVariantNumeric : "",
+        weight: getComputedStyle(span).fontWeight,
       };
     });
   };
@@ -104,7 +105,9 @@ try {
   {
     const narrow = await open(`w=40&h=40&${wide}`);
     check(narrow.overhang <= 1, "a width-bound clock never passes the box's edges", `${narrow.overhang.toFixed(1)}px`);
-    check(Math.abs(narrow.textW - narrow.boxW) <= 2, "and it grows to the box's full width", `${narrow.textW.toFixed(0)} of ${narrow.boxW.toFixed(0)}px`);
+    // Fit sizes for the widest time the format shows; in natural (unboxed)
+    // figures the time on screen can be a few pixels narrower than that.
+    check(narrow.textW >= narrow.boxW * 0.97 && narrow.textW <= narrow.boxW + 2, "and it grows to the box's full width", `${narrow.textW.toFixed(0)} of ${narrow.boxW.toFixed(0)}px`);
 
     const wider = await open(`w=60&h=40&${wide}`);
     check(wider.fontPx > narrow.fontPx * 1.3, "a wider box means bigger type", `${narrow.fontPx.toFixed(0)} -> ${wider.fontPx.toFixed(0)}px`);
@@ -149,30 +152,34 @@ try {
     for (const [query, expected, why] of [
       ["font=heebo", "Heebo", "a widget set in Heebo shows its time in Heebo"],
       ["font=rubik", "Rubik", "and Rubik"],
-      ["font=alef", "Heebo Digits", "a widget set in Alef (old-style figures) takes Heebo's digits"],
+      ["font=alef", "Heebo", "a widget set in Alef (old-style figures) sets its time in Heebo"],
       ["boardFont=davidLibre", "David Libre", "a board set in David Libre shows its clocks in it"],
-      ["boardFont=suezOne", "Frank Ruhl Libre Digits", "a board set in Suez One takes Frank Ruhl Libre's digits"],
-      ["boardFont=heebo&font=alef", "Heebo Digits", "a widget's own font wins over the board's"],
-      ["boardFont=heebo&font=inter", "Inter", "and a lining face keeps its own digits"],
+      ["boardFont=suezOne", "Frank Ruhl Libre", "a board set in Suez One sets its clocks in Frank Ruhl Libre"],
+      ["boardFont=heebo&font=alef", "Heebo", "a widget's own font wins over the board's"],
+      ["boardFont=heebo&font=inter", "Inter", "and a lining face keeps its own"],
     ]) {
       const clock = await open(`w=40&h=20&${query}`);
       check(clock.family === expected, why, clock.family);
     }
-    const rubik = await open("w=40&h=20&font=rubik");
-    check(/lining-nums/.test(rubik.numeric) && /tabular-nums/.test(rubik.numeric), "digits ask for lining, tabular figures", rubik.numeric);
-    check(new Set(rubik.digitWidths).size === 1, "Rubik (tnum) lines its digits up with no box", rubik.digitWidths.join(" "));
-    const alef = await open("w=40&h=20&font=alef");
-    check(/em$/.test(alef.digitBox), "Alef (no tnum) gets a digit box", alef.digitBox);
-    check(rubik.digitBox === "" || rubik.digitBox === "auto", "Rubik gets none", rubik.digitBox || "unset");
-    check(new Set(alef.digitWidths).size === 1, "and its digits share one width", alef.digitWidths.join(" "));
 
-    // Old-style figures, no lining set: the digits come from the matched
-    // fallback (a digit-only family first in the stack), the rest from the face.
+    // Natural lining figures: no boxes, unless digits tick every second.
+    const playfair = await open("w=40&h=20&font=playfair-display");
+    check(/lining-nums/.test(playfair.numeric), "digits are the face's lining figures", playfair.numeric);
+    check(playfair.digitWidths.length === 0, "and a clock without seconds boxes none (a width change once a minute is fine)");
+    const ticking = await open("w=40&h=20&seconds=1&font=playfair-display");
+    check(ticking.digitWidths.length >= 5 && new Set(ticking.digitWidths).size === 1 && /em$/.test(ticking.digitBox),
+      "a clock showing seconds in a face without tabular figures boxes each digit to its widest", ticking.digitWidths.join(" "));
+    const rubik = await open("w=40&h=20&seconds=1&font=rubik");
+    check(new Set(rubik.digitWidths).size === 1 && (rubik.digitBox === "" || rubik.digitBox === "auto"), "Rubik (tnum) lines its ticking digits up with no box", rubik.digitWidths.join(" "));
+
+    // Old-style figures, no lining set: the whole time — digits, colon, AM/PM —
+    // in the matched fallback, at a weight matched to the face.
     const suez = await open("w=40&h=20&font=suezOne");
-    check(suez.family === "Frank Ruhl Libre Digits", "a Suez One clock draws its digits in Frank Ruhl Libre", suez.family);
-    const pinyon = await open("w=40&h=20&font=pinyon-script");
-    check(pinyon.family === "Heebo Digits", "a Pinyon Script clock draws its digits in Heebo", pinyon.family);
-    check(new Set(pinyon.digitWidths).size === 1, "boxed to Heebo's widest digit", pinyon.digitWidths.join(" "));
+    check(suez.family === "Frank Ruhl Libre" && suez.weight === "900", "a Suez One clock is Frank Ruhl Libre at 900 throughout", `${suez.family} ${suez.weight}`);
+    const marcellus = await open("w=40&h=20&font=marcellus");
+    check(marcellus.family === "Frank Ruhl Libre" && marcellus.weight === "600", "Marcellus's is Frank Ruhl Libre at 600", `${marcellus.family} ${marcellus.weight}`);
+    const pinyon = await open("w=40&h=20&seconds=1&font=pinyon-script");
+    check(pinyon.family === "Heebo" && new Set(pinyon.digitWidths).size === 1, "a ticking Pinyon Script clock is Heebo, boxed to Heebo's widest digit", pinyon.digitWidths.join(" "));
   }
 } finally {
   await browser.close();

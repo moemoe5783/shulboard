@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useSecond } from "@/lib/tick";
-import { boardFontSize, NUMERIC_FONT } from "@/lib/board-theme";
+import { boardFontSize, NUMERIC_FONT, NUMERIC_WEIGHT } from "@/lib/board-theme";
 import { Digits } from "../Digits";
 import type { WidgetRendererProps } from "../types";
 import { onFontsChange, useFitFontSize } from "../useFitFontSize";
@@ -79,30 +79,31 @@ export function Renderer({ config, canvas }: WidgetRendererProps<ClockConfig>) {
     <div ref={boxRef} className={`relative flex h-full w-full items-center ${align}`}>
       {/*
         The board's or this widget's own face (lib/board-theme.ts's
-        NUMERIC_FONT). A clock's digits change every second it's on screen, and
-        in a face without tabular figures it would jitter: the `numeric` class
-        asks for tabular figures, and <Digits> boxes each digit to the face's
-        widest where it has none (widgets/Digits.tsx) — docs/sizing.md §4.
+        NUMERIC_FONT), in its lining figures. A clock showing seconds changes
+        every second, and in a face without tabular figures it would jitter, so
+        then <Digits> boxes each digit to the face's widest (widgets/Digits.tsx)
+        — docs/sizing.md §4. Once a minute, a small width change is fine.
       */}
       <span
         ref={contentRef}
-        className={`numeric font-semibold leading-none whitespace-nowrap ${trim}`}
+        className={`numeric leading-none whitespace-nowrap ${trim}`}
         style={{
           fontFamily: NUMERIC_FONT,
+          fontWeight: NUMERIC_WEIGHT,
           fontSize: isFit ? undefined : isCapped && scale < 1 ? `calc(${declared} * ${scale})` : declared,
         }}
       >
-        <Digits text={text} weight={600} />
+        <Digits text={text} weight={600} boxed={config.showSeconds} />
       </span>
       {!isHug && (
         <span
           ref={measureRef}
           data-clock-measure
           aria-hidden
-          className={`numeric pointer-events-none invisible absolute font-semibold leading-none whitespace-nowrap ${trim}`}
-          style={{ fontFamily: NUMERIC_FONT, fontSize: isFit ? undefined : declared }}
+          className={`numeric pointer-events-none invisible absolute leading-none whitespace-nowrap ${trim}`}
+          style={{ fontFamily: NUMERIC_FONT, fontWeight: NUMERIC_WEIGHT, fontSize: isFit ? undefined : declared }}
         >
-          <Digits text={widest} weight={600} />
+          <Digits text={widest} weight={600} boxed={config.showSeconds} />
         </span>
       )}
     </div>
