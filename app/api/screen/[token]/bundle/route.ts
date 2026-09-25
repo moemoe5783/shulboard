@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { etagFor, etagMatches } from "@/lib/bundle/hash";
+import { DEPLOYMENT_HEADER, currentDeployment } from "@/lib/deployment";
 import type { BundleEnvelope } from "@/lib/bundle/types";
 import { DEVICE_HEADER } from "@/lib/pairing";
 import { resolveScreenToken } from "@/lib/screen-token";
@@ -87,6 +88,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
         headers: {
           etag: etagFor(head.content_hash),
           "cache-control": "no-cache",
+          ...deploymentHeader(),
         },
       });
     }
@@ -123,6 +125,14 @@ export async function GET(request: Request, { params }: RouteContext<"/api/scree
       // and an intermediary holding this for even a minute would make "publish
       // now" mean "publish soon".
       "cache-control": "no-cache, must-revalidate",
+      ...deploymentHeader(),
     },
   });
+}
+
+/** Which deployment answered — a screen running an older one reloads
+ *  (lib/deployment.ts). */
+function deploymentHeader(): Record<string, string> {
+  const id = currentDeployment();
+  return id ? { [DEPLOYMENT_HEADER]: id } : {};
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { BundleEnvelope } from "@/lib/bundle/types";
+import { DEPLOYMENT_HEADER } from "@/lib/deployment";
 import { boardFileUrls, DeviceFiles, type AssetProgress } from "./assets";
 import { loadFonts } from "./fonts";
 import { resetMediaStats } from "./debug";
@@ -61,7 +62,7 @@ export type DisplayStorage = { persisted: boolean | null; usage: number | null; 
 
 const startedAt = Date.now();
 
-export function useDisplay(token: string) {
+export function useDisplay(token: string, deployment: string | null = null) {
   const [bundle, setBundle] = useState<BundleEnvelope | null>(null);
   const [status, setStatus] = useState<DisplayStatus>({
     source: "none",
@@ -128,6 +129,7 @@ export function useDisplay(token: string) {
         headers,
         cache: "no-store",
       });
+      reloadIfNewerDeployment(deployment, response.headers.get(DEPLOYMENT_HEADER));
 
       if (response.status === 304) {
         setStatus((s) => ({ ...s, online: true, lastFetchAt: Date.now() }));
@@ -195,7 +197,7 @@ export function useDisplay(token: string) {
     } finally {
       inFlightRef.current = false;
     }
-  }, [token, adopt, files, loadFiles, reporter]);
+  }, [token, deployment, adopt, files, loadFiles, reporter]);
 
   // ---- boot: cache first, then network ------------------------------------
 
@@ -338,4 +340,30 @@ export function useDisplay(token: string) {
   }, []);
 
   return { bundle, status, refresh, files, filesSnapshot, storage };
+}
+
+/*
+ * A newer deployment is serving the bundle than served this page: reload, so
+ * the screen runs the code the board was made with (lib/deployment.ts). The
+ * bundle is already in IndexedDB, so the reload boots straight back onto the
+ * board. Spread over half a minute so a building's screens don't all reload
+ * on the same second, and once per deployment: if the reload somehow comes
+ * back on the old page (a cached copy while the network drops), it doesn't
+ * loop.
+ */
+const RELOADED_FOR = "shulboard-reloaded-for";
+let reloadScheduled = false;
+
+function reloadIfNewerDeployment(page: string | null, server: string | null) {
+  if (!page || !server || page === server || reloadScheduled) return;
+  try {
+    if (sessionStorage.getItem(RELOADED_FOR) === server) return;
+    sessionStorage.setItem(RELOADED_FOR, server);
+  } catch {
+    // No session storage, no loop guard: stay on the old code until the
+    // nightly reload rather than risk reloading forever.
+    return;
+  }
+  reloadScheduled = true;
+  setTimeout(() => location.reload(), Math.random() * 30_000);
 }

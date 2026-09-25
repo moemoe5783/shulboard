@@ -1,5 +1,6 @@
 import { DisplayBoot } from "./DisplayBoot";
 import { TvColorScheme } from "@/components/board/TvColorScheme";
+import { currentDeployment } from "@/lib/deployment";
 
 /** The meta-tag half of TvColorScheme, for browsers that decide before CSS. */
 export const viewport = { colorScheme: "dark" as const };
@@ -16,7 +17,7 @@ export default async function DisplayPage({ params }: PageProps<"/s/[token]">) {
     <main>
       <TvColorScheme />
       <h1 className="sr-only">Display</h1>
-      <DisplayBoot urlToken={token} />
+      <DisplayBoot urlToken={token} deployment={currentDeployment()} />
     </main>
   );
 }
