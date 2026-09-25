@@ -3,9 +3,11 @@
  *
  *  1. NO EXTERNAL FONT HOST. Loading every font, weight, nikud line, zmanim
  *     table and theme requests fonts from this origin only.
- *  2. A BOARD DOWNLOADS ONLY ITS OWN FONTS, and Hebrew files only when there's
- *     Hebrew: one small Inter board fetches Inter and nothing else; add a
- *     Hebrew line and Heebo's Hebrew file joins it.
+ *  2. A BROWSER FETCHES ONLY WHAT A BOARD DRAWS: one small Inter board online
+ *     fetches Inter and nothing else, and Heebo's Hebrew only once a Hebrew
+ *     line appears — the unicode-range on every Hebrew face at work. (The
+ *     bundle, which a screen caches for offline, always carries the matched
+ *     Hebrew anyway: lib/fonts/board-fonts.ts, test:fonts.)
  *  3. TIMES LINE UP IN EVERY FONT: in the real Zmanim widget set in each
  *     catalog face, the hours' right edges and the minutes' left edges are one
  *     line, and hours of the same length are the same width whatever digits
@@ -92,12 +94,12 @@ try {
     await page.close();
   }
 
-  console.log("\n-- 2. a board downloads only its own fonts ----------------------------");
+  console.log("\n-- 2. online, the browser fetches only what the board draws ------------");
   {
     const english = await open("section=plain");
     const files = fontFiles(english.requests).map((url) => url.pathname).filter((path) => path.startsWith("/fonts/"));
-    check(files.length > 0 && files.every((path) => path.startsWith("/fonts/inter/")), "an English Inter board fetches Inter and nothing else", files.join(", "));
-    check(!files.some((path) => path.includes("/hebrew-")), "and no Hebrew file");
+    check(files.length > 0 && files.every((path) => path.startsWith("/fonts/inter/")), "an English Inter board, online, fetches Inter and nothing else", files.join(", "));
+    check(!files.some((path) => path.includes("/hebrew-")), "and no Hebrew file — unicode-range keeps it for Hebrew");
     await english.page.close();
 
     const hebrew = await open("section=plain&hebrew=1");

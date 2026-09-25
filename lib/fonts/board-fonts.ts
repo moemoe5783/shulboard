@@ -19,9 +19,18 @@ import { hebrewFamily, hebrewOverride, resolvedHebrew } from "./stack.ts";
  * name, or its role's default — ./roles.ts), at the weights a board draws
  * text in (regular and semibold; a variable face is one file for both), its
  * Latin files; the Hebrew face drawn with it (override, matched fallback, or
- * the face's own) — its Hebrew file only when the board has Hebrew to draw; a
+ * the face's own) — its Hebrew file ALWAYS, deduplicated; a
  * time widget whose face has old-style figures, the fallback's digits; and
  * Frank Ruhl Libre for the Hebrew-calendar widgets, which set it themselves.
+ *
+ * WHY HEBREW IS ALWAYS BUNDLED. Whether a board draws Hebrew can't be read
+ * off its document: it arrives as data too — a caption on an album photo, a
+ * zmanim table's label language, the parsha and the Hebrew date, a feed added
+ * later — and a miss means an offline TV draws that Hebrew in a system font.
+ * So each role's resolved Hebrew face is in the bundle whatever the text says.
+ * The unicode-range on every Hebrew face still keeps a browser from using (or,
+ * online, fetching) it for anything but Hebrew; an override is only there if
+ * something chose it.
  *
  * `faces` is the same list as families the page can ask the browser to load
  * (document.fonts.load) before first paint, each with a sample of the text
@@ -50,9 +59,6 @@ type Doc = { themeOverrides: Record<string, unknown>; widgets: readonly { type: 
  *  BOARD_FONTS.sefarim) for Hebrew dates, the parsha, the daf and candle
  *  lighting's labels. */
 const SEFARIM_TYPES = new Set(["hebrew-date", "parsha", "daf-yomi", "candle-lighting"]);
-/** Widgets that draw Hebrew letters whatever their text says. */
-const HEBREW_TYPES = new Set(["hebrew-date", "parsha", "daf-yomi"]);
-const HEBREW_LETTER = /[֐-׿יִ-ﭏ]/;
 
 /** The weights a board draws text in: regular, and semibold for titles,
  *  headers and clocks — plus each face's own bold (Text's Bold), and any weight
@@ -95,8 +101,18 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
   for (const doc of docs) {
     const roles = boardFontRoles(doc.themeOverrides);
     const widgets = doc.widgets.filter((widget) => !widget.hidden);
-    const hasHebrew =
-      widgets.some((widget) => HEBREW_TYPES.has(widget.type)) || widgets.some((widget) => HEBREW_LETTER.test(JSON.stringify(widget.config ?? {})));
+
+    /** The Hebrew drawn with a font, at a weight: its file and its family. */
+    const addHebrew = (id: string, name: string, hebrew: string, weight: number) => {
+      const hebrewId = resolvedHebrew(id, hebrew);
+      if (!hebrewId) return;
+      const hebrewWeight = clampWeight(hebrewId, weight);
+      for (const face of filesFor(hebrewId, hebrewWeight, (subset) => subset === "hebrew")) files.add(face.url);
+      // The family the stack names for it: a size-matched Hebrew-only alias
+      // for an override or a fallback, or the face itself.
+      const family = hebrewOverride(hebrew) || hebrewId !== id ? hebrewFamily(hebrewId, id) : name;
+      addFace(family, hebrewWeight, HEBREW_SAMPLE);
+    };
 
     /** A font and its Hebrew, as drawn at the text weights. */
     const addFont = (font: string, hebrew: string, extra: readonly number[] = []) => {
@@ -108,19 +124,20 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
         const weight = clampWeight(id, wanted);
         for (const face of filesFor(id, weight, (subset) => LATIN.has(subset))) files.add(face.url);
         addFace(info.name, weight, LATIN_SAMPLE);
-        if (!hasHebrew) continue;
-        const hebrewId = resolvedHebrew(id, hebrew);
-        if (!hebrewId) continue;
-        const hebrewWeight = clampWeight(hebrewId, weight);
-        for (const face of filesFor(hebrewId, hebrewWeight, (subset) => subset === "hebrew")) files.add(face.url);
-        // The family the stack names for it: a size-matched Hebrew-only alias
-        // for an override or a fallback, or the face itself.
-        const family = hebrewOverride(hebrew) || hebrewId !== id ? hebrewFamily(hebrewId, id) : info.name;
-        addFace(family, hebrewWeight, HEBREW_SAMPLE);
+        addHebrew(id, info.name, hebrew, weight);
       }
     };
 
     addFont(roles.body.font, roles.body.hebrew);
+    // Every role's Hebrew, used by an element on this board yet or not: a
+    // Title added later, or Hebrew arriving as data in a heading, still has
+    // its face offline.
+    for (const role of Object.values(roles)) {
+      const id = catalogId(role.font);
+      const info = id && id !== "system" ? fontInfo(id) : null;
+      if (!id || !info) continue;
+      for (const wanted of new Set([...TEXT_WEIGHTS, boldWeight(id)])) addHebrew(id, info.name, role.hebrew, clampWeight(id, wanted));
+    }
     for (const widget of widgets) {
       const config = (widget.config ?? {}) as { font?: string; hebrewFont?: string; title?: string; fontWeight?: number };
       const meta = widgetInfo(widget.type);

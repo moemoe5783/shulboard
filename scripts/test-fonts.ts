@@ -191,8 +191,11 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
   const doc = (themeOverrides: Record<string, unknown>, widgets: { type: string; config: Record<string, unknown> }[]) => ({ themeOverrides, widgets });
   const english = boardFonts([doc(newBoardFontOverrides(), [{ type: "title", config: { text: "Kiddush" } }, { type: "text", config: { text: "After davening" } }])], info);
   const families = new Set(english.files.map((url) => url.split("/")[2]));
-  check([...families].sort().join(",") === "inter,montserrat", "a Modern board with English text: Montserrat and Inter, nothing else", [...families].join(", "));
-  check(english.files.every((url) => !url.includes("/hebrew-")), "and no Hebrew file, with no Hebrew on it");
+  check([...families].sort().join(",") === "heebo,inter,montserrat", "a Modern board: Montserrat and Inter, and their matched Hebrew (Heebo), nothing else", [...families].join(", "));
+  check(english.files.filter((url) => url.includes("/hebrew-")).join(",") === english.files.filter((url) => url.startsWith("/fonts/heebo/hebrew-")).join(",") &&
+    english.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")),
+    "the matched fallback's Hebrew file is bundled even with no Hebrew in the text — Hebrew can arrive as data (captions, zmanim labels, feeds)");
+  check(english.files.filter((url) => url.includes("/hebrew-")).length === 1, "once, deduplicated across roles and elements");
   check(english.stylesheet.startsWith("/fonts/faces."), "the stylesheet is listed, for a reboot offline", english.stylesheet);
 
   const hebrew = boardFonts([doc(newBoardFontOverrides(), [{ type: "text", config: { text: "מנחה Mincha 6:45" } }])], info);
@@ -202,9 +205,16 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
 
   const override = boardFonts([doc({ font: "inter", hebrewFont: "suez-one" }, [{ type: "text", config: { text: "שבת" } }])], info);
   check(override.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")) && !override.files.some((url) => url.startsWith("/fonts/heebo/")),
-    "a Hebrew override loads the override and not the fallback");
+    "a Hebrew override is bundled in place of the fallback it replaces");
   const unused = boardFonts([doc({ font: "inter" }, [{ type: "text", config: { text: "Hello" } }])], info);
-  check(!unused.files.some((url) => url.includes("suez-one")), "an override nobody chose loads nothing");
+  check(!unused.files.some((url) => url.includes("suez-one")) && !unused.files.some((url) => /\/(?!heebo\/)[^/]+\/hebrew-/.test(url)),
+    "an override nobody chose is never bundled — only the matched fallback is");
+  const perRole = boardFonts([doc({ font: "inter", headingFont: "playfair-display", headingHebrewFont: "auto" }, [{ type: "title", config: { text: "x" } }])], info);
+  check(perRole.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")) && perRole.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/hebrew-")),
+    "each role's resolved Hebrew is bundled: Heebo for the Inter body, Frank Ruhl Libre for the Playfair heading");
+  const simcha = boardFonts([doc(fontThemePatch(FONT_THEMES.find((t) => t.id === "simcha")!), [{ type: "text", config: { text: "Hello" } }])], info);
+  check(simcha.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")),
+    "even a role no element uses yet: a Simcha board with no title still bundles its heading Hebrew (Suez One)");
 
   const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
   check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre Digits"),
