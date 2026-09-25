@@ -35,12 +35,16 @@ export type PublishState = {
 export function PublishControls({
   boardId,
   state,
+  prepareToPublish,
   onPublished,
   onDiscarded,
 }: {
   boardId: string;
   state: PublishState;
-  onPublished: (result: { publishedAt: string; screenCount: number }) => void;
+  /** The document to publish — what the editor is showing, once any save
+   *  already under way has landed. */
+  prepareToPublish: () => Promise<BoardDoc>;
+  onPublished: (result: { publishedAt: string; screenCount: number }, published: BoardDoc) => void;
   onDiscarded: (doc: BoardDoc) => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -72,13 +76,19 @@ export function PublishControls({
     setError(null);
     setWorking("publish");
     startTransition(async () => {
-      const result = await publishBoard(boardId);
+      const doc = await prepareToPublish();
+      let result: Awaited<ReturnType<typeof publishBoard>>;
+      try {
+        result = await publishBoard(boardId, doc);
+      } catch {
+        result = { ok: false, error: "Couldn't publish — check your connection." };
+      }
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setJustPublished({ publishedAt: result.publishedAt, screenCount: result.screenCount });
-      onPublished(result);
+      onPublished(result, doc);
     });
   }
 
