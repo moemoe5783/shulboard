@@ -5,6 +5,7 @@ import type { BoardFiles } from "@/lib/board-assets";
 import type { DeviceFiles } from "@/lib/display/assets";
 import { readMediaStats, type MediaStats } from "@/lib/display/debug";
 import type { DisplayStorage } from "@/lib/display/useDisplay";
+import { supportsContainerUnits } from "@/lib/board-theme";
 
 /*
  * What the device is doing with its files — only with `?debug` on the URL,
@@ -69,6 +70,10 @@ export function DebugView({
     ["Album files wanted", `${stats.wantedReady} of ${stats.wanted} here`],
     ["Failed, retrying", String(stats.failed)],
     ["Storage full", stats.full ? "yes" : "no"],
+    // Which browser this TV really runs, and whether board sizes need the
+    // pixel fallback on it (lib/board-theme.ts).
+    ["Browser", navigator.userAgent],
+    ["Board sizes", supportsContainerUnits() ? "native" : "pixel fallback (older browser)"],
   ];
   return (
     <div

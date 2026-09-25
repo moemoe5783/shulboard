@@ -166,9 +166,35 @@ export type BoardColor = keyof typeof BOARD_COLORS;
  * approximately so.
  *
  * This is why the board root sets `container-type: size` and nothing else may.
+ *
+ * OLDER TV BROWSERS HAVE NO `cqw`. Container query units arrived in Chromium
+ * 105 (2022), and plenty of smart TVs run something older. There the value is
+ * invalid and dropped, and the size silently becomes whatever the element
+ * inherits — a caption that ignores its size setting while everything that
+ * fits itself by measuring still looks right. So the length goes through
+ * `--board-unit`, one design unit in pixels, which the board root sets only
+ * on a browser without `cqw` (components/board/BoardRenderer.tsx); everywhere
+ * else the variable is unset and the `cqw` fallback is what renders.
  */
+export const BOARD_UNIT_VAR = "--board-unit";
+/** One percent of the board's width in pixels, for the same fallback — for
+ *  a length written as a share of the board rather than in design units. */
+export const BOARD_CQW_VAR = "--board-cqw";
+
+/** `n` percent of the board's width (n `cqw`), with the same fallback. */
+export function boardPercent(n: number): string {
+  return `calc(${n} * var(${BOARD_CQW_VAR}, 1cqw))`;
+}
+
 export function boardLength(designUnits: number, canvasWidth: number): string {
-  return `${(designUnits / canvasWidth) * 100}cqw`;
+  return `calc(${designUnits} * var(${BOARD_UNIT_VAR}, ${100 / canvasWidth}cqw))`;
+}
+
+/** Whether this browser has container query units. True where it can't be
+ *  asked (the server), which is the modern case. */
+export function supportsContainerUnits(): boolean {
+  if (typeof CSS === "undefined" || typeof CSS.supports !== "function") return true;
+  return CSS.supports("width", "1cqw");
 }
 
 /** Reads better at a call site setting a font size. Same conversion. */

@@ -51,18 +51,17 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<QrCodeConf
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center" data-qr-code>
-      {/* The code takes the largest square the space above the caption allows.
-          A size container for this wrapper alone (`cqmin` is its smaller side);
-          nothing inside it reads the board's `cqw`, so nesting one here doesn't
-          change any board length. */}
-      <div className="flex min-h-0 w-full flex-1 items-center justify-center" style={{ containerType: "size" }}>
+      {/* The code takes the largest square the space above the caption
+          allows: the SVG fills the space and its viewBox keeps the drawing
+          square and centred. (Not a size container with `cqmin` — that unit
+          doesn't exist on older TV browsers, lib/board-theme.ts.) */}
+      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
         <svg
           role="img"
           aria-label={config.caption || `QR code for ${config.value}`}
           viewBox={`0 0 ${extent} ${extent}`}
           shapeRendering="crispEdges"
-          className="block"
-          style={{ width: "100cqmin", height: "100cqmin" }}
+          className="block h-full w-full"
         >
           <rect width={extent} height={extent} fill={config.lightColor} />
           <path d={modulePath(code.data, margin)} fill={config.darkColor} />

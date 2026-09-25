@@ -144,7 +144,9 @@ try {
     const decoded = jsQR(new Uint8ClampedArray(data), info.width, info.height);
     check(decoded?.data === QR_LINK, "the rendered code scans back to its link", decoded?.data ?? "no code found");
     const box = await widget(QR_ID).evaluate((el) => {
-      const s = el.querySelector("svg").getBoundingClientRect();
+      // The drawn code (its light square), not the SVG element, which fills
+      // the space above the caption and centres the drawing in it.
+      const s = el.querySelector("svg rect").getBoundingClientRect();
       const w = el.getBoundingClientRect();
       const caption = el.querySelector("[data-qr-code] span");
       return { square: Math.abs(s.width - s.height) < 1, inside: s.right <= w.right + 0.5 && s.bottom <= w.bottom + 0.5, caption: caption?.textContent };
