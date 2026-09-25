@@ -1,8 +1,8 @@
 import { boardBackgroundCss, type BoardBackground } from "./board-background";
 import type { CSSProperties } from "react";
 import type { BoardDoc } from "@/lib/board-doc";
-import { digitFallbackFor, fontInfo } from "@/lib/fonts";
-import { DIGIT_FAMILIES } from "@/lib/fonts/catalog";
+import { catalogId, digitFallbackFor, fontInfo } from "@/lib/fonts";
+import { TIME_FALLBACK_WEIGHT } from "@/lib/fonts/catalog";
 import { DEFAULT_FONT, fontStack } from "@/lib/fonts/stack";
 import { boardFontRoles } from "@/lib/fonts/roles";
 
@@ -44,8 +44,10 @@ const WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
  * (widgets/Digits.tsx).
  */
 export function digitWidthVars(font: string | undefined): Record<string, string> {
-  // A face with old-style figures draws its time digits in the fallback
-  // (numericFace), so the boxes are the fallback's.
+  // A face with old-style figures draws its times in the fallback at a fixed,
+  // matched weight (numericFace, numericWeight), so the boxes are the
+  // fallback's, at that weight, whatever step asks.
+  const fixedWeight = numericWeight(font);
   const info = fontInfo(digitFallbackFor(font ?? DEFAULT_FONT) ?? font ?? DEFAULT_FONT);
   if (!info || info.measured.hasTabularNums) return {};
   const measured = Object.entries(info.measured.digitEm)
@@ -68,7 +70,7 @@ export function digitWidthVars(font: string | undefined): Record<string, string>
     return e0 + ((e1 - e0) * (weight - w0)) / (w1 - w0);
   };
   const vars: Record<string, string> = {};
-  for (const weight of WEIGHT_STEPS) vars[`--board-digit-${weight}`] = `${Math.round(at(weight) * 10000) / 10000}em`;
+  for (const weight of WEIGHT_STEPS) vars[`--board-digit-${weight}`] = `${Math.round(at(fixedWeight ?? weight) * 10000) / 10000}em`;
   return vars;
 }
 
@@ -99,23 +101,35 @@ export function digitWidthVar(weight: number): string {
 }
 
 /**
- * The face a time, a zman or a countdown is set in: the text's own. Its digits
- * line up through `lining-nums tabular-nums` and, where a face needs them,
- * digit boxes (digitWidthVars).
+ * The face a time, a zman or a countdown is set in: the text's own, in its
+ * lining figures (widgets/Digits.tsx).
  *
  * THE ONE EXCEPTION: a face whose figures are old-style with no lining set
  * (Marcellus, Pinyon Script, Parisienne, Suez One — and Alef, kept for boards
- * that use it) would draw a column of times at uneven heights whatever the
- * widths. So its stack starts with the matched fallback's digit-only family
- * (DIGIT_FAMILIES — Frank Ruhl Libre for a serif, Heebo otherwise): the
- * digits come from the fallback, AM and PM and the colon from the face.
- * This is only in the times; everywhere else the face keeps its own figures.
+ * that use it) would draw a column of times at uneven heights. So the WHOLE
+ * time — digits, colon, AM/PM — is set in the matched fallback, Frank Ruhl
+ * Libre for a serif and Heebo otherwise, at a weight chosen to match the face
+ * (numericWeight). Only in the times; everywhere else the face keeps its own
+ * figures.
  */
 export function numericFace(font: string | undefined, hebrew?: string | null): string {
-  const stack = fontStack(font, hebrew);
   const fallback = digitFallbackFor(font ?? DEFAULT_FONT);
-  return fallback ? `"${DIGIT_FAMILIES[fallback]}", ${stack}` : stack;
+  return fallback ? fontStack(fallback, hebrew) : fontStack(font, hebrew);
 }
+
+/** The weight a time is drawn at when it's set in the fallback — tuned per
+ *  face (lib/fonts/catalog.ts, TIME_FALLBACK_WEIGHT); null otherwise, leaving
+ *  a time at its widget's own weight. */
+export function numericWeight(font: string | undefined): number | null {
+  const id = catalogId(font ?? DEFAULT_FONT);
+  if (!id || !digitFallbackFor(id)) return null;
+  return TIME_FALLBACK_WEIGHT[id] ?? null;
+}
+
+/** What a time's weight is, for a Renderer: its own semibold, or the matched
+ *  weight when the time is in the fallback (set on the board root and the
+ *  widget frame as `--board-numeric-weight`). */
+export const NUMERIC_WEIGHT = "var(--board-numeric-weight, 600)";
 
 /**
  * What a clock time, a zman or a countdown sets its digits in. The board root
@@ -181,6 +195,7 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
     colorScheme: "only light",
     fontFamily: fontStack(font, hebrew),
     ["--board-numeric-font" as string]: numericFace(font, hebrew),
+    ...(numericWeight(font) ? { ["--board-numeric-weight" as string]: numericWeight(font) } : {}),
     ...digitWidthVars(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,
     backgroundColor: BOARD_COLORS[background] ?? BOARD_COLORS.surface,

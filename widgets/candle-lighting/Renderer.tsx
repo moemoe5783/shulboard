@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useBoardLocation } from "@/lib/board-location";
 import { useBoardZmanim } from "@/lib/board-zmanim";
-import { BOARD_FONTS, NUMERIC_FONT } from "@/lib/board-theme";
+import { BOARD_FONTS, NUMERIC_FONT, NUMERIC_WEIGHT } from "@/lib/board-theme";
 import { Digits } from "../Digits";
 import { formatCountdown, formatEventLabel, formatTimeOfDay } from "@/lib/hebrew/format";
 import { boardLength } from "@/lib/board-theme";
@@ -299,8 +299,8 @@ function Entry({
       {/* The time itself — the widget's own face, its digits lined up the way
           Clock's are (widgets/Digits.tsx). */}
       <span
-        className="numeric font-semibold leading-none whitespace-nowrap"
-        style={{ fontFamily: NUMERIC_FONT, fontSize: "1em" }}
+        className="numeric leading-none whitespace-nowrap"
+        style={{ fontFamily: NUMERIC_FONT, fontWeight: NUMERIC_WEIGHT, fontSize: "1em" }}
       >
         <Digits text={time} weight={600} />
       </span>

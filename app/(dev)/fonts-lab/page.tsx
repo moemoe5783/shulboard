@@ -11,6 +11,9 @@
  *   ?section=nikud    every Hebrew font with a pasuk with nekudos.
  *   ?section=zmanim   the real Zmanim widget in every font: the times line up.
  *   ?section=themes   the six font themes on one sample board.
+ *   ?section=timefallback  each face with old-style figures beside its
+ *                     fallback at every weight — where the weight a time is
+ *                     set at in the fallback (TIME_FALLBACK_WEIGHT) is chosen.
  *   ?section=plain    one small board and nothing else (&hebrew=1 adds a
  *                     Hebrew line) — what the test checks downloads against.
  *   &font=<id>        one font only, in the sections that list fonts.
@@ -26,7 +29,8 @@ import { BoardRenderer } from "@/components/board/BoardRenderer";
 import { parseBoardDoc, type BoardDoc } from "@/lib/board-doc";
 import type { BoardZmanim } from "@/lib/board-zmanim";
 import { DEMO_LOCATION } from "@/lib/demo-board";
-import { CATEGORY_LABELS, HEBREW_OVERRIDE_FONTS, PICKABLE_FONTS, fontInfo, hebrewFont, offeredWeights } from "@/lib/fonts";
+import { CATEGORY_LABELS, HEBREW_OVERRIDE_FONTS, PICKABLE_FONTS, digitFallbackFor, fontInfo, hebrewFont, offeredWeights } from "@/lib/fonts";
+import { TIME_FALLBACK_WEIGHT } from "@/lib/fonts/catalog";
 import { fontStack } from "@/lib/fonts/stack";
 import { FONT_THEMES, fontThemePatch } from "@/lib/fonts/themes";
 import { buildCache, ROWS } from "../zmanim-lab/fixture";
@@ -236,6 +240,39 @@ function ThemesSection() {
   );
 }
 
+/** Each face with old-style figures, as its own text looks beside a time,
+ *  and the fallback its times are set in at every weight — the chosen one
+ *  marked. */
+function TimeFallbackSection() {
+  const rows = Object.entries(TIME_FALLBACK_WEIGHT).map(([id, chosen]) => ({ id, chosen, fallback: fontInfo(digitFallbackFor(id))! }));
+  return (
+    <Section id="timefallback" title="Times in the fallback, weight by weight">
+      <table className="w-full border-collapse">
+        <tbody>
+          {rows.map(({ id, chosen, fallback }) => (
+            <tr key={id} className="border-rule border-b align-baseline" data-lab-timefallback={id}>
+              <td className="text-ink py-3 pr-6" style={{ fontFamily: fontStack(id), fontSize: 56 * SCALE, fontWeight: 600 }}>
+                Candle lighting
+              </td>
+              {offeredWeights(fallback.id).filter((w) => w >= 300).map((weight) => (
+                <td key={weight} className="py-3 pr-4 text-center">
+                  <div className="text-ink" style={{ fontFamily: fontStack(fallback.id), fontSize: 56 * SCALE, fontWeight: weight, fontVariantNumeric: "lining-nums tabular-nums" }}>
+                    7:22 PM
+                  </div>
+                  <div className={`text-[12px] ${weight === chosen ? "text-ink font-semibold" : "text-ink-soft"}`}>
+                    {fallback.name} {weight}
+                    {weight === chosen ? " (chosen)" : ""}
+                  </div>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Section>
+  );
+}
+
 /** One small board, for checking what a board downloads. */
 function PlainSection({ hebrew }: { hebrew: boolean }) {
   const size = { width: 640, height: 360 };
@@ -276,6 +313,7 @@ function FontsLabInner() {
       {show("nikud") && <NikudSection only={only} />}
       {show("zmanim") && <ZmanimSection only={only} />}
       {show("themes") && <ThemesSection />}
+      {show("timefallback") && <TimeFallbackSection />}
       {show("plain") && <PlainSection hebrew={params.get("hebrew") === "1"} />}
     </main>
   );

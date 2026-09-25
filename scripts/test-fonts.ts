@@ -5,8 +5,8 @@
  * Run with: npm run test:fonts
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { digitWidthVars, matchedWeight, numericFace } from "../lib/board-theme.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { digitWidthVars, matchedWeight, numericFace, numericWeight } from "../lib/board-theme.ts";
 import { join } from "node:path";
 import { BUILT_FONTS } from "../lib/fonts/catalog.generated.ts";
 import { ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
@@ -174,30 +174,29 @@ console.log("\n-- font roles and themes ----------------------------------------
   check(!("accentFont" in newBoardFontOverrides()), "and stores nothing for the roles Modern leaves out");
 }
 
-console.log("\n-- old-style figures: times take the fallback's digits ---------------");
+console.log("\n-- old-style figures: times set wholly in the matched fallback ------");
 {
-  for (const [id, family] of [
-    ["marcellus", "Frank Ruhl Libre Digits"],
-    ["suez-one", "Frank Ruhl Libre Digits"],
-    ["pinyon-script", "Heebo Digits"],
-    ["parisienne", "Heebo Digits"],
-    ["alef", "Heebo Digits"],
+  for (const [id, fallback, weight] of [
+    ["marcellus", "frank-ruhl-libre", 600],
+    ["suez-one", "frank-ruhl-libre", 900],
+    ["pinyon-script", "heebo", 400],
+    ["parisienne", "heebo", 400],
+    ["alef", "heebo", 600],
   ] as const) {
-    check(numericFace(id).startsWith(`"${family}", `), `${id}: its times' digits come from ${family}`, numericFace(id));
-    check(!fontStack(id).includes("Digits"), `${id}: everywhere else it keeps its own figures`);
+    check(numericFace(id) === fontStack(fallback), `${id}: a time (digits, colon, AM/PM) is set in ${fallback}`, numericFace(id));
+    check(numericWeight(id) === weight, `${id}: at weight ${weight}, matched to the face`, String(numericWeight(id)));
+    check(!fontStack(id).includes(fontStack(fallback)), `${id}: everywhere else it keeps its own figures`);
   }
   for (const id of ["inter", "playfair-display", "dancing-script", "caveat", "heebo"]) {
-    check(numericFace(id) === fontStack(id), `${id}: lining figures, its own digits in times too`);
+    check(numericFace(id) === fontStack(id) && numericWeight(id) === null, `${id}: lining figures, its times in its own face and weight`);
   }
   check(matchedWeight(600, [300, 400, 700]) === 700 && matchedWeight(450, [300, 400, 700]) === 400 && matchedWeight(350, [400, 700]) === 400,
     "a static face's in-between weight is the file CSS font matching picks");
   check(digitWidthVars("karantina")["--board-digit-600"] === digitWidthVars("karantina")["--board-digit-700"],
-    "so Karantina's digit box at 600 is its 700 file's, the one drawn");
-  check(Object.keys(digitWidthVars("marcellus")).length === 0, "Marcellus's time digits are Frank Ruhl Libre's, tabular — no boxes");
-  check(Object.keys(digitWidthVars("pinyon-script")).length === 9, "Pinyon Script's are Heebo's, boxed to Heebo's widest digit");
-  const css = readFileSync(join("public/fonts", readdirSync("public/fonts").find((f) => f.startsWith("faces."))!), "utf8");
-  check(/font-family:"Heebo Digits"[^}]*unicode-range:U\+0030-0039/.test(css) && /font-family:"Frank Ruhl Libre Digits"[^}]*unicode-range:U\+0030-0039/.test(css),
-    "the digit families cover 0–9 and nothing else");
+    "so Karantina's digit box at 600 (a ticking clock) is its 700 file's, the one drawn");
+  check(Object.keys(digitWidthVars("marcellus")).length === 0, "a ticking Marcellus clock is Frank Ruhl Libre's, tabular — no boxes");
+  const pinyon = digitWidthVars("pinyon-script");
+  check(new Set(Object.values(pinyon)).size === 1 && Object.keys(pinyon).length === 9, "a ticking Pinyon Script clock is boxed to Heebo's widest digit at its one matched weight");
 }
 
 console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts) -----");
@@ -234,8 +233,8 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
     "even a role no element uses yet: a Simcha board with no title still bundles its heading Hebrew (Suez One)");
 
   const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
-  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre Digits"),
-    "a Marcellus clock brings Frank Ruhl Libre's digits");
+  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre" && f.weight === 600),
+    "a Marcellus clock brings Frank Ruhl Libre, at the matched 600");
   const variable = boardFonts([doc({ font: "inter" }, [])], info);
   check(variable.files.filter((url) => /^\/fonts\/inter\/latin-wght/.test(url)).length === 1, "a variable face is one file for regular and semibold", variable.files.join(", "));
   check(variable.files.every((url) => existsSync(join("public", url))), "every listed file exists");

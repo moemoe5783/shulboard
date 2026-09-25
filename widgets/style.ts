@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
-import { boardLength, digitWidthVars, numericFace } from "@/lib/board-theme";
+import { boardLength, digitWidthVars, numericFace, numericWeight } from "@/lib/board-theme";
 import { boldWeight, catalogId, clampWeight, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 import { isFontRole, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
@@ -361,6 +361,9 @@ export function widgetStyle(
       style.fontFamily = fontStack(font, hebrew);
       // Numbers are set in the widget's own face (lib/board-theme.ts).
       (style as Record<string, string>)["--board-numeric-font"] = numericFace(font, hebrew);
+      // The matched weight of a time set in the fallback, or back to the
+      // widget's own (clearing a board-level one).
+      (style as Record<string, string | number>)["--board-numeric-weight"] = numericWeight(font) ?? "initial";
       // Its own digit widths — or none, clearing the board's, when its face's
       // digits line up by themselves (widgets/Digits.tsx).
       const digits = digitWidthVars(font);

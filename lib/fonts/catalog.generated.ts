@@ -2647,4 +2647,4 @@ export const HEBREW_ALIASES: Record<string, { base: { family: string; sizeAdjust
 };
 
 /** The stylesheet declaring every face (the root layout links it). */
-export const FONT_FACES_CSS = "/fonts/faces.ad248d434a.css";
+export const FONT_FACES_CSS = "/fonts/faces.7dfc62bc2a.css";
