@@ -86,13 +86,27 @@ try {
     });
   };
 
+  // A zone where the hour has two digits right now: fit sizes for the widest
+  // time the format can show, so "it fills the box" only holds on a time that
+  // wide — at 1:23 the drawn text is a digit narrower, by design.
+  const hourNow = (zone) =>
+    Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: true, timeZone: zone }).format(new Date()).split(" ")[0]);
+  const wideZone = Array.from({ length: 24 }, (_, i) => `Etc/GMT${i - 12 >= 0 ? "+" : ""}${i - 12}`).find((zone) => {
+    try {
+      return hourNow(zone) >= 10;
+    } catch {
+      return false;
+    }
+  });
+  const wide = `tz=${encodeURIComponent(wideZone)}`;
+
   console.log("\n-- fit follows the box ----------------------------------------");
   {
-    const narrow = await open("w=40&h=40");
+    const narrow = await open(`w=40&h=40&${wide}`);
     check(narrow.overhang <= 1, "a width-bound clock never passes the box's edges", `${narrow.overhang.toFixed(1)}px`);
     check(Math.abs(narrow.textW - narrow.boxW) <= 2, "and it grows to the box's full width", `${narrow.textW.toFixed(0)} of ${narrow.boxW.toFixed(0)}px`);
 
-    const wider = await open("w=60&h=40");
+    const wider = await open(`w=60&h=40&${wide}`);
     check(wider.fontPx > narrow.fontPx * 1.3, "a wider box means bigger type", `${narrow.fontPx.toFixed(0)} -> ${wider.fontPx.toFixed(0)}px`);
 
     const short = await open("w=90&h=15");
