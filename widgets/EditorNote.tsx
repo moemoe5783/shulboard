@@ -10,14 +10,18 @@ import type { ReactNode } from "react";
  * `data-editor-hint` hides it everywhere but inside the editor's canvas
  * (app/globals.css): the same DOM in both places, the difference in the
  * editor's wrapper — CLAUDE.md's no-fork rule — rather than a Renderer prop.
- * Sized against the board (cqw) with a floor, so it reads at any zoom.
+ * Sized against the board (cqw) with a floor, so it reads at any zoom. It
+ * appears for a few seconds when the element changes (`flash`) and on hover.
  */
-export function EditorNote({ children }: { children: ReactNode }) {
+export function EditorNote({ children, flash = true }: { children: ReactNode; flash?: boolean }) {
   return (
     <div
       data-editor-hint
       data-editor-note
-      className="bg-ink/85 text-paper font-ui pointer-events-none absolute inset-x-0 bottom-0 z-10 px-[0.6em] py-[0.3em] text-center leading-tight"
+      // Shown while `flash` (a few seconds after the element changes size)
+      // and while the element is hovered — app/globals.css — not all the time.
+      data-flash={flash ? "" : undefined}
+      className="bg-ink/85 text-paper font-ui pointer-events-none absolute inset-x-0 bottom-0 z-10 overflow-hidden px-[0.6em] py-[0.3em] text-center leading-tight text-ellipsis whitespace-nowrap"
       style={{ fontSize: "max(11px, 0.9cqw)" }}
     >
       {children}
