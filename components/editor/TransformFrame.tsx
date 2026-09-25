@@ -258,6 +258,19 @@ export function TransformFrame({
   }, [selection, doc.widgets, canvasRef]);
 
   /*
+   * Moveable draws its frame from where it last measured the targets, and it
+   * only measures during its own gestures. A change it didn't make — an arrow
+   * key nudge, undo, the position fields, align — moves the element and leaves
+   * the frame behind. So re-measure whenever the document changes; during a
+   * drag the document isn't written until the drag ends, so this never fights
+   * one.
+   */
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => moveableRef.current?.updateRect());
+    return () => cancelAnimationFrame(frame);
+  }, [doc.widgets, targets]);
+
+  /*
    * Snap targets, recomputed on a frame rather than on every change.
    *
    * plan.md §4c names this as a known cost: "snap-guide performance with 30+
