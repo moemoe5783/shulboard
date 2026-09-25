@@ -35,11 +35,22 @@ export type FontOption = {
   capsOnly?: boolean;
   /** A short line after the name, in the UI face. */
   note?: string;
+  /** Draw the name in the UI face, small — for a Hebrew font, whose Hebrew
+   *  name (in the face) is the big one and the English only identifies it. */
+  nameInUi?: boolean;
+  /** A sample line in the face, under the name. */
+  sample?: string;
+  /** A Hebrew sample line in the face, beside `sample`. */
+  hebrewSample?: string;
 };
 
 export type FontGroup = { label?: string; options: readonly FontOption[] };
 
-const ROW_HEIGHT = 40;
+/** One height for every row, one line or two, so a face arriving never moves
+ *  the list under the pointer. */
+const ROW_HEIGHT = 54;
+/** What a face's name falls back to until its file arrives: the UI's own. */
+const UI_FALLBACK = "var(--type-ui)";
 const LIST_MAX_HEIGHT = 360;
 
 export function FontPicker({
@@ -47,11 +58,15 @@ export function FontPicker({
   value,
   groups,
   onChange,
+  onPreview,
 }: {
   label: string;
   value: string;
   groups: readonly FontGroup[];
   onChange: (value: string) => void;
+  /** A font hovered (its value), or none — the canvas shows it without
+   *  changing anything (lib/editor/store.ts, fontPreview). */
+  onPreview?: (value: string | null) => void;
 }) {
   const [open, setOpen] = useState<{ left: number; width: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   const [active, setActive] = useState(0);
@@ -60,10 +75,25 @@ export function FontPicker({
   const listRef = useRef<HTMLDivElement>(null);
 
   const flat = groups.flatMap((group) => group.options);
+
+  // A preview never outlives the list: gone with it if the picker unmounts
+  // while open (the selection changed under it).
+  const previewRef = useRef(onPreview);
+  useEffect(() => {
+    previewRef.current = onPreview;
+  });
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    wasOpen.current = open !== null;
+  }, [open]);
+  useEffect(() => () => {
+    if (wasOpen.current) previewRef.current?.(null);
+  }, []);
   const selectedIndex = flat.findIndex((option) => option.value === value);
   const selected = flat[selectedIndex];
 
   const close = (refocus = true) => {
+    onPreview?.(null);
     setOpen(null);
     if (refocus) buttonRef.current?.focus();
   };
@@ -89,11 +119,15 @@ export function FontPicker({
   // Close on a click outside, or the panel scrolling out from under it.
   useEffect(() => {
     if (!open) return;
+    const dismiss = () => {
+      previewRef.current?.(null);
+      setOpen(null);
+    };
     const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close(false);
+      if (!rootRef.current?.contains(event.target as Node)) dismiss();
     };
     const onScroll = (event: Event) => {
-      if (!rootRef.current?.contains(event.target as Node)) close(false);
+      if (!rootRef.current?.contains(event.target as Node)) dismiss();
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("scroll", onScroll, true);
@@ -193,6 +227,7 @@ export function FontPicker({
           onKeyDown={onKeyDown}
           className="bg-ink border-paper/20 fixed z-50 overflow-y-auto rounded-[6px] border py-1 shadow-lg outline-none"
           style={{ left: open.left, top: open.top, bottom: open.bottom, width: open.width, maxHeight: open.maxHeight }}
+          onPointerLeave={() => onPreview?.(null)}
           data-font-list
         >
           {groups.map((group, g) => (
@@ -209,7 +244,10 @@ export function FontPicker({
                     selected={option.value === value}
                     active={i === active}
                     root={listRef}
-                    onHover={() => setActive(i)}
+                    onHover={() => {
+                      if (i !== active) setActive(i);
+                    }}
+                    onEnter={() => onPreview?.(option.value)}
                     onChoose={() => choose(i)}
                   />
                 );
@@ -230,6 +268,7 @@ function FontRow({
   active,
   root,
   onHover,
+  onEnter,
   onChoose,
 }: {
   id: string;
@@ -239,6 +278,7 @@ function FontRow({
   active: boolean;
   root: React.RefObject<HTMLDivElement | null>;
   onHover: () => void;
+  onEnter: () => void;
   onChoose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -262,7 +302,9 @@ function FontRow({
     return () => observer.disconnect();
   }, [seen, option.family, root]);
 
-  const face: CSSProperties | undefined = option.family && seen ? { fontFamily: option.family } : undefined;
+  // In the face once its row has been seen; the UI face until its file lands.
+  const face: CSSProperties | undefined = option.family && seen ? { fontFamily: `${option.family}, ${UI_FALLBACK}` } : undefined;
+  const caps = option.capsOnly ? { textTransform: "uppercase" as const } : undefined;
 
   return (
     <div
@@ -273,30 +315,47 @@ function FontRow({
       data-index={index}
       data-font-option={option.value}
       onPointerMove={onHover}
+      onPointerEnter={onEnter}
       onClick={onChoose}
-      className={`text-paper flex cursor-default items-center gap-2 px-2 ${active ? "bg-paper/10" : ""} ${
+      className={`text-paper flex cursor-default flex-col justify-center gap-1 px-2 ${active ? "bg-paper/10" : ""} ${
         selected ? "text-paper" : "text-paper/90"
       }`}
       style={{ height: ROW_HEIGHT }}
     >
-      <span
-        className={`min-w-0 truncate leading-none ${option.family ? "text-[18px]" : "text-cell"}`}
-        style={face}
-        data-font-sample
-      >
-        {option.name}
-      </span>
-      {option.capsOnly && <span className="text-meta text-paper/50 shrink-0">capitals only</span>}
-      {option.note && <span className="text-meta text-paper/50 shrink-0">{option.note}</span>}
-      {option.hebrewName && (
-        <span dir="rtl" lang="he" className="ml-auto shrink-0 text-[18px] leading-none" style={face}>
-          {option.hebrewName}
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span
+          className={`min-w-0 truncate leading-tight ${option.family && !option.nameInUi ? "text-[18px]" : "text-cell"}`}
+          style={option.nameInUi ? undefined : face}
+          data-font-sample
+        >
+          {option.name}
         </span>
-      )}
-      {selected && !option.hebrewName && (
-        <svg aria-hidden viewBox="0 0 12 10" className="text-paper/70 ml-auto size-3 shrink-0">
-          <path d="M1 5l3.5 3.5L11 1" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
+        {option.capsOnly && <span className="text-meta text-paper/50 shrink-0">capitals only</span>}
+        {option.note && <span className="text-meta text-paper/50 min-w-0 truncate">{option.note}</span>}
+        {option.hebrewName && (
+          <span dir="rtl" lang="he" className="ml-auto shrink-0 text-[18px] leading-tight" style={face} data-font-hebrew-name>
+            {option.hebrewName}
+          </span>
+        )}
+        {selected && !option.hebrewName && (
+          <svg aria-hidden viewBox="0 0 12 10" className="text-paper/70 ml-auto size-3 shrink-0 self-center">
+            <path d="M1 5l3.5 3.5L11 1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+        )}
+      </div>
+      {(option.sample || option.hebrewSample) && (
+        <div className="text-paper/70 flex min-w-0 items-baseline gap-2 text-[14px] leading-tight">
+          {option.sample && (
+            <span className="min-w-0 truncate" style={{ ...face, ...caps }} data-font-latin-sample>
+              {option.sample}
+            </span>
+          )}
+          {option.hebrewSample && (
+            <span dir="rtl" lang="he" className="ml-auto shrink-0" style={face} data-font-hebrew-sample>
+              {option.hebrewSample}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

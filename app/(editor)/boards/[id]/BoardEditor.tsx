@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { CHROME_DARK, CHROME_META, CHROME_RULE } from "@/app/(dev)/editor-lab/chrome";
 import { ContextMenu, type MenuPosition } from "@/app/(dev)/editor-lab/ContextMenu";
 import { LayersPanel } from "@/app/(dev)/editor-lab/LayersPanel";
@@ -12,7 +12,7 @@ import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import type { BoardDoc } from "@/lib/board-doc";
 import type { BoardLocation } from "@/lib/board-location";
 import type { BoardZmanim } from "@/lib/board-zmanim";
-import { GROUP_TYPE, useEditor } from "@/lib/editor/store";
+import { GROUP_TYPE, useEditor, withFontPreview } from "@/lib/editor/store";
 import { useEditorAlbums } from "@/lib/media/useEditorAlbums";
 import { saveBoardDoc } from "./actions";
 import { PublishControls, type PublishState } from "./PublishControls";
@@ -75,6 +75,9 @@ export function BoardEditor({
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const liveDoc = useEditor((s) => s.doc);
+  const fontPreview = useEditor((s) => s.fontPreview);
+  // A font hovered in a picker, drawn here only — never saved, never undone.
+  const drawnDoc = useMemo(() => withFontPreview(liveDoc, fontPreview), [liveDoc, fontPreview]);
   // Live album photos for the Gallery/Collage widgets — the editor's own
   // resolution, so the preview matches the display (lib/media/useEditorAlbums.ts).
   const editorAlbums = useEditorAlbums(liveDoc.widgets);
@@ -401,7 +404,7 @@ export function BoardEditor({
               )}
 
               <BoardRenderer
-                doc={liveDoc}
+                doc={drawnDoc}
                 canvas={canvas}
                 location={location}
                 zmanim={zmanim}

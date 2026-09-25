@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { z } from "zod";
 import { backgroundCss, backgroundKind } from "@/lib/board-background";
 import { boardLength, digitWidthVars, numericFace } from "@/lib/board-theme";
-import { catalogId, hebrewFont as hebrewFontById } from "@/lib/fonts";
+import { boldWeight, catalogId, clampWeight, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 import { isFontRole, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
 
@@ -60,6 +60,10 @@ export const widgetStyleFields = {
    *  choice, "auto" for the one matched to the widget's font
    *  (lib/fonts/stack.ts), or a Hebrew override font's id. */
   hebrewFont: z.string().max(64).default("inherit"),
+  /** The weight the element's main text is drawn at, or 0 for its own default
+   *  (regular body text, semibold titles). Clamped to what its face offers
+   *  from its minimum up (lib/fonts, clampWeight) — never lighter. */
+  fontWeight: z.number().int().min(0).max(900).default(0),
   /**
    * Inner padding, as a MULTIPLE of the widget's own text size — not absolute
    * board units. 0.5 means "half the type size". This is what makes the frame
@@ -97,6 +101,7 @@ export type WidgetStyleConfig = {
   textColor: string;
   font: WidgetFont;
   hebrewFont: string;
+  fontWeight: number;
   padding: number;
   radius: number;
   borderWidth: number;
@@ -245,6 +250,7 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
     textColor: str("textColor"),
     font: typeof font === "string" && (catalogId(font) || isFontRole(font)) ? font : "inherit",
     hebrewFont: readHebrewChoice(config.hebrewFont),
+    fontWeight: clamp(Math.round(num("fontWeight", 0)), 0, 900),
     // padding and titleSize are ratios of the text size now (see the schema).
     // Clamp on read so a document written when they were absolute board units
     // (a padding of 28, a titleSize of 40) is bounded to something sane rather
@@ -342,6 +348,15 @@ export function widgetStyle(
   if (board) {
     const { font, hebrew } = resolveElementFont(config.font, config.hebrewFont, board.role, board.roles);
     const body = board.roles.body;
+    // The weights its text is drawn at, in what its face offers: regular and
+    // bold (a face's own bold — lib/fonts, boldWeight) never below the face's
+    // minimum, and the element's chosen weight, if it has one. Renderers read
+    // them as CSS variables, so their props stay {config, canvas}.
+    const vars = style as Record<string, string | number>;
+    vars["--board-weight-regular"] = clampWeight(font, 400);
+    vars["--board-weight-semibold"] = clampWeight(font, 600);
+    vars["--board-weight-bold"] = boldWeight(font);
+    vars["--board-weight-main"] = config.fontWeight > 0 ? clampWeight(font, config.fontWeight) : "initial";
     if (font !== body.font || hebrew !== body.hebrew) {
       style.fontFamily = fontStack(font, hebrew);
       // Numbers are set in the widget's own face (lib/board-theme.ts).

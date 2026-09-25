@@ -33,7 +33,11 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<TextConfig
         style={{
           fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width),
           lineHeight: config.lineHeight,
-          fontWeight: config.bold ? 600 : 400,
+          // The element's chosen weight, else regular or its face's own bold,
+          // each within what the face offers (widgets/style.ts).
+          fontWeight: config.bold
+            ? "var(--board-weight-main, var(--board-weight-bold, 700))"
+            : "var(--board-weight-main, var(--board-weight-regular, 400))",
           textAlign: config.align,
           overflowWrap: "anywhere",
         }}

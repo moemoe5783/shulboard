@@ -229,9 +229,25 @@ export function clampWeight(stored: string | null | undefined, weight: number | 
   return allowed.reduce((best, w) => (Math.abs(w - wanted) < Math.abs(best - wanted) ? w : best), allowed[0]);
 }
 
-/** The Hebrew fallback a face gets when nothing overrides it: Frank Ruhl
- *  Libre for serifs, Heebo for everything else. A face with its own Hebrew
- *  needs none. */
+/** The weights a face may be drawn at: what it offers, from its minimum up. */
+export function offeredWeights(stored: string | null | undefined): number[] {
+  const info = fontInfo(stored);
+  return info ? info.weights.filter((w) => w >= info.minWeight) : [];
+}
+
+/**
+ * The weight "bold" means in a face: 700 where it offers it, else the offered
+ * weight nearest to 700 from 600 up, else its heaviest. A face with one
+ * weight has no bold and draws that one.
+ */
+export function boldWeight(stored: string | null | undefined): number {
+  const weights = offeredWeights(stored);
+  if (weights.length === 0) return 700;
+  const heavy = weights.filter((w) => w >= 600);
+  if (heavy.length === 0) return weights[weights.length - 1];
+  return heavy.reduce((best, w) => (Math.abs(w - 700) < Math.abs(best - 700) ? w : best), heavy[0]);
+}
+
 /** For a face with old-style figures and no lining set, the fallback whose
  *  digits a time is drawn in: Frank Ruhl Libre for a serif, Heebo otherwise.
  *  Null for every other face. */
@@ -241,6 +257,9 @@ export function digitFallbackFor(stored: string | null | undefined): "frank-ruhl
   return info.generic === "serif" ? HEBREW_FALLBACK.serif : HEBREW_FALLBACK.other;
 }
 
+/** The Hebrew fallback a face gets when nothing overrides it: Frank Ruhl
+ *  Libre for serifs, Heebo for everything else. A face with its own Hebrew
+ *  needs none. */
 export function hebrewFallbackFor(stored: string | null | undefined): string | null {
   const info = fontInfo(stored);
   if (!info) return HEBREW_FALLBACK.other;

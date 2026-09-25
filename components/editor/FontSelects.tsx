@@ -12,6 +12,10 @@ import { PANEL_LABEL } from "./panelControls";
  * (lib/fonts) — each name drawn in its own font (./FontPicker.tsx).
  */
 
+/** What every face's row says in that face. */
+const SAMPLE = "Shabbos shalom 7:18";
+const HEBREW_SAMPLE = "שבת שלום";
+
 /** The main font: "Hebrew & English" faces, then Serif, Sans serif, Display
  *  and Script. `inheritLabel` adds a first option for "use the board's". */
 export function FontSelect({
@@ -22,6 +26,7 @@ export function FontSelect({
   roles,
   exclude,
   onChange,
+  onPreview,
 }: {
   label?: string;
   value: string;
@@ -35,6 +40,8 @@ export function FontSelect({
    *  in one stays selectable. */
   exclude?: readonly FontCategory[];
   onChange: (font: string) => void;
+  /** A font hovered, for the canvas to show (./FontPicker.tsx). */
+  onPreview?: (font: string | null) => void;
 }) {
   const offered = PICKABLE_FONTS.filter((font) => !exclude?.includes(font.category));
   const known = value === "inherit" || isFontRole(value) || offered.some((font) => font.id === value);
@@ -64,6 +71,7 @@ export function FontSelect({
         name: FONT_ROLE_LABELS[role],
         family: fontStack(roles[role].font, roles[role].hebrew),
         note: fontInfo(roles[role].font)?.name,
+        sample: SAMPLE,
       })),
     });
   }
@@ -77,10 +85,14 @@ export function FontSelect({
         family: `"${font.name}"`,
         hebrewName: font.hebrewName,
         capsOnly: font.capsOnly,
+        // English faces show English only — they have no Hebrew, and the
+        // fallback drawn in their place would be a claim about the wrong font.
+        sample: SAMPLE,
+        hebrewSample: font.hebrewName ? HEBREW_SAMPLE : undefined,
       })),
     });
   }
-  return <FontPicker label={label} value={value} groups={groups} onChange={onChange} />;
+  return <FontPicker label={label} value={value} groups={groups} onChange={onChange} onPreview={onPreview} />;
 }
 
 /**
@@ -93,10 +105,12 @@ export function HebrewFontSelect({
   value,
   inheritLabel,
   onChange,
+  onPreview,
 }: {
   value: string;
   inheritLabel?: string;
   onChange: (hebrew: string) => void;
+  onPreview?: (hebrew: string | null) => void;
 }) {
   const chosen = value !== "inherit" && value !== "auto" ? HEBREW_OVERRIDE_FONTS.find((f) => f.id === value) : undefined;
   const groups: FontGroup[] = [
@@ -107,15 +121,21 @@ export function HebrewFontSelect({
       label: group.label,
       options: HEBREW_OVERRIDE_FONTS.filter((font) => font.group === group.id).map((font) => ({
         value: font.id,
-        name: font.label ?? font.name,
+        // The Hebrew name and a Hebrew sample in the face; the English name
+        // small, in the UI face, to say which font it is; an English sample
+        // too where the face has Latin letters of its own.
+        name: font.label ? `${font.label} (${font.name})` : font.name,
+        nameInUi: true,
         family: `"${font.name}"`,
         hebrewName: font.hebrewName,
+        hebrewSample: HEBREW_SAMPLE,
+        sample: font.latin ? "Shabbos shalom" : undefined,
       })),
     })),
   ];
   return (
     <div className="flex flex-col gap-1">
-      <FontPicker label="Hebrew font" value={value} groups={groups} onChange={onChange} />
+      <FontPicker label="Hebrew font" value={value} groups={groups} onChange={onChange} onPreview={onPreview} />
       {chosen && !chosen.nikudOk && (
         <p className={PANEL_LABEL} data-nikud-warning>
           Nikud may not show properly in {hebrewFont(chosen.id)?.name}. For text with nekudos, use Noto Serif Hebrew.

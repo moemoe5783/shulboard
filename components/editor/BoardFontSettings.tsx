@@ -37,6 +37,10 @@ export function BoardFontSettings() {
   const doc = useEditor((s) => s.doc);
   const setBoardStyle = useEditor((s) => s.setBoardStyle);
   const setWidgetConfig = useEditor((s) => s.setWidgetConfig);
+  const setFontPreview = useEditor((s) => s.setFontPreview);
+  /** Hovering a theme or a font: the whole board shows it, nothing changes. */
+  const preview = (patch: Record<string, string | undefined> | null) =>
+    setFontPreview(patch ? { kind: "board", patch } : null);
   const overrides = doc.themeOverrides as Record<string, unknown>;
   const roles = boardFontRoles(overrides);
 
@@ -73,7 +77,12 @@ export function BoardFontSettings() {
                 role="radio"
                 aria-checked={chosen}
                 data-font-theme={theme.id}
-                onClick={() => write(fontThemePatch(theme), `Apply the ${theme.name} font theme`)}
+                onClick={() => {
+                  preview(null);
+                  write(fontThemePatch(theme), `Apply the ${theme.name} font theme`);
+                }}
+                onPointerEnter={() => preview(fontThemePatch(theme))}
+                onPointerLeave={() => preview(null)}
                 className={`border-paper/10 flex flex-col items-start gap-1 border-b px-2 py-2 text-left first:border-t ${
                   chosen ? "bg-paper/10" : "hover:bg-paper/5"
                 }`}
@@ -129,11 +138,17 @@ export function BoardFontSettings() {
                   `Change the ${role} font`,
                 )
               }
+              onPreview={(font) =>
+                preview(
+                  font === null ? null : font === "inherit" ? { [keys.font]: undefined, [keys.hebrew]: undefined } : { [keys.font]: font },
+                )
+              }
             />
             {(role === "body" || own) && (
               <HebrewFontSelect
                 value={roles[role].hebrew}
                 onChange={(hebrew) => write({ [keys.hebrew]: hebrew }, `Change the ${role} Hebrew font`)}
+                onPreview={(hebrew) => preview(hebrew === null ? null : { [keys.hebrew]: hebrew })}
               />
             )}
             <p className={PANEL_LABEL}>{ROLE_HINTS[role]}</p>

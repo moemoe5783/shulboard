@@ -70,6 +70,7 @@ function Body({
   const applyRects = useEditor((s) => s.applyRects);
   const canvas = useEditor((s) => s.canvas);
   const themeOverrides = useEditor((s) => s.doc.themeOverrides);
+  const setFontPreview = useEditor((s) => s.setFontPreview);
   // Which group of controls is showing. Kept across selection changes on
   // purpose — a gabbai restyling several widgets in a row stays on the
   // Appearance tab rather than being thrown back to Options each click.
@@ -196,8 +197,11 @@ function Body({
               roles: boardFontRoles(themeOverrides),
               role: manifest?.fontRole ?? "body",
               showsTimes: Boolean(manifest?.showsTimes),
+              // Text and Title draw their main text at the chosen weight.
+              weighted: manifest?.category === "text",
             }}
             onChange={(patch: Partial<WidgetStyleConfig>) => setWidgetConfig(ids, patch)}
+            onFontPreview={(patch) => setFontPreview(patch ? { kind: "widgets", ids, patch } : null)}
             section={appearanceSection}
             onSection={setAppearanceSection}
             // The widget's own look settings (its Settings.tsx `appearance`),

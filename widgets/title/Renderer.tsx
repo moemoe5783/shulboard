@@ -40,7 +40,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
       >
         {/* dir="auto": a Hebrew-first title lays out right to left, an
             English-first one left to right. */}
-        <span dir="auto" className="font-semibold leading-tight">
+        <span dir="auto" className="leading-tight" style={{ fontWeight: "var(--board-weight-main, var(--board-weight-semibold, 600))" }}>
           {config.text}
         </span>
 
@@ -48,6 +48,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
           <span
             dir="auto"
             className="leading-tight opacity-70"
+            // The subtitle is regular text in the title's face.
             style={{ fontSize: `${config.subtitleScale}em` }}
           >
             {config.subtitle}

@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON } from "@/app/(dev)/editor-lab/chrome";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
 import { FontSelect, HebrewFontSelect } from "./FontSelects";
-import { FONT_ROLE_LABELS, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
+import { FONT_ROLE_LABELS, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
+import { clampWeight, fontInfo, offeredWeights } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
 import { backgroundKind } from "@/lib/board-background";
@@ -54,6 +55,7 @@ export function AppearanceControls({
   config,
   fonts,
   onChange,
+  onFontPreview,
   extras = [],
   section,
   onSection,
@@ -61,8 +63,11 @@ export function AppearanceControls({
   config: WidgetStyleConfig;
   /** The board's font roles, which one this element takes by default, and
    *  whether it shows times (no script faces offered). */
-  fonts?: { roles: BoardFontRoles; role: FontRole; showsTimes: boolean };
+  fonts?: { roles: BoardFontRoles; role: FontRole; showsTimes: boolean; weighted: boolean };
   onChange: (patch: Partial<WidgetStyleConfig>) => void;
+  /** A font hovered in a picker, shown on the canvas only — no undo entry
+   *  until it's clicked (lib/editor/store.ts, fontPreview). */
+  onFontPreview?: (patch: Partial<WidgetStyleConfig> | null) => void;
   /** The widget's own look settings (see AppearanceExtra above). */
   extras?: readonly AppearanceExtra[];
   /** Which section is showing — owned by the panel, so it stays put as the
@@ -288,16 +293,74 @@ export function AppearanceControls({
         roles={fonts?.roles}
         exclude={fonts?.showsTimes ? ["script"] : undefined}
         onChange={(font) => onChange({ font: font as WidgetFont })}
+        onPreview={(font) => onFontPreview?.(font === null ? null : { font: font as WidgetFont })}
       />
+      {fonts?.weighted && <WeightSelect config={config} fonts={fonts} onChange={onChange} />}
       <HebrewFontSelect
         value={config.hebrewFont}
         inheritLabel="Theme's Hebrew font"
         onChange={(hebrewFont) => onChange({ hebrewFont })}
+        onPreview={(hebrewFont) => onFontPreview?.(hebrewFont === null ? null : { hebrewFont })}
       />
           </>
         )}
 
       </div>
     </div>
+  );
+}
+
+const WEIGHT_NAMES: Record<number, string> = {
+  100: "Thin",
+  200: "Extra light",
+  300: "Light",
+  400: "Regular",
+  500: "Medium",
+  600: "Semibold",
+  700: "Bold",
+  800: "Extra bold",
+  900: "Black",
+};
+
+/**
+ * The weight of the element's text: only what its face offers, from its
+ * minimum up — a thinner stroke vanishes on a TV across a room, so it isn't
+ * offered at all (lib/fonts/catalog.ts, minWeight). A face with one weight
+ * has nothing to choose, and says so.
+ */
+function WeightSelect({
+  config,
+  fonts,
+  onChange,
+}: {
+  config: WidgetStyleConfig;
+  fonts: { roles: BoardFontRoles; role: FontRole };
+  onChange: (patch: Partial<WidgetStyleConfig>) => void;
+}) {
+  const { font } = resolveElementFont(config.font, config.hebrewFont, fonts.role, fonts.roles);
+  const weights = offeredWeights(font);
+  const name = fontInfo(font)?.name ?? "This font";
+  if (weights.length <= 1) {
+    return <p className={PANEL_LABEL}>{name} comes in one weight.</p>;
+  }
+  // A stored weight the face doesn't offer shows as the one it's drawn at.
+  const value = config.fontWeight > 0 ? clampWeight(font, config.fontWeight) : 0;
+  return (
+    <label className="flex flex-col gap-1">
+      <span className={PANEL_LABEL}>Weight</span>
+      <select
+        value={value}
+        onChange={(event) => onChange({ fontWeight: Number(event.target.value) })}
+        className={PANEL_CONTROL}
+        data-weight-select
+      >
+        <option value={0}>Default</option>
+        {weights.map((weight) => (
+          <option key={weight} value={weight}>
+            {WEIGHT_NAMES[weight] ?? weight}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

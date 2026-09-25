@@ -12,7 +12,9 @@ import { BUILT_FONTS } from "../lib/fonts/catalog.generated.ts";
 import { ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
 import {
   catalogId,
+  boldWeight,
   clampWeight,
+  offeredWeights,
   hebrewFallbackFor,
   HEBREW_OVERRIDE_FONTS,
   LEGACY_FONT_IDS,
@@ -206,6 +208,18 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
   const variable = boardFonts([doc({ font: "inter" }, [])], info);
   check(variable.files.filter((url) => /^\/fonts\/inter\/latin-wght/.test(url)).length === 1, "a variable face is one file for regular and semibold", variable.files.join(", "));
   check(variable.files.every((url) => existsSync(join("public", url))), "every listed file exists");
+}
+
+console.log("\n-- weights -----------------------------------------------------------");
+{
+  check(offeredWeights("cormorant-garamond")[0] === 500, "Cormorant Garamond offers nothing under 500", offeredWeights("cormorant-garamond").join(", "));
+  check(clampWeight("cormorant-garamond", 400) === 500, "and a regular Cormorant element is drawn at 500");
+  check(boldWeight("lato") === 700 && boldWeight("playfair-display") === 700, "bold is 700 where a face offers it");
+  check(boldWeight("marcellus") === 400, "a one-weight face has no bold and draws its one weight");
+  check(boldWeight("david-libre") === 700, "David Libre's bold is its 700");
+  const heavy = boardFonts([{ themeOverrides: { font: "lato" }, widgets: [{ type: "text", config: { text: "x", fontWeight: 900 } }] }], () => undefined);
+  check(heavy.files.some((url) => /\/lato\/latin-900-normal/.test(url)), "a chosen weight in a static face brings its file", heavy.files.join(", "));
+  check(heavy.files.some((url) => /\/lato\/latin-700-normal/.test(url)), "and Lato's bold comes with every Lato element");
 }
 
 const failed = results.filter((r) => !r.ok).length;

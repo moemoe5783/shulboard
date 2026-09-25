@@ -295,7 +295,7 @@ function WidgetFrame({
               // font of its own, which its header shares.
               fontFamily: headerFont,
               flexShrink: 0,
-              fontWeight: 600,
+              fontWeight: "var(--board-weight-semibold, 600)",
               textAlign: "center",
               lineHeight: 1.1,
               // titleSize is a multiple of the widget's own text size, capped

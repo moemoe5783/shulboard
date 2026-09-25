@@ -1,6 +1,6 @@
 import { BUILT_FONTS, FONT_FACES_CSS, type BuiltFace } from "./catalog.generated.ts";
 import { DIGIT_FAMILIES } from "./catalog.ts";
-import { catalogId, clampWeight, digitFallbackFor, fontInfo } from "./index.ts";
+import { boldWeight, catalogId, clampWeight, digitFallbackFor, fontInfo } from "./index.ts";
 import { boardFontRoles, resolveElementFont, type FontRole } from "./roles.ts";
 import { hebrewFamily, hebrewOverride, resolvedHebrew } from "./stack.ts";
 
@@ -55,7 +55,8 @@ const HEBREW_TYPES = new Set(["hebrew-date", "parsha", "daf-yomi"]);
 const HEBREW_LETTER = /[֐-׿יִ-ﭏ]/;
 
 /** The weights a board draws text in: regular, and semibold for titles,
- *  headers, clocks and bold text. */
+ *  headers and clocks — plus each face's own bold (Text's Bold), and any weight
+ *  an element chooses. */
 const TEXT_WEIGHTS = [400, 600];
 
 const LATIN = new Set(["latin", "latin-ext"]);
@@ -98,12 +99,12 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
       widgets.some((widget) => HEBREW_TYPES.has(widget.type)) || widgets.some((widget) => HEBREW_LETTER.test(JSON.stringify(widget.config ?? {})));
 
     /** A font and its Hebrew, as drawn at the text weights. */
-    const addFont = (font: string, hebrew: string) => {
+    const addFont = (font: string, hebrew: string, extra: readonly number[] = []) => {
       const id = catalogId(font);
       if (!id || id === "system") return;
       const info = fontInfo(id);
       if (!info) return;
-      for (const wanted of TEXT_WEIGHTS) {
+      for (const wanted of new Set([...TEXT_WEIGHTS, boldWeight(id), ...extra])) {
         const weight = clampWeight(id, wanted);
         for (const face of filesFor(id, weight, (subset) => LATIN.has(subset))) files.add(face.url);
         addFace(info.name, weight, LATIN_SAMPLE);
@@ -121,10 +122,12 @@ export function boardFonts(docs: readonly Doc[], widgetInfo: WidgetFontInfo): Bu
 
     addFont(roles.body.font, roles.body.hebrew);
     for (const widget of widgets) {
-      const config = (widget.config ?? {}) as { font?: string; hebrewFont?: string; title?: string };
+      const config = (widget.config ?? {}) as { font?: string; hebrewFont?: string; title?: string; fontWeight?: number };
       const meta = widgetInfo(widget.type);
       const resolved = resolveElementFont(config.font, config.hebrewFont, meta?.fontRole ?? "body", roles);
-      addFont(resolved.font, resolved.hebrew);
+      // A weight chosen on the element (widgets/style.ts) is a file of its own
+      // in a static face.
+      addFont(resolved.font, resolved.hebrew, typeof config.fontWeight === "number" && config.fontWeight > 0 ? [config.fontWeight] : []);
       // A header line is set in the heading font (components/board/BoardRenderer.tsx).
       if (typeof config.title === "string" && config.title !== "") addFont(roles.heading.font, roles.heading.hebrew);
       if (meta?.showsTimes) {
