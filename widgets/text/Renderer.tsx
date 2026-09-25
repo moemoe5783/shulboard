@@ -12,14 +12,18 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<TextConfig
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isFit = config.sizingMode === "fit";
+  const isHug = config.sizingMode === "hug";
 
-  // `fit` only: the largest size at which the wrapped text still fits the box.
+  // `fit`: the largest size at which the wrapped text still fits the box.
+  // `fixed`: the typed size, unless the box is too small for it — then as
+  // large as fits, the way a fixed clock shrinks rather than being cut off.
+  // `hug`: the typed size; the box grows to it instead.
   useFitFontSize(boxRef, contentRef, {
     minFontSize: manifest.sizing.minFontSize ?? 8,
-    maxFontSize: manifest.sizing.maxFontSize ?? 400,
+    maxFontSize: isFit ? (manifest.sizing.maxFontSize ?? 400) : config.size,
     canvasWidth: canvas.width,
-    enabled: isFit,
-    deps: [config.text, config.lineHeight, config.bold, config.align],
+    enabled: !isHug,
+    deps: [config.text, config.lineHeight, config.bold, config.align, config.size, config.sizingMode],
   });
 
   const justify = config.verticalAlign === "middle" ? "justify-center" : config.verticalAlign === "bottom" ? "justify-end" : "justify-start";
@@ -31,7 +35,7 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<TextConfig
         // One block per line so each takes its own direction: a Hebrew line
         // reads right to left beside an English one (dir="auto").
         style={{
-          fontSize: isFit ? undefined : boardFontSize(config.size, canvas.width),
+          fontSize: isHug ? boardFontSize(config.size, canvas.width) : undefined,
           lineHeight: config.lineHeight,
           // The element's chosen weight, else regular or its face's own bold,
           // each within what the face offers (widgets/style.ts).
