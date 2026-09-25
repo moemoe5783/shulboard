@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { BoardDoc } from "@/lib/board-doc";
 import { fontInfo } from "@/lib/fonts";
 import { DEFAULT_FONT, fontStack } from "@/lib/fonts/stack";
+import { boardFontRoles } from "@/lib/fonts/roles";
 
 /*
  * How a board document turns into type and colour.
@@ -120,9 +121,10 @@ export const boardFontSize = boardLength;
 
 /** The style the board root carries, from the document's own theme. */
 export function boardRootStyle(doc: BoardDoc): CSSProperties {
-  const theme = doc.themeOverrides as { font?: string; hebrewFont?: string; ink?: string; background?: string };
-
-  const font = theme.font ?? DEFAULT_FONT;
+  const theme = doc.themeOverrides as { ink?: string; background?: string };
+  // The board root carries the body font; a heading, accent or quote is set on
+  // the element that uses it (widgets/style.ts).
+  const { font, hebrew } = boardFontRoles(doc.themeOverrides).body;
   const ink = (theme.ink ?? "ink") as BoardColor;
   const background = (theme.background ?? "surface") as BoardColor;
 
@@ -136,8 +138,8 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
     // chrome (which sets `color-scheme: dark` for its own controls) and on a
     // TV alike, so it renders the same in both (CLAUDE.md: one renderer).
     colorScheme: "only light",
-    fontFamily: fontStack(font, theme.hebrewFont),
-    ["--board-numeric-font" as string]: numericFace(font, theme.hebrewFont),
+    fontFamily: fontStack(font, hebrew),
+    ["--board-numeric-font" as string]: numericFace(font, hebrew),
     ...digitWidthVars(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,
     backgroundColor: BOARD_COLORS[background] ?? BOARD_COLORS.surface,
