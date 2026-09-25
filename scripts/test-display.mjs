@@ -198,6 +198,9 @@ if (!executablePath) {
 }
 
 const { chromium } = await import("playwright-core");
+// The deployment the display page reports (lib/deployment.ts), so section F
+// can answer from a "newer" one.
+process.env.VERCEL_DEPLOYMENT_ID = "dpl_test_page";
 const server = await startServer();
 const browser = await chromium.launch({ executablePath });
 
@@ -529,6 +532,49 @@ try {
     await many.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "2", null, { timeout: 20000 }).catch(() => {});
     check((await marker(many, "version")) === "2" && !(await badge.isVisible().catch(() => false)), "then the new board swaps in and the tag goes");
     await manyContext.close();
+  }
+  console.log("");
+
+  // ---- F. A newer deploy: the screen reloads onto the new code --------------
+  console.log("F. A screen running an older deploy reloads onto the new one");
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    let deployment = "dpl_test_page";
+    const current = bundleFixture({ version: 1, hash: "deploy-one", title: "Deploys" });
+    await context.route("**/api/screen/*/bundle", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { etag: `"${current.contentHash}"`, "x-shulboard-deployment": deployment },
+        body: JSON.stringify(current),
+      }),
+    );
+    await context.route("**/api/screen/*/heartbeat", (route) => route.fulfill({ status: 200, body: "{}" }));
+    await context.route("**/api/screen/*/realtime-auth", (route) => route.fulfill({ status: 503, body: "{}" }));
+    let loads = 0;
+    page.on("load", () => (loads += 1));
+    await page.goto(DISPLAY, { waitUntil: "load" });
+    await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    const guard = () => page.evaluate(() => sessionStorage.getItem("shulboard-reloaded-for"));
+    check((await marker(page, "version")) === "1" && (await guard()) === null, "the same deploy: the board shows, no reload planned");
+
+    // The next deploy goes live; the next poll hears about it.
+    deployment = "dpl_test_new";
+    await page.reload({ waitUntil: "load" });
+    const before = loads;
+    await page.waitForFunction(() => sessionStorage.getItem("shulboard-reloaded-for") === "dpl_test_new", null, { timeout: 15000 }).catch(() => {});
+    check((await guard()) === "dpl_test_new", "a newer deploy answers the bundle: the screen plans a reload");
+    const deadline = Date.now() + 40_000;
+    while (loads === before && Date.now() < deadline) await sleep(250);
+    check(loads > before, "and reloads within half a minute");
+    await page.waitForFunction(() => document.querySelector("[data-display-version]")?.getAttribute("data-display-version") === "1", null, { timeout: 15000 }).catch(() => {});
+    check((await marker(page, "version")) === "1", "back on its board afterwards");
+    const settled = loads;
+    await sleep(3000);
+    check(loads === settled, "and doesn't reload again for the same deploy");
+    await context.close();
   }
   console.log("");
 

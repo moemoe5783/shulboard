@@ -51,11 +51,11 @@ function subscribeToStorage(onChange: () => void) {
   };
 }
 
-export function DisplayBoot({ urlToken }: { urlToken: string }) {
+export function DisplayBoot({ urlToken, deployment = null }: { urlToken: string; deployment?: string | null }) {
   const stored = useSyncExternalStore(subscribeToStorage, readStoredToken, () => null);
   const token = stored ?? urlToken;
 
-  const { bundle, status, files, filesSnapshot, storage } = useDisplay(token);
+  const { bundle, status, files, filesSnapshot, storage } = useDisplay(token, deployment);
 
   // Album photos the board's galleries and collages are waiting on. Read off
   // the snapshot so this re-renders as they land.

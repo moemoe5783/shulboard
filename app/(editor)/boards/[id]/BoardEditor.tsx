@@ -37,6 +37,21 @@ import { PublishControls, type PublishState } from "./PublishControls";
  * shared hook would be solving.
  */
 
+/*
+ * THE LATEST DOCUMENT, PER BOARD, FOR THIS TAB.
+ *
+ * Going Back to a board you just edited can restore the page from the
+ * router's cache — with the document as it was when the page first loaded,
+ * not as it was saved since. Loading that would show the old caption size,
+ * the old font, and then save the old version over the new one with the
+ * next edit. So the editor keeps what it last had for each board, with the
+ * document the server gave it at the time, and on mount takes that over the
+ * page's copy when the page's copy is still the one it started from. A
+ * document that changed on the server since (another tab, another person)
+ * no longer matches, and the server's wins.
+ */
+const sessionDocs = new Map<string, { base: string; doc: BoardDoc; publishState: PublishState }>();
+
 const NUDGE_SMALL = 1;
 const NUDGE_LARGE = 10;
 
@@ -90,10 +105,18 @@ export function BoardEditor({
 
   const [menu, setMenu] = useState<MenuPosition | null>(null);
 
+  // What the page handed over, and what this tab last had for the board
+  // (sessionDocs above) if that started from the same thing.
+  const [baseDoc] = useState(() => JSON.stringify(doc));
+  const [kept] = useState(() => {
+    const entry = sessionDocs.get(boardId);
+    return entry && entry.base === baseDoc ? entry : null;
+  });
+
   // ---- load the real document, once -------------------------------------
 
   useEffect(() => {
-    useEditor.getState().load(doc, canvas);
+    useEditor.getState().load(kept?.doc ?? doc, canvas);
     // Only on mount: boardId does not change under a mounted editor (leaving
     // one board and opening another is a navigation, which remounts this
     // component and its useEffects fresh).
@@ -112,7 +135,17 @@ export function BoardEditor({
   // Publish state: seeded from the page load, then kept current by whichever
   // of three things last touched it — an autosave (only ever moves
   // pendingChanges, since autosave never publishes), a publish, or a discard.
-  const [publishState, setPublishState] = useState<PublishState>(initialPublishState);
+  const [publishState, setPublishState] = useState<PublishState>(kept?.publishState ?? initialPublishState);
+
+  // Keep this tab's latest copy current (sessionDocs, above).
+  useEffect(() => {
+    const remember = () =>
+      sessionDocs.set(boardId, { base: baseDoc, doc: useEditor.getState().doc, publishState });
+    remember();
+    return useEditor.subscribe((state, previous) => {
+      if (state.doc !== previous.doc) remember();
+    });
+  }, [boardId, baseDoc, publishState]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -166,11 +199,23 @@ export function BoardEditor({
     });
   }, [flushSave]);
 
+  // Leaving the editor inside the autosave's one second — or closing the
+  // tab — still saves the last edit, rather than dropping it.
   useEffect(() => {
-    return () => {
+    const flushNow = () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      const next = pendingDocRef.current;
+      if (!next) return;
+      pendingDocRef.current = null;
+      void saveBoardDoc(boardId, next).catch(() => {});
     };
-  }, []);
+    window.addEventListener("pagehide", flushNow);
+    return () => {
+      window.removeEventListener("pagehide", flushNow);
+      flushNow();
+    };
+  }, [boardId]);
 
   /** The zoom the last fit produced — while the zoom is still that, the
    *  board is "fitted" and follows the window's size; once someone zooms, it

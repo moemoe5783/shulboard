@@ -401,6 +401,28 @@ try {
     const idleText = (await publishState.textContent().catch(() => "")) ?? "";
     check(/No changes to publish/.test(idleText), "and later, with nothing new, says there's nothing to publish", idleText);
 
+    // Back into a board just edited: the edit, not the page as first loaded
+    // (the router's cached copy) — and not saved over by it.
+    {
+      await page.locator("summary", { hasText: "Add element" }).click();
+      await page.locator("[data-add-menu] button", { hasText: /^Title/ }).first().click();
+      await page.waitForTimeout(1500);
+      const widget = page.locator("[data-editor-surface] [data-widget-id]").first();
+      const leftOf = () => widget.evaluate((el) => el.style.left);
+      const before = await leftOf();
+      for (let i = 0; i < 3; i += 1) await page.keyboard.press("Shift+ArrowRight");
+      const edited = await leftOf();
+      // Away inside the autosave's second, then Back.
+      await page.locator('a[href="/boards"]').first().click();
+      await page.waitForURL(`${BASE}/boards`, { timeout: 10000 }).catch(() => {});
+      await page.goBack({ waitUntil: "networkidle" });
+      await widget.waitFor({ timeout: 10000 }).catch(() => {});
+      const after = await leftOf().catch(() => "");
+      check(edited !== before && after === edited, "Back into a board just edited shows the edit, not the page as it first loaded", `${before} -> ${edited}, back: ${after}`);
+      await page.keyboard.press("Control+z");
+      await page.waitForTimeout(1500);
+    }
+
     await page.goto(`${BASE}/settings`, { waitUntil: "networkidle" });
     check((await page.getByLabel("Timezone").count()) === 0, "settings don't ask for a timezone");
     check(/Times are shown in Eastern Time/.test(await page.locator("body").textContent()), "they say the one the address gave");

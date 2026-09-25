@@ -134,6 +134,12 @@ Only human-entered content (announcements, events, photos) can go stale, and the
 - Heartbeat POST every 60s → dashboard shows "Sanctuary Lobby — last seen 40s
   ago." Shuls will call you about black screens; you need this.
 - Scheduled self-reload at ~3:00am local (memory leaks in TV WebViews are real).
+- **Reload onto a new deploy — built.** A screen keeps the code it booted
+  with until it reloads, so a setting a newer deploy added (a caption size, a
+  font) would reach it in the bundle and mean nothing to the old code. The
+  bundle endpoint answers with the deployment serving it (`lib/deployment.ts`,
+  Vercel's `VERCEL_DEPLOYMENT_ID`); a screen whose page came from an older one
+  reloads within half a minute, once per deployment.
 - Global error boundary → log + reload rather than white screen.
 - No `setInterval` accumulation: one master rAF/second-tick that all time widgets
   subscribe to.
