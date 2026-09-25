@@ -1,6 +1,8 @@
 "use client";
 
-import { CATEGORY_LABELS, HEBREW_GROUPS, HEBREW_OVERRIDE_FONTS, PICKABLE_FONTS, hebrewFont, pickableFont, type FontCategory } from "@/lib/fonts";
+import { CATEGORY_LABELS, HEBREW_GROUPS, HEBREW_OVERRIDE_FONTS, PICKABLE_FONTS, fontInfo, hebrewFont, pickableFont, type FontCategory } from "@/lib/fonts";
+import { FONT_ROLE_LABELS, FONT_ROLES, isFontRole, type BoardFontRoles } from "@/lib/fonts/roles";
+import { fontStack } from "@/lib/fonts/stack";
 import { FontPicker, type FontGroup } from "./FontPicker";
 import { PANEL_LABEL } from "./panelControls";
 
@@ -16,26 +18,60 @@ export function FontSelect({
   label = "Font",
   value,
   inheritLabel,
+  inheritFamily,
+  roles,
+  exclude,
   onChange,
 }: {
   label?: string;
   value: string;
   inheritLabel?: string;
+  /** The face "inherit" draws in, to show it in. */
+  inheritFamily?: string;
+  /** The board's font roles — offered by name, so an element can follow the
+   *  theme's heading, body, accent or quote font. */
+  roles?: BoardFontRoles;
+  /** Categories not offered here (script faces, for a clock). A value already
+   *  in one stays selectable. */
+  exclude?: readonly FontCategory[];
   onChange: (font: string) => void;
 }) {
-  const known = value === "inherit" || Boolean(pickableFont(value));
+  const offered = PICKABLE_FONTS.filter((font) => !exclude?.includes(font.category));
+  const known = value === "inherit" || isFontRole(value) || offered.some((font) => font.id === value);
   const groups: FontGroup[] = [];
   // A board saved before the catalog may name a face it no longer offers
-  // (Miriam Libre, System) — kept selectable while chosen.
+  // (Miriam Libre, System, Alef), or a face this element no longer offers — kept
+  // selectable while chosen.
+  const current = pickableFont(value);
   const first = [
-    ...(inheritLabel ? [{ value: "inherit", name: inheritLabel }] : []),
-    ...(!known ? [{ value, name: pickableFont(value)?.name ?? hebrewFont(value)?.name ?? value }] : []),
+    ...(inheritLabel ? [{ value: "inherit", name: inheritLabel, family: inheritFamily }] : []),
+    ...(!known
+      ? [
+          {
+            value,
+            name: current?.name ?? hebrewFont(value)?.name ?? value,
+            family: current || hebrewFont(value) ? `"${current?.name ?? hebrewFont(value)?.name}"` : undefined,
+          },
+        ]
+      : []),
   ];
   if (first.length) groups.push({ options: first });
+  if (roles) {
+    groups.push({
+      label: "From the theme",
+      options: FONT_ROLES.map((role) => ({
+        value: role,
+        name: FONT_ROLE_LABELS[role],
+        family: fontStack(roles[role].font, roles[role].hebrew),
+        note: fontInfo(roles[role].font)?.name,
+      })),
+    });
+  }
   for (const category of Object.keys(CATEGORY_LABELS) as FontCategory[]) {
+    if (exclude?.includes(category)) continue;
     groups.push({
       label: CATEGORY_LABELS[category],
-      options: PICKABLE_FONTS.filter((font) => font.category === category).map((font) => ({
+      options: offered.filter((font) => font.category === category).map((font) => ({
         value: font.id,
         name: font.name,
         family: `"${font.name}"`,

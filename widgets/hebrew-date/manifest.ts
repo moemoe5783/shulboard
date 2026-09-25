@@ -28,6 +28,8 @@ export const manifest: WidgetManifest<HebrewDateConfig> = {
   defaultSize: { w: 640, h: 180 },
   isPro: false,
   settingsSchema: hebrewDateConfigSchema,
+  // Times, zmanim or a date: no script faces offered, lining digits (widgets/types.ts).
+  showsTimes: true,
   // Computed client-side from the system clock and the board's own location
   // (plan.md §3b) — nothing to fetch.
   dataNeeds: () => [],

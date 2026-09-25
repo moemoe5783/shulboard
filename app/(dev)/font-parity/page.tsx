@@ -26,6 +26,7 @@
  */
 
 import { useSearchParams } from "next/navigation";
+import { fontTheme, fontThemePatch, type FontTheme } from "@/lib/fonts/themes";
 import { Suspense } from "react";
 import { BoardEditor } from "@/app/(editor)/boards/[id]/BoardEditor";
 import { BoardRenderer } from "@/components/board/BoardRenderer";
@@ -40,10 +41,11 @@ export const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
 export const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
 export const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
 
-function buildDoc(font: string): BoardDoc {
+function buildDoc(font: string, theme?: FontTheme): BoardDoc {
   return parseBoardDoc({
     schemaVersion: 1,
-    themeOverrides: { font, ink: "ink", background: "surface" },
+    // A font theme (?theme=simcha) fills every role; otherwise the one board font.
+    themeOverrides: { font, ink: "ink", background: "surface", ...(theme ? definedOnly(fontThemePatch(theme)) : {}) },
     widgets: [
       {
         id: TITLE_ID,
@@ -89,6 +91,9 @@ function buildDoc(font: string): BoardDoc {
   });
 }
 
+const definedOnly = (patch: Record<string, string | undefined>) =>
+  Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+
 // Any stored font name: the catalog's ids and the pre-catalog names.
 const isFont = (name: string) => catalogId(name) !== null;
 
@@ -96,7 +101,7 @@ function FontParityInner() {
   const params = useSearchParams();
   const requested = params.get("font") ?? "sefarim";
   const font = isFont(requested) ? requested : "sefarim";
-  const doc = buildDoc(font);
+  const doc = buildDoc(font, fontTheme(params.get("theme")));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>

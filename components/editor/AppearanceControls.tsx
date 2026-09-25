@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { CHROME_BUTTON, CHROME_BUTTON_ON } from "@/app/(dev)/editor-lab/chrome";
 import { FRAME_PRESETS, type WidgetFont, type WidgetStyleConfig } from "@/widgets/style";
 import { FontSelect, HebrewFontSelect } from "./FontSelects";
+import { FONT_ROLE_LABELS, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
+import { fontStack } from "@/lib/fonts/stack";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
 import { backgroundKind } from "@/lib/board-background";
 import { BackgroundField } from "./BackgroundField";
@@ -50,12 +52,16 @@ const DEFAULT_BORDER_COLOR = "#1b2a2e";
 
 export function AppearanceControls({
   config,
+  fonts,
   onChange,
   extras = [],
   section,
   onSection,
 }: {
   config: WidgetStyleConfig;
+  /** The board's font roles, which one this element takes by default, and
+   *  whether it shows times (no script faces offered). */
+  fonts?: { roles: BoardFontRoles; role: FontRole; showsTimes: boolean };
   onChange: (patch: Partial<WidgetStyleConfig>) => void;
   /** The widget's own look settings (see AppearanceExtra above). */
   extras?: readonly AppearanceExtra[];
@@ -275,10 +281,17 @@ export function AppearanceControls({
       </div>
 
       {/* Font, and the face its Hebrew is drawn in (components/editor/FontSelects.tsx). */}
-      <FontSelect value={config.font} inheritLabel="Board default" onChange={(font) => onChange({ font: font as WidgetFont })} />
+      <FontSelect
+        value={config.font}
+        inheritLabel={fonts ? `Theme ${FONT_ROLE_LABELS[fonts.role].toLowerCase()} font` : "Board default"}
+        inheritFamily={fonts ? fontStack(fonts.roles[fonts.role].font, fonts.roles[fonts.role].hebrew) : undefined}
+        roles={fonts?.roles}
+        exclude={fonts?.showsTimes ? ["script"] : undefined}
+        onChange={(font) => onChange({ font: font as WidgetFont })}
+      />
       <HebrewFontSelect
         value={config.hebrewFont}
-        inheritLabel="Board's Hebrew font"
+        inheritLabel="Theme's Hebrew font"
         onChange={(hebrewFont) => onChange({ hebrewFont })}
       />
           </>

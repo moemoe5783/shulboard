@@ -18,6 +18,8 @@ import {
   PICKABLE_FONTS,
   pickableFont,
 } from "../lib/fonts/index.ts";
+import { boardFontRoles, resolveElementFont } from "../lib/fonts/roles.ts";
+import { FONT_THEMES, fontThemePatch, matchesFontTheme, newBoardFontOverrides } from "../lib/fonts/themes.ts";
 import { fontStack, resolvedHebrew } from "../lib/fonts/stack.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -109,6 +111,46 @@ check(resolvedHebrew("playfair-display") === "frank-ruhl-libre" && resolvedHebre
 console.log("\n-- nikud (measured; confirmed by eye in /fonts-lab) -----------------");
 for (const font of HEBREW_OVERRIDE_FONTS) console.log(`         ${font.nikudOk ? "sets nikud " : "NIKUD POOR "} ${font.name}`);
 check(HEBREW_OVERRIDE_FONTS.some((f) => !f.nikudOk), "the measurement can fail a font (not everything passes)");
+
+console.log("\n-- font roles and themes ---------------------------------------------");
+{
+  const old = boardFontRoles({ font: "rubik", hebrewFont: "auto" });
+  check(old.heading.font === "rubik" && old.accent.font === "rubik" && old.quote.font === "rubik",
+    "a board saved before themes: heading, accent and quote all fall back to its one font");
+  const empty = boardFontRoles({});
+  check(empty.body.font === "assistant" && empty.body.hebrew === "auto", "no font at all: Assistant, Auto Hebrew");
+
+  check(FONT_THEMES.length === 6, "six font themes", FONT_THEMES.map((t) => t.name).join(", "));
+  for (const theme of FONT_THEMES) {
+    for (const [role, value] of Object.entries(theme.roles)) {
+      check(Boolean(pickableFont(value!.font) || catalogId(value!.font)), `${theme.name}: ${role} font ${value!.font} is in the catalog`);
+      check(value!.hebrew === "auto" || HEBREW_OVERRIDE_FONTS.some((f) => f.id === value!.hebrew),
+        `${theme.name}: ${role} Hebrew ${value!.hebrew} is Auto or an override`);
+    }
+  }
+
+  const simcha = FONT_THEMES.find((t) => t.id === "simcha")!;
+  const roles = boardFontRoles({ ink: "ink", ...fontThemePatch(simcha) });
+  check(roles.heading.font === "dm-serif-display" && roles.heading.hebrew === "suez-one", "Simcha: DM Serif Display headings, Suez One Hebrew");
+  check(roles.accent.font === "great-vibes" && roles.body.font === "lato", "Great Vibes accent, Lato body");
+  check(resolveElementFont("inherit", "inherit", "heading", roles).font === "dm-serif-display", "a Title left to the theme takes the heading font");
+  check(resolveElementFont("inherit", "inherit", "body", roles).font === "lato", "any other element takes the body font");
+  check(resolveElementFont("accent", "inherit", "body", roles).font === "great-vibes", "an element set to Accent takes the accent font");
+  const own = resolveElementFont("cinzel", "inherit", "heading", roles);
+  check(own.font === "cinzel" && own.hebrew === "suez-one", "a font picked by name stays, with its role's Hebrew");
+
+  const warm = FONT_THEMES.find((t) => t.id === "warm")!;
+  const switched = boardFontRoles({ ...fontThemePatch(simcha), ...fontThemePatch(warm) });
+  check(switched.accent.font === "outfit", "switching to a theme without an accent clears the old one (falls back to heading)");
+  check(matchesFontTheme(fontThemePatch(warm), warm) && !matchesFontTheme(fontThemePatch(warm), simcha), "the applied theme reads back as chosen");
+
+  const scholarly = boardFontRoles(fontThemePatch(FONT_THEMES.find((t) => t.id === "scholarly")!));
+  check(scholarly.quote.font === "eb-garamond" && scholarly.quote.hebrew === "noto-rashi-hebrew", "Scholarly's quote style sets Hebrew in Rashi script");
+
+  const fresh = boardFontRoles(newBoardFontOverrides());
+  check(fresh.heading.font === "montserrat" && fresh.body.font === "inter", "a new board starts on Modern (Montserrat / Inter)");
+  check(!("accentFont" in newBoardFontOverrides()), "and stores nothing for the roles Modern leaves out");
+}
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

@@ -4,6 +4,7 @@ import { backgroundCss, backgroundKind } from "@/lib/board-background";
 import { boardLength, digitWidthVars, numericFace } from "@/lib/board-theme";
 import { catalogId, hebrewFont as hebrewFontById } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
+import { isFontRole, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
 
 /*
  * Per-widget appearance — the design/appearance controls EVERY widget carries:
@@ -242,7 +243,7 @@ export function normalizeWidgetStyle(config: Record<string, unknown>): WidgetSty
     background: str("background"),
     backgroundOpacity: clamp(num("backgroundOpacity", 100), 0, 100),
     textColor: str("textColor"),
-    font: typeof font === "string" && catalogId(font) ? font : "inherit",
+    font: typeof font === "string" && (catalogId(font) || isFontRole(font)) ? font : "inherit",
     hebrewFont: readHebrewChoice(config.hebrewFont),
     // padding and titleSize are ratios of the text size now (see the schema).
     // Clamp on read so a document written when they were absolute board units
@@ -312,9 +313,9 @@ export function widgetStyle(
    * fixed height to consume). Omitted only by callers with no box to measure.
    */
   box?: { width: number; height: number },
-  /** The board's own font choices, for an element that changes only one of
-   *  its font or its Hebrew face. */
-  board?: { font?: string; hebrewFont?: string },
+  /** The board's font roles, and which one this widget takes by default
+   *  (lib/fonts/roles.ts). Omitted, the widget draws in whatever it inherits. */
+  board?: { roles: BoardFontRoles; role: FontRole },
 ): CSSProperties {
   const style: CSSProperties = {
     height: "100%",
@@ -335,20 +336,22 @@ export function widgetStyle(
     }
   }
   if (config.textColor) style.color = config.textColor;
-  // The widget's own font or Hebrew face, each falling back to the board's —
-  // an element that only changes its Hebrew keeps the board's font, and one
-  // that only changes its font keeps the board's Hebrew choice.
-  if (config.font !== "inherit" || config.hebrewFont !== "inherit") {
-    const font = config.font !== "inherit" ? config.font : board?.font;
-    const hebrew = config.hebrewFont !== "inherit" ? config.hebrewFont : board?.hebrewFont;
-    style.fontFamily = fontStack(font, hebrew);
-    // Numbers are set in the widget's own face (lib/board-theme.ts).
-    (style as Record<string, string>)["--board-numeric-font"] = numericFace(font, hebrew);
-    // Its own digit widths — or none, clearing the board's, when its face's
-    // digits line up by themselves (widgets/Digits.tsx).
-    const digits = digitWidthVars(font);
-    for (const weight of [100, 200, 300, 400, 500, 600, 700, 800, 900]) {
-      (style as Record<string, string>)[`--board-digit-${weight}`] = digits[`--board-digit-${weight}`] ?? "auto";
+  // The widget's font: its own, a role by name, or its role's default
+  // (lib/fonts/roles.ts). Set only when it differs from the body font the
+  // board root already carries, so an element following the body inherits it.
+  if (board) {
+    const { font, hebrew } = resolveElementFont(config.font, config.hebrewFont, board.role, board.roles);
+    const body = board.roles.body;
+    if (font !== body.font || hebrew !== body.hebrew) {
+      style.fontFamily = fontStack(font, hebrew);
+      // Numbers are set in the widget's own face (lib/board-theme.ts).
+      (style as Record<string, string>)["--board-numeric-font"] = numericFace(font, hebrew);
+      // Its own digit widths — or none, clearing the board's, when its face's
+      // digits line up by themselves (widgets/Digits.tsx).
+      const digits = digitWidthVars(font);
+      for (const weight of [100, 200, 300, 400, 500, 600, 700, 800, 900]) {
+        (style as Record<string, string>)[`--board-digit-${weight}`] = digits[`--board-digit-${weight}`] ?? "auto";
+      }
     }
   }
   // padding is a multiple of the widget's own text size (referenceSize is that

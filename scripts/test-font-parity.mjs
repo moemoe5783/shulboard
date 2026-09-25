@@ -191,12 +191,16 @@ try {
   // Two themes: the deliberately-non-Assistant default (what actually catches
   // a leak) and Assistant itself (a sanity check that a board choosing the
   // same face as chrome isn't a coincidence this test depends on).
-  for (const font of ["sefarim", "assistant"]) {
+  // Then every font theme (lib/fonts/themes.ts): a title in the heading font,
+  // the rest in the body font, identical in both halves.
+  const THEMES = ["classic-shul", "elegant", "modern", "warm", "simcha", "scholarly"];
+  for (const font of ["sefarim", "assistant", ...THEMES.map((t) => `theme:${t}`)]) {
     console.log(`\nTheme: ${font}`);
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     page.on("pageerror", (e) => check(false, "no page errors", e.message));
 
-    await page.goto(`${BASE}/font-parity?font=${font}`, { waitUntil: "networkidle" });
+    const query = font.startsWith("theme:") ? `font=assistant&theme=${font.slice(6)}` : `font=${font}`;
+    await page.goto(`${BASE}/font-parity?${query}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
 
     for (const [label, id] of [
@@ -228,6 +232,13 @@ try {
         `${label}: font-style matches`,
         `editor ${editor.fontStyle} / display ${display.fontStyle}`,
       );
+    }
+
+    if (font === "theme:simcha") {
+      const title = await widgetFont(page, "display", TITLE_ID);
+      const clock = await widgetFont(page, "display", CLOCK_FIXED_ID);
+      check(/^"DM Serif Display"|^"Suez One Hebrew/.test(title?.fontFamily ?? ""), "Simcha: the title is in the heading font", title?.fontFamily);
+      check(/^"?Lato"?,/.test(clock?.fontFamily ?? ""), "and a clock in the body font", clock?.fontFamily);
     }
 
     // Once per theme is enough for the parity loop above; the numeral
@@ -271,6 +282,28 @@ try {
       }
     }
 
+    await page.close();
+  }
+
+  // Applying a theme in the editor: one click, one undo step, and an element
+  // given its own font afterwards keeps it.
+  {
+    console.log("\nApplying a font theme in the editor");
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    await page.goto(`${BASE}/font-parity?font=assistant`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const titleFamily = async () => (await widgetFont(page, "editor", TITLE_ID))?.fontFamily ?? "";
+    const before = await titleFamily();
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("[data-font-theme]");
+    await page.locator('[data-font-theme="warm"]').click();
+    await page.waitForTimeout(300);
+    check(/^"Rubik Hebrew[^"]*", "?Outfit"?,/.test(await titleFamily()), "one click on Warm sets the title in Outfit, Rubik for Hebrew", await titleFamily());
+    check((await page.locator('[data-font-theme="warm"]').getAttribute("aria-checked")) === "true", "and Warm reads as the chosen theme");
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    check((await titleFamily()) === before, "one undo puts the fonts back", await titleFamily());
     await page.close();
   }
 } finally {

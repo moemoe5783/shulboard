@@ -8,6 +8,8 @@ import type { BoardDoc, BoardWidget } from "@/lib/board-doc";
 import type { BoardAlbums } from "@/lib/media/album-photos";
 import { boardLength, boardRootStyle } from "@/lib/board-theme";
 import { getManifest } from "@/widgets/manifests";
+import { boardFontRoles, type BoardFontRoles } from "@/lib/fonts/roles";
+import { fontStack } from "@/lib/fonts/stack";
 import { getRenderer } from "@/widgets/renderers";
 import { cappedHeaderSize, normalizeWidgetStyle, referenceSizeOf, widgetBoxStyle, widgetStyle } from "@/widgets/style";
 import type { SizingMode } from "@/widgets/types";
@@ -88,8 +90,8 @@ export function BoardRenderer({
   albums = null,
   files = null,
 }: BoardRendererProps) {
-  const theme = doc.themeOverrides as { font?: string; hebrewFont?: string };
-  const boardFonts = { font: theme.font, hebrewFont: theme.hebrewFont };
+  // The board's heading, body, accent and quote fonts (lib/fonts/roles.ts).
+  const roles = boardFontRoles(doc.themeOverrides);
   return (
     <BoardLocationProvider location={location}>
       <BoardZmanimProvider zmanim={zmanim}>
@@ -114,7 +116,7 @@ export function BoardRenderer({
                 key={widget.id}
                 widget={widget}
                 canvas={canvas}
-                boardFonts={boardFonts}
+                roles={roles}
                 extra={widgetProps?.(widget)}
               />
             ))}
@@ -134,12 +136,12 @@ export function BoardRenderer({
 function WidgetFrame({
   widget,
   canvas,
-  boardFonts,
+  roles,
   extra,
 }: {
   widget: BoardWidget;
   canvas: { width: number; height: number };
-  boardFonts: { font?: string; hebrewFont?: string };
+  roles: BoardFontRoles;
   extra?: HTMLAttributes<HTMLDivElement> & Record<string, unknown>;
 }) {
   const Renderer = getRenderer(widget.type);
@@ -189,6 +191,18 @@ function WidgetFrame({
     height: sizingMode === "hug" ? Infinity : (widget.h / 100) * canvas.height,
   };
   const headerSize = cappedHeaderSize(style.titleSize, referenceSize, boxDesign.height);
+
+  // Which board font role this widget's text takes by default: heading for a
+  // Title, body for the rest (lib/fonts/roles.ts).
+  const fontRole = getManifest(widget.type)?.fontRole ?? "body";
+  const headerFont =
+    style.title &&
+    style.font === "inherit" &&
+    style.hebrewFont === "inherit" &&
+    fontRole !== "heading" &&
+    (roles.heading.font !== roles.body.font || roles.heading.hebrew !== roles.body.hebrew)
+      ? fontStack(roles.heading.font, roles.heading.hebrew)
+      : undefined;
 
   /*
    * docs/sizing.md §3: "the renderer must not resize or reposition the box to
@@ -272,11 +286,14 @@ function WidgetFrame({
         styled it is a transparent, padding-less flex pass-through, so an
         unstyled widget renders exactly as it did before this frame existed.
       */}
-      <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign, boardFonts)}>
+      <div style={widgetStyle(style, canvas.width, referenceSize, boxDesign, { roles, role: fontRole })}>
         {style.title && (
           <div
             dir="auto"
             style={{
+              // A header is set in the heading font — unless the element has a
+              // font of its own, which its header shares.
+              fontFamily: headerFont,
               flexShrink: 0,
               fontWeight: 600,
               textAlign: "center",
