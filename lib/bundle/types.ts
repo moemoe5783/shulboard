@@ -1,5 +1,6 @@
 import type { BoardDoc } from "@/lib/board-doc";
 import type { BoardAlbums } from "@/lib/media/album-photos";
+import type { BundleFonts } from "@/lib/fonts/board-fonts";
 
 /*
  * The bundle — docs/plan.md §3a.
@@ -104,6 +105,10 @@ export type BundlePayload = {
   /** Every asset the boards reference, already resolved to proxy paths. The
    *  display caches all of these before it is allowed to swap to this bundle. */
   assets: BundleAsset[];
+  /** The font files the boards draw in — cached with the pictures, and loaded
+   *  before the board is first shown (lib/fonts/board-fonts.ts). Absent from a
+   *  bundle built before fonts were listed. */
+  fonts?: BundleFonts;
 };
 
 export type BundleEnvelope = BundlePayload & {

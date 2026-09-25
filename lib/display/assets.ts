@@ -73,6 +73,14 @@ export function boardPictureUrls(bundle: BundleEnvelope): string[] {
   return [...new Set(bundle.assets.map((asset) => asset.url))].filter((url) => !albumFiles.has(url));
 }
 
+/** Everything a bundle needs on the device before it goes up: the board's
+ *  own pictures, and the font files it draws in with their stylesheet
+ *  (lib/fonts/board-fonts.ts) — so a reboot offline has its type too. */
+export function boardFileUrls(bundle: BundleEnvelope): string[] {
+  const fonts = bundle.fonts ? [bundle.fonts.stylesheet, ...bundle.fonts.files] : [];
+  return [...boardPictureUrls(bundle), ...fonts];
+}
+
 type Owner = { srcs: string[]; complete: boolean };
 
 export type DeviceFilesStats = {

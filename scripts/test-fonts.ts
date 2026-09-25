@@ -20,6 +20,7 @@ import {
   pickableFont,
 } from "../lib/fonts/index.ts";
 import { boardFontRoles, resolveElementFont } from "../lib/fonts/roles.ts";
+import { boardFonts } from "../lib/fonts/board-fonts.ts";
 import { FONT_THEMES, fontThemePatch, matchesFontTheme, newBoardFontOverrides } from "../lib/fonts/themes.ts";
 import { fontStack, resolvedHebrew } from "../lib/fonts/stack.ts";
 
@@ -175,6 +176,36 @@ console.log("\n-- old-style figures: times take the fallback's digits ----------
   const css = readFileSync(join("public/fonts", readdirSync("public/fonts").find((f) => f.startsWith("faces."))!), "utf8");
   check(/font-family:"Heebo Digits"[^}]*unicode-range:U\+0030-0039/.test(css) && /font-family:"Frank Ruhl Libre Digits"[^}]*unicode-range:U\+0030-0039/.test(css),
     "the digit families cover 0–9 and nothing else");
+}
+
+console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts) -----");
+{
+  const info = (type: string) =>
+    ({ title: { fontRole: "heading" as const }, clock: { showsTimes: true }, zmanim: { showsTimes: true } })[type as "title"];
+  const doc = (themeOverrides: Record<string, unknown>, widgets: { type: string; config: Record<string, unknown> }[]) => ({ themeOverrides, widgets });
+  const english = boardFonts([doc(newBoardFontOverrides(), [{ type: "title", config: { text: "Kiddush" } }, { type: "text", config: { text: "After davening" } }])], info);
+  const families = new Set(english.files.map((url) => url.split("/")[2]));
+  check([...families].sort().join(",") === "inter,montserrat", "a Modern board with English text: Montserrat and Inter, nothing else", [...families].join(", "));
+  check(english.files.every((url) => !url.includes("/hebrew-")), "and no Hebrew file, with no Hebrew on it");
+  check(english.stylesheet.startsWith("/fonts/faces."), "the stylesheet is listed, for a reboot offline", english.stylesheet);
+
+  const hebrew = boardFonts([doc(newBoardFontOverrides(), [{ type: "text", config: { text: "מנחה Mincha 6:45" } }])], info);
+  check(hebrew.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")), "Hebrew text: the matched fallback's Hebrew file (Heebo for Inter)");
+  check(hebrew.faces.some((face) => face.family === "Heebo Hebrew for Inter" || face.family === "Heebo Hebrew"), "and its size-matched family is loaded before first paint",
+    hebrew.faces.map((f) => f.family).join(", "));
+
+  const override = boardFonts([doc({ font: "inter", hebrewFont: "suez-one" }, [{ type: "text", config: { text: "שבת" } }])], info);
+  check(override.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")) && !override.files.some((url) => url.startsWith("/fonts/heebo/")),
+    "a Hebrew override loads the override and not the fallback");
+  const unused = boardFonts([doc({ font: "inter" }, [{ type: "text", config: { text: "Hello" } }])], info);
+  check(!unused.files.some((url) => url.includes("suez-one")), "an override nobody chose loads nothing");
+
+  const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
+  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre Digits"),
+    "a Marcellus clock brings Frank Ruhl Libre's digits");
+  const variable = boardFonts([doc({ font: "inter" }, [])], info);
+  check(variable.files.filter((url) => /^\/fonts\/inter\/latin-wght/.test(url)).length === 1, "a variable face is one file for regular and semibold", variable.files.join(", "));
+  check(variable.files.every((url) => existsSync(join("public", url))), "every listed file exists");
 }
 
 const failed = results.filter((r) => !r.ok).length;

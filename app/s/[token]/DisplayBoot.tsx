@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useDisplay } from "@/lib/display/useDisplay";
+import { useFontsReady } from "@/lib/display/fonts";
 import { DebugView } from "./DebugView";
 import { DisplayBoard, LoadingProgress, UpdatingBadge, WaitingForBoard } from "./DisplayBoard";
 
@@ -59,6 +60,10 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
   // Album photos the board's galleries and collages are waiting on. Read off
   // the snapshot so this re-renders as they land.
   const photos = files.wantedProgress();
+  // The board's fonts, loaded before it's seen (lib/display/fonts.ts): on a
+  // boot from this device's copy the board is drawn under the loading screen
+  // until they are; a board that arrived from the network loaded them first.
+  const fontsReady = useFontsReady(bundle?.fonts);
   const head = files.headProgress();
 
   // The first board of this boot stays under the loading screen until its
@@ -182,6 +187,7 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
         data-display-online={String(status.online)}
         data-display-version={bundle.bundleVersion}
         data-display-waiting-assets={String(status.waitingForAssets)}
+        data-display-fonts-ready={String(fontsReady)}
       >
         Token {token}, bundle {bundle.bundleVersion}, from{" "}
         {status.source === "cache" ? "this device" : "the server"}
@@ -189,6 +195,7 @@ export function DisplayBoot({ urlToken }: { urlToken: string }) {
       <DisplayBoard bundle={bundle} files={filesSnapshot} />
       {/* From the first frame, so the board is never seen without its photos. */}
       {!openingDone && hasAlbums && <LoadingProgress done={head.done} total={head.total} over />}
+      {!fontsReady && (openingDone || !hasAlbums) && <LoadingProgress done={0} total={1} over />}
       {updating && slowUpdate && (
         <UpdatingBadge
           done={boardUpdate ? status.assetProgress!.done : photos.done}

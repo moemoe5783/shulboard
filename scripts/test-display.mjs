@@ -26,6 +26,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { mediaProxyPath } from "../lib/bundle/media.ts";
+import { boardFonts } from "../lib/fonts/board-fonts.ts";
+import { newBoardFontOverrides } from "../lib/fonts/themes.ts";
 
 const PORT = Number(process.env.PORT ?? 3212);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -104,8 +106,8 @@ async function stopServer(child) {
 
 /** A bundle in the shape the endpoint serves. Built here rather than imported so
  *  the test states the contract instead of inheriting it. */
-function bundleFixture({ version, hash, title, assetUrl, assetId = "a1" }) {
-  return {
+function bundleFixture({ version, hash, title, assetUrl, assetId = "a1", fonts = false }) {
+  const bundle = {
     bundleVersion: version,
     contentHash: hash,
     builtAt: new Date().toISOString(),
@@ -127,7 +129,9 @@ function bundleFixture({ version, hash, title, assetUrl, assetId = "a1" }) {
         doc: {
           schemaVersion: 1,
           background: {},
-          themeOverrides: {},
+          // With fonts: a Modern board (Montserrat titles) with a Hebrew
+          // subtitle, so both a Latin and a Hebrew file are in play.
+          themeOverrides: fonts ? newBoardFontOverrides() : {},
           widgets: [
             {
               id: "11111111-1111-4111-8111-111111111111",
@@ -135,7 +139,7 @@ function bundleFixture({ version, hash, title, assetUrl, assetId = "a1" }) {
               x: 5, y: 8, w: 60, h: 20, rotation: 0, z: 0,
               locked: false, hidden: false, opacity: 1, groupId: null,
               styleOverrides: {},
-              config: { text: title, subtitle: "", align: "left", size: 96, subtitleScale: 0.45 },
+              config: { text: title, subtitle: fonts ? "שבת שלום" : "", align: "left", size: 96, subtitleScale: 0.45 },
             },
             ...(assetUrl
               ? [
@@ -161,6 +165,9 @@ function bundleFixture({ version, hash, title, assetUrl, assetId = "a1" }) {
       ? [{ id: assetId, url: assetUrl, variant: "display", contentType: "image/svg+xml", bytes: 1024 }]
       : [],
   };
+  // The bundle's font list, built by the same code the server uses.
+  if (fonts) bundle.fonts = boardFonts(bundle.boards.map((board) => board.doc), (type) => (type === "title" ? { fontRole: "heading" } : undefined));
+  return bundle;
 }
 
 /*
@@ -260,7 +267,20 @@ try {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  }, { ...bundleFixture({ version: 7, hash: "cached-hash", title: "Beis Menachem", assetUrl: CACHED_ASSET_URL }), __token: TOKEN });
+  }, { ...bundleFixture({ version: 7, hash: "cached-hash", title: "Beis Menachem", assetUrl: CACHED_ASSET_URL, fonts: true }), __token: TOKEN });
+
+  // Its fonts into the same cache, fetched while online the way the display's
+  // atomic swap fetches them (lib/display/assets.ts, boardFileUrls) — these
+  // are real files, so they're fetched for real.
+  const fontFixture = bundleFixture({ version: 7, hash: "cached-hash", title: "x", fonts: true }).fonts;
+  const fontUrls = [fontFixture.stylesheet, ...fontFixture.files];
+  await page.evaluate(async (urls) => {
+    const cache = await caches.open("shulboard-assets-v1");
+    for (const url of urls) {
+      const response = await fetch(url, { cache: "no-cache" });
+      if (response.ok) await cache.put(url, response);
+    }
+  }, fontUrls);
 
   // Warm the asset cache the way the atomic swap does, so the offline board has
   // its picture. Seeded directly with `cache.put` rather than `cache.add` —
@@ -298,6 +318,21 @@ try {
     return Boolean(img && img.complete && img.naturalWidth > 0);
   });
   check(imageOk, "the picture is there too — served from the asset cache with no network");
+
+  // And its type: the bundle's fonts, loaded offline, before the board shows.
+  check(fontFixture.files.some((url) => url.startsWith("/fonts/montserrat/")) && fontFixture.files.some((url) => url.includes("/hebrew-")),
+    "(set-up: the bundle lists the Montserrat title face and a Hebrew file)", fontFixture.files.join(", "));
+  await page.waitForFunction(() => document.querySelector("[data-display-fonts-ready]")?.dataset.displayFontsReady === "true", null, { timeout: 10000 }).catch(() => {});
+  const fontState = await page.evaluate((faces) => ({
+    loaded: faces.map((face) => [face.family, document.fonts.check(`${face.weight} 16px "${face.family}"`, face.text)]),
+    titleFamily: getComputedStyle([...document.querySelectorAll("span")].find((el) => el.textContent === "Beis Menachem")).fontFamily,
+  }), fontFixture.faces);
+  check(fontState.loaded.every(([, ok]) => ok), "offline after a reboot, every font the board uses is loaded",
+    fontState.loaded.filter(([, ok]) => !ok).map(([family]) => family).join(", ") || "all");
+  check(/Montserrat/.test(fontState.titleFamily), "and the title is set in the theme's heading face", fontState.titleFamily);
+  check(await marker(page, "fonts-ready") === "true", "the board went up with its fonts ready");
+  const cachedFonts = await page.evaluate(async () => (await (await caches.open("shulboard-assets-v1")).keys()).map((r) => new URL(r.url).pathname).filter((p) => p.startsWith("/fonts/")));
+  check(cachedFonts.every((path) => fontUrls.includes(path)), "and nothing from the catalog but those files is on the device", `${cachedFonts.length} font files`);
 
   // THE CABLE GOES BACK IN.
   await offlineContext.setOffline(false);
