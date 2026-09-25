@@ -7,6 +7,7 @@ import { FontSelect, HebrewFontSelect } from "./FontSelects";
 import { FONT_ROLE_LABELS, resolveElementFont, type BoardFontRoles, type FontRole } from "@/lib/fonts/roles";
 import { clampWeight, fontInfo, offeredWeights } from "@/lib/fonts";
 import { fontStack } from "@/lib/fonts/stack";
+import { useEditor } from "@/lib/editor/store";
 import { PANEL_CHECKBOX, PANEL_CONTROL, PANEL_LABEL } from "./panelControls";
 import { backgroundKind } from "@/lib/board-background";
 import { BackgroundField } from "./BackgroundField";
@@ -76,6 +77,7 @@ export function AppearanceControls({
   onSection: (id: string) => void;
 }) {
   const hasTextColor = config.textColor !== "";
+  const openBoardPanel = useEditor((s) => s.openBoardPanel);
   const hasBorder = config.borderWidth > 0;
   const shared = new Set<string>(SHARED_APPEARANCE_SECTIONS.map((one) => one.id));
   const own = extras.filter((extra) => !shared.has(extra.id));
@@ -295,6 +297,14 @@ export function AppearanceControls({
         onChange={(font) => onChange({ font: font as WidgetFont })}
         onPreview={(font) => onFontPreview?.(font === null ? null : { font: font as WidgetFont })}
       />
+      <button
+        type="button"
+        onClick={() => openBoardPanel("fonts")}
+        className="text-meta text-paper/80 hover:text-paper self-start underline underline-offset-2"
+        data-open-board-fonts-link
+      >
+        Change the board&rsquo;s fonts and font theme
+      </button>
       {fonts?.weighted && <WeightSelect config={config} fonts={fonts} onChange={onChange} />}
       <HebrewFontSelect
         value={config.hebrewFont}

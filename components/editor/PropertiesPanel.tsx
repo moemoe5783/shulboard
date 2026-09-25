@@ -303,13 +303,42 @@ function BoardSettings() {
 
   const setInk = (ink: "ink" | "surface", label = "Change board text colour") =>
     setBoardStyle({ themeOverrides: { ...doc.themeOverrides, ink } }, label);
+  const tab = useEditor((s) => s.boardPanelTab);
+  const setTab = useEditor((s) => s.setBoardPanelTab);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3" data-board-settings>
       <h2 className={`${CHROME_META} mb-1`}>Board</h2>
-      <p className={`${CHROME_META} mb-4`}>
+      <p className={`${CHROME_META} mb-3`}>
         Nothing selected, so these settings are for the whole board. Pick an element to edit it instead.
       </p>
+      {/* Two tabs, like an element's: the board's look, and its fonts —
+          the font theme is too big to find at the bottom of a scroll. */}
+      <div className="mb-4 flex gap-2" role="tablist" aria-label="Board settings">
+        {(
+          [
+            ["board", "Background"],
+            ["fonts", "Fonts"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            data-board-tab={id}
+            onClick={() => setTab(id)}
+            className={`${CHROME_BUTTON} flex-1 border ${tab === id ? `${CHROME_BUTTON_ON} border-transparent` : "border-paper/20"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "fonts" ? (
+        <BoardFontSettings />
+      ) : (
+        <>
 
       <div className="flex flex-col gap-2">
         <span className={PANEL_LABEL}>Background</span>
@@ -347,10 +376,8 @@ function BoardSettings() {
         </div>
         <p className={PANEL_LABEL}>Set automatically when you choose a background. Elements can override it on their Appearance tab.</p>
       </div>
-
-      <div className="mt-5">
-        <BoardFontSettings />
-      </div>
+        </>
+      )}
     </div>
   );
 }
