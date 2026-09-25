@@ -28,6 +28,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const TITLE_ID = "11111111-1111-4111-8111-111111111111";
 const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
 const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
+const MIXED_TEXT_ID = "77777777-7777-4777-8777-777777777777";
 const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
 
 const results = [];
@@ -232,6 +233,31 @@ try {
         `${label}: font-style matches`,
         `editor ${editor.fontStyle} / display ${display.fontStyle}`,
       );
+    }
+
+    if (font === "sefarim") {
+      // Mixed paragraphs under "start": the Hebrew line right, the English
+      // lines left, identically in both halves.
+      for (const half of ["editor", "display"]) {
+        const lines = await page.evaluate(({ half, id }) => {
+          const box = document.querySelector(`[data-parity-half="${half}"] [data-widget-id="${id}"]`);
+          const block = box?.querySelector("p")?.parentElement;
+          if (!block) return null;
+          const edges = block.getBoundingClientRect();
+          return [...block.querySelectorAll("p")].map((p) => {
+            const range = document.createRange();
+            range.selectNodeContents(p);
+            const ink = range.getBoundingClientRect();
+            return { dir: getComputedStyle(p).direction, left: ink.left - edges.left, right: edges.right - ink.right };
+          });
+        }, { half, id: MIXED_TEXT_ID });
+        const ok =
+          lines &&
+          lines[0].dir === "ltr" && lines[0].left < 2 &&
+          lines[1].dir === "rtl" && lines[1].right < 2 && lines[1].left > 10 &&
+          lines[2].dir === "ltr" && lines[2].left < 2;
+        check(Boolean(ok), `${half}: in a mixed block, the Hebrew paragraph aligns right and the English ones left`, JSON.stringify(lines?.map((l) => [l.dir, Math.round(l.left), Math.round(l.right)])));
+      }
     }
 
     if (font === "theme:simcha") {

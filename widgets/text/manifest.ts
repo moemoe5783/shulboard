@@ -16,7 +16,10 @@ export const textConfigSchema = z.object({
   /** Line breaks are kept. Hebrew and English both work; each line sets its
    *  own direction from its first letters. */
   text: z.string().max(5000).default("Add your text here."),
-  align: z.enum(["left", "center", "right", "justify"]).default("left"),
+  /** "start": each line aligns to its own language's start — a Hebrew line
+   *  right, an English line left. Left, centre, right and justify are the
+   *  admin's explicit choice and win over the language. */
+  align: z.enum(["start", "left", "center", "right", "justify"]).default("start"),
   /** Where the text sits in a box taller than it. */
   verticalAlign: z.enum(["top", "middle", "bottom"]).default("top"),
   /** Design units. Read in `fixed` and `hug` modes; `fit` computes its own. */

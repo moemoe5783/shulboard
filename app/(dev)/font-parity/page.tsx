@@ -38,6 +38,7 @@ const CANVAS = { width: 1920, height: 1080 };
 
 export const TITLE_ID = "11111111-1111-4111-8111-111111111111";
 export const CLOCK_FIXED_ID = "22222222-2222-4222-8222-222222222222";
+export const MIXED_TEXT_ID = "77777777-7777-4777-8777-777777777777";
 export const CLOCK_FIT_ID = "33333333-3333-4333-8333-333333333333";
 export const HEBREW_DATE_ID = "44444444-4444-4444-8444-444444444444";
 
@@ -47,6 +48,18 @@ function buildDoc(font: string, theme?: FontTheme): BoardDoc {
     // A font theme (?theme=simcha) fills every role; otherwise the one board font.
     themeOverrides: { font, ink: "ink", background: "surface", ...(theme ? definedOnly(fontThemePatch(theme)) : {}) },
     widgets: [
+      {
+        // A block of mixed paragraphs under the default "start" alignment:
+        // each line takes its own direction, so the Hebrew one sits right.
+        id: MIXED_TEXT_ID,
+        type: "text",
+        x: 60,
+        y: 70,
+        w: 36,
+        h: 26,
+        z: 5,
+        config: { text: "Kiddush after davening.\nקידוש אחרי התפילה\nMincha 6:45", size: 30 },
+      },
       {
         id: TITLE_ID,
         type: "title",

@@ -10,12 +10,16 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // "start" (the default): each line fills the width and aligns to its own
+  // language's start, so a Hebrew title sits right and an English one left.
   const align =
     config.align === "center"
       ? "items-center text-center"
       : config.align === "right"
         ? "items-end text-right"
-        : "items-start text-left";
+        : config.align === "left"
+          ? "items-start text-left"
+          : "items-stretch text-start";
 
   // Fit (the default, manifest.ts): the box is authoritative and the font size
   // is computed. contentRef wraps both lines so they're measured and fitted
@@ -40,7 +44,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
       >
         {/* dir="auto": a Hebrew-first title lays out right to left, an
             English-first one left to right. */}
-        <span dir="auto" className="leading-tight" style={{ fontWeight: "var(--board-weight-main, var(--board-weight-semibold, 600))" }}>
+        <span dir="auto" className="leading-tight" style={{ unicodeBidi: "plaintext", fontWeight: "var(--board-weight-main, var(--board-weight-semibold, 600))" }}>
           {config.text}
         </span>
 
@@ -48,8 +52,9 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
           <span
             dir="auto"
             className="leading-tight opacity-70"
-            // The subtitle is regular text in the title's face.
-            style={{ fontSize: `${config.subtitleScale}em` }}
+            // The subtitle is regular text in the title's face, with its own
+            // direction.
+            style={{ fontSize: `${config.subtitleScale}em`, unicodeBidi: "plaintext" }}
           >
             {config.subtitle}
           </span>

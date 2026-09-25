@@ -285,7 +285,11 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<GalleryCon
           {config.showCaption && current.photo.caption && (
             <div
               className="absolute right-0 bottom-0 left-0"
+              // A caption in Hebrew reads right to left, one in English left
+              // to right — its own direction, from its own text.
+              dir="auto"
               style={{
+                unicodeBidi: "plaintext",
                 background: "rgba(0, 0, 0, 0.45)",
                 color: "#ffffff",
                 fontSize: boardLength(28, canvas.width),

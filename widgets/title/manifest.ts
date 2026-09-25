@@ -13,7 +13,9 @@ import type { WidgetManifest } from "../types";
 export const titleConfigSchema = z.object({
   text: z.string().max(200).default("Untitled"),
   subtitle: z.string().max(200).default(""),
-  align: z.enum(["left", "center", "right"]).default("left"),
+  /** "start": the title and its sub-line each align to their own language's
+   *  start (a Hebrew line right). Left, centre and right are explicit. */
+  align: z.enum(["start", "left", "center", "right"]).default("start"),
   /** Sub-line size, as a fraction of the title's. */
   subtitleScale: z.number().min(0.1).max(1).default(0.45),
   /** The title's size in design units. Read in `fixed` and `hug` modes; `fit`

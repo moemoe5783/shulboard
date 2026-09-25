@@ -43,7 +43,10 @@ export function Renderer({ config: raw, canvas }: WidgetRendererProps<TextConfig
         }}
       >
         {config.text.split("\n").map((line, i) => (
-          <p key={i} dir="auto" className="m-0 whitespace-pre-wrap" style={{ minHeight: `${config.lineHeight}em` }}>
+          // Each line takes its own direction (dir="auto", plaintext bidi), so
+          // under "start" a Hebrew line aligns right and an English one left,
+          // whatever the first line was.
+          <p key={i} dir="auto" className="m-0 whitespace-pre-wrap" style={{ minHeight: `${config.lineHeight}em`, unicodeBidi: "plaintext" }}>
             {line}
           </p>
         ))}
