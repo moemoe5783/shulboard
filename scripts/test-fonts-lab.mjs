@@ -121,8 +121,8 @@ try {
           return range.getBoundingClientRect().width;
         };
         const rows = [];
-        for (let at = 0; at + 3 < cells.length; at += 4) {
-          const [, hours, minutes] = cells.slice(at, at + 4);
+        for (let at = 0; at + 2 < cells.length; at += 3) {
+          const [, hours, minutes] = cells.slice(at, at + 3);
           rows.push({
             hours: hours.textContent,
             hoursRight: hours.getBoundingClientRect().right,
@@ -182,6 +182,23 @@ try {
     check(titles.length === 6, "six themes on the sample board");
     for (const { theme, family } of titles) check(family.includes(expected[theme]), `${theme}: the title is in ${expected[theme]}`, family);
     await themes.page.close();
+  }
+
+  console.log("\n-- 5. the fallback-weight sheet marks what ships ---------------------");
+  {
+    const { page } = await open("section=timefallback");
+    const rows = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-lab-timefallback]")].map((row) => {
+        const chosen = [...row.querySelectorAll("[data-lab-chosen]")].map((el) => el.dataset.labChosen);
+        const clock = row.querySelector("[data-lab-renderer-clock] span");
+        return { font: row.dataset.labTimefallback, chosen, drawn: clock ? getComputedStyle(clock).fontWeight : null };
+      }),
+    );
+    check(rows.length === 5, "a row for each face that sets its times in the fallback", `${rows.length}`);
+    for (const row of rows) {
+      check(row.chosen.length === 1 && row.chosen[0] === row.drawn, `${row.font}: the marked weight is the one the renderer draws`, `marked ${row.chosen.join(",")}, drawn ${row.drawn}`);
+    }
+    await page.close();
   }
 } finally {
   await browser.close();

@@ -27,12 +27,15 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
   // off it in em, so one search sizes both at once rather than fitting them
   // independently against each other. Fixed and Hug set `size` instead.
   const isFit = (config.sizingMode ?? "fit") === "fit";
+  const isHug = config.sizingMode === "hug";
+  // Fixed: the typed size is the most it gets — a box too small for it shrinks
+  // the title to fit rather than cutting it off.
   useFitFontSize(boxRef, contentRef, {
     minFontSize: manifest.sizing.minFontSize ?? 8,
-    maxFontSize: manifest.sizing.maxFontSize ?? 400,
+    maxFontSize: isFit ? (manifest.sizing.maxFontSize ?? 400) : (config.size ?? 96),
     canvasWidth: canvas.width,
-    enabled: isFit,
-    deps: [config.text, config.subtitle, config.subtitleScale],
+    enabled: !isHug,
+    deps: [config.text, config.subtitle, config.subtitleScale, config.size, config.sizingMode],
   });
 
   return (
@@ -40,7 +43,7 @@ export function Renderer({ config, canvas }: WidgetRendererProps<TitleConfig>) {
       <div
         ref={contentRef}
         className="flex flex-col gap-[0.4em]"
-        style={{ fontSize: isFit ? undefined : boardFontSize(config.size ?? 96, canvas.width), overflowWrap: isFit ? undefined : "anywhere" }}
+        style={{ fontSize: isHug ? boardFontSize(config.size ?? 96, canvas.width) : undefined, overflowWrap: isFit ? undefined : "anywhere" }}
       >
         {/* dir="auto": a Hebrew-first title lays out right to left, an
             English-first one left to right. */}

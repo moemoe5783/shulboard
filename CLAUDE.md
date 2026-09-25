@@ -140,14 +140,16 @@ Environment variables: @docs/environment.md
   Script, Parisienne, Suez One, and Alef for boards that already use it) sets
   the WHOLE time in its matched fallback — Frank Ruhl Libre for a serif, Heebo
   otherwise — at a weight tuned to match (`numericFace`, `numericWeight`,
-  `TIME_FALLBACK_WEIGHT`, tuned in /fonts-lab). Script faces aren't offered in
+  `TIME_FALLBACK_WEIGHT`, tuned in /fonts-lab, whose markers read the same
+  mapping and are tested against a clock the renderer draws). Script faces aren't offered in
   time widgets' pickers.
   **The face is necessary and not sufficient.** Figures of equal width still
   do not line up when the strings are different lengths: `7:22 PM` against
   `11:21 AM` puts the two-digit hour a digit out past the one-digit ones,
   whatever the metrics. So a column of times is laid out on the time's
-  internal structure — the hour, the `:MM` and the meridiem each get a grid
-  track shared by every row, with the hours right-aligned inside theirs
+  internal structure — the hour gets a grid track shared by every row,
+  right-aligned so the colons line up, and `:MM AM` follows as one
+  left-aligned run (the AM/PM may shift a few pixels row to row)
   (`widgets/zmanim/Renderer.tsx`, `widgets/zmanim/display-time.ts`). Splitting
   the string is display, never reformatting: the pieces rejoin to the
   provider's exact characters, asserted against every value in the 92-day

@@ -177,7 +177,7 @@ console.log("\n-- font roles and themes ----------------------------------------
 console.log("\n-- old-style figures: times set wholly in the matched fallback ------");
 {
   for (const [id, fallback, weight] of [
-    ["marcellus", "frank-ruhl-libre", 600],
+    ["marcellus", "frank-ruhl-libre", 500],
     ["suez-one", "frank-ruhl-libre", 900],
     ["pinyon-script", "heebo", 400],
     ["parisienne", "heebo", 400],
@@ -233,8 +233,8 @@ console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts
     "even a role no element uses yet: a Simcha board with no title still bundles its heading Hebrew (Suez One)");
 
   const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
-  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre" && f.weight === 600),
-    "a Marcellus clock brings Frank Ruhl Libre, at the matched 600");
+  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre" && f.weight === 500),
+    "a Marcellus clock brings Frank Ruhl Libre, at the matched 500");
   const variable = boardFonts([doc({ font: "inter" }, [])], info);
   check(variable.files.filter((url) => /^\/fonts\/inter\/latin-wght/.test(url)).length === 1, "a variable face is one file for regular and semibold", variable.files.join(", "));
   check(variable.files.every((url) => existsSync(join("public", url))), "every listed file exists");

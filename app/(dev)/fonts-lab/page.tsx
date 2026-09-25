@@ -31,6 +31,7 @@ import type { BoardZmanim } from "@/lib/board-zmanim";
 import { DEMO_LOCATION } from "@/lib/demo-board";
 import { CATEGORY_LABELS, HEBREW_OVERRIDE_FONTS, PICKABLE_FONTS, digitFallbackFor, fontInfo, hebrewFont, offeredWeights } from "@/lib/fonts";
 import { TIME_FALLBACK_WEIGHT } from "@/lib/fonts/catalog";
+import { numericWeight } from "@/lib/board-theme";
 import { fontStack } from "@/lib/fonts/stack";
 import { FONT_THEMES, fontThemePatch } from "@/lib/fonts/themes";
 import { buildCache, ROWS } from "../zmanim-lab/fixture";
@@ -244,7 +245,17 @@ function ThemesSection() {
  *  and the fallback its times are set in at every weight — the chosen one
  *  marked. */
 function TimeFallbackSection() {
-  const rows = Object.entries(TIME_FALLBACK_WEIGHT).map(([id, chosen]) => ({ id, chosen, fallback: fontInfo(digitFallbackFor(id))! }));
+  // "chosen" is what the renderer uses (lib/board-theme.ts, numericWeight),
+  // and each row also draws a real clock through the renderer, so the marker
+  // and what ships can't drift (scripts/test-fonts-lab.mjs compares them).
+  const rows = Object.keys(TIME_FALLBACK_WEIGHT).map((id) => ({ id, chosen: numericWeight(id), fallback: fontInfo(digitFallbackFor(id))! }));
+  const clockSize = { width: 240, height: 68 };
+  const clockBoard = (font: string) =>
+    parseBoardDoc({
+      schemaVersion: 1,
+      themeOverrides: { font, ink: "ink", background: "surface" },
+      widgets: [{ id: "88888888-8888-4888-8888-888888888888", type: "clock", x: 0, y: 0, w: 100, h: 100, z: 0, config: { sizingMode: "fit", align: "left" } }],
+    });
   return (
     <Section id="timefallback" title="Times in the fallback, weight by weight">
       <table className="w-full border-collapse">
@@ -254,12 +265,21 @@ function TimeFallbackSection() {
               <td className="text-ink py-3 pr-6" style={{ fontFamily: fontStack(id), fontSize: 56 * SCALE, fontWeight: 600 }}>
                 Candle lighting
               </td>
+              <td className="py-3 pr-4" data-lab-renderer-clock>
+                <div style={{ position: "relative", ...clockSize }}>
+                  <BoardRenderer doc={clockBoard(id)} canvas={CANVAS} style={clockSize} />
+                </div>
+                <div className="text-ink-soft text-[12px]">As the renderer draws it</div>
+              </td>
               {offeredWeights(fallback.id).filter((w) => w >= 300).map((weight) => (
                 <td key={weight} className="py-3 pr-4 text-center">
                   <div className="text-ink" style={{ fontFamily: fontStack(fallback.id), fontSize: 56 * SCALE, fontWeight: weight, fontVariantNumeric: "lining-nums tabular-nums" }}>
                     7:22 PM
                   </div>
-                  <div className={`text-[12px] ${weight === chosen ? "text-ink font-semibold" : "text-ink-soft"}`}>
+                  <div
+                    className={`text-[12px] ${weight === chosen ? "text-ink font-semibold" : "text-ink-soft"}`}
+                    data-lab-chosen={weight === chosen ? weight : undefined}
+                  >
                     {fallback.name} {weight}
                     {weight === chosen ? " (chosen)" : ""}
                   </div>

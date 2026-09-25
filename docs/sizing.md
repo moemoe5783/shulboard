@@ -442,7 +442,7 @@ font catalog arrived.) Numbers (Clock, the Zmanim times, Candle Lighting's time
 and countdown) are set in `NUMERIC_FONT` (lib/board-theme.ts): the widget's
 font, else the board's, in its own lining figures (`widgets/Digits.tsx`). The
 zmanim grid aligns its columns itself — hour track right-aligned to the colon,
-minutes and AM/PM in their tracks — and a clock changing width once a minute is
+then ":MM AM" as one left-aligned run — and a clock changing width once a minute is
 fine, so neither boxes its digits. A clock showing seconds does: each digit in a
 box as wide as the face's widest digit at that weight, measured at build time
 for every offered weight (`--board-digit-<weight>`; a static face's in-between
