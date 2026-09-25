@@ -440,22 +440,16 @@ and `00000` in the candidate face and compare widths.
 fallback to Frank Ruhl Libre for faces without tabular figures, when the board
 font catalog arrived.) Numbers (Clock, the Zmanim times, Candle Lighting's time
 and countdown) are set in `NUMERIC_FONT` (lib/board-theme.ts): the widget's
-font, else the board's. Each digit is wrapped by `widgets/Digits.tsx` and set
-`lining-nums tabular-nums` — even height and even width in a face that has both
-features. A face with no tnum (measured in its files by
-`scripts/build-fonts.ts`) gets a fixed box per digit instead, as wide as its
-widest digit at that weight: the build measures every offered weight (variable
-faces instanced at each), the board root and a widget frame publish the widths
-as `--board-digit-<weight>`, and a digit's box reads the one for its own
-weight. Colons, spaces and AM/PM stay natural width. `npm run fonts` prints
-which faces use which method and flags any with old-style figures and no lining
-alternative — for those (Marcellus, Pinyon Script, Parisienne, Suez One, and
-Alef, which no picker offers any more), a time widget's digits come from the
-matched fallback through a digit-only family (`"Frank Ruhl Libre Digits"`,
-`"Heebo Digits"`, unicode-range 0–9) at the front of the numeric stack, so they
-stand even; letters and the colon stay the face's own, and outside time widgets
-the face keeps its own figures. Script faces are left out of time widgets'
-font pickers. `scripts/test-clock-fit.mjs` pins all three paths.
+font, else the board's, in its own lining figures (`widgets/Digits.tsx`). The
+zmanim grid aligns its columns itself — hour track right-aligned to the colon,
+minutes and AM/PM in their tracks — and a clock changing width once a minute is
+fine, so neither boxes its digits. A clock showing seconds does: each digit in a
+box as wide as the face's widest digit at that weight, measured at build time
+for every offered weight (`--board-digit-<weight>`; a static face's in-between
+weight uses the file CSS font matching picks). A face with old-style figures and
+no lining set sets the whole time in its matched fallback (Frank Ruhl Libre for
+a serif, Heebo otherwise) at a weight tuned to match it in /fonts-lab. `npm run
+fonts` lists those faces. `scripts/test-clock-fit.mjs` pins every path.
 Hebrew Date, Parsha and Daf Yomi keep Frank Ruhl Libre for their Hebrew
 lines — that is sefarim typography for Hebrew letters, not a figure set.
 
