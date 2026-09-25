@@ -177,7 +177,7 @@ try {
     const suez = await open("w=40&h=20&font=suezOne");
     check(suez.family === "Frank Ruhl Libre" && suez.weight === "900", "a Suez One clock is Frank Ruhl Libre at 900 throughout", `${suez.family} ${suez.weight}`);
     const marcellus = await open("w=40&h=20&font=marcellus");
-    check(marcellus.family === "Frank Ruhl Libre" && marcellus.weight === "600", "Marcellus's is Frank Ruhl Libre at 600", `${marcellus.family} ${marcellus.weight}`);
+    check(marcellus.family === "Frank Ruhl Libre" && marcellus.weight === "500", "Marcellus's is Frank Ruhl Libre at 500", `${marcellus.family} ${marcellus.weight}`);
     const pinyon = await open("w=40&h=20&seconds=1&font=pinyon-script");
     check(pinyon.family === "Heebo" && new Set(pinyon.digitWidths).size === 1, "a ticking Pinyon Script clock is Heebo, boxed to Heebo's widest digit", pinyon.digitWidths.join(" "));
   }

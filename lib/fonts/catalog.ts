@@ -199,12 +199,12 @@ export const HEBREW_MARKS_FALLBACK = { serif: "frank-ruhl-libre", other: "assist
  * (lib/board-theme.ts, numericFace). This is the fallback's weight for each,
  * chosen by eye in /fonts-lab (?section=timefallback) to stand as dark as the
  * face's own semibold text beside it: Suez One is a very heavy face, so Frank
- * Ruhl Libre at its heaviest; Marcellus's semibold sits with Frank Ruhl Libre
- * 600 and Alef's bold with Heebo 600; the scripts are hairline, so Heebo at
+ * Ruhl Libre at its heaviest; Marcellus sits with Frank Ruhl Libre 500 and
+ * Alef's bold with Heebo 600; the scripts are hairline, so Heebo at
  * its lightest offered, 400.
  */
 export const TIME_FALLBACK_WEIGHT: Readonly<Record<string, number>> = {
-  marcellus: 600,
+  marcellus: 500,
   "suez-one": 900,
   "pinyon-script": 400,
   parisienne: 400,
