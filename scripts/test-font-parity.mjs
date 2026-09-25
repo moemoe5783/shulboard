@@ -324,9 +324,12 @@ try {
     // The board's fonts are a tab of their own, opened from the toolbar with
     // an element still selected.
     await page.locator(`[data-parity-half="editor"] [data-widget-id="${TITLE_ID}"]`).click();
-    await page.locator("[data-open-board-fonts]").click();
+    await page.locator("[data-open-board-theme]").click();
+    await page.waitForSelector("[data-board-tab]");
+    check((await page.locator("[data-board-tab]").count()) === 2, "the toolbar's Board theme button opens the board's settings, with an element selected");
+    await page.locator('[data-board-tab="fonts"]').click();
     await page.waitForSelector("[data-font-theme]");
-    check((await page.locator('[data-board-tab="fonts"]').getAttribute("aria-selected")) === "true", "the toolbar's Fonts button opens the board's Fonts tab");
+    check((await page.locator('[data-board-tab="fonts"]').getAttribute("aria-selected")) === "true", "and its Fonts tab shows the font themes");
     await page.locator('[data-font-theme="warm"]').click();
     await page.waitForTimeout(300);
     check(/^"Rubik Hebrew[^"]*", "?Outfit"?,/.test(await titleFamily()), "one click on Warm sets the title in Outfit, Rubik for Hebrew", await titleFamily());

@@ -143,7 +143,7 @@ export type EditorState = {
   setBoardPanelTab: (tab: "board" | "fonts") => void;
   /** Open the board's settings on a tab, from anywhere — the toolbar's Fonts
    *  button, a link in an element's Appearance — by clearing the selection. */
-  openBoardPanel: (tab: "board" | "fonts") => void;
+  openBoardPanel: (tab?: "board" | "fonts") => void;
   /** Change the board itself — its background, its theme (lib/board-background.ts).
    *  Undoable like every widget edit. Each field given replaces the old one. */
   setBoardStyle: (patch: BoardPatch, label?: string) => void;
@@ -244,7 +244,8 @@ export const useEditor = create<EditorState>((set, get) => {
     setFontPreview: (fontPreview) => set({ fontPreview }),
     boardPanelTab: "board",
     setBoardPanelTab: (boardPanelTab) => set({ boardPanelTab }),
-    openBoardPanel: (boardPanelTab) => set({ boardPanelTab, selection: [], fontPreview: null }),
+    openBoardPanel: (tab) =>
+      set((state) => ({ boardPanelTab: tab ?? state.boardPanelTab, selection: [], fontPreview: null })),
     zoom: 1,
     snapEnabled: true,
     gridSize: 40,

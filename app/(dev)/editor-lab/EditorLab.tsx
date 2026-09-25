@@ -182,7 +182,7 @@ export function EditorLab() {
 
   return (
     <div className={`flex h-screen flex-col ${CHROME_SURFACE}`}>
-      <Toolbar onFit={fit} canvas={CANVAS} />
+      <Toolbar onFit={fit} />
 
       <div className="flex min-h-0 flex-1">
         <LayersPanel onContextMenu={setMenu} />
