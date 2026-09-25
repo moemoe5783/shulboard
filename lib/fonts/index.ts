@@ -24,8 +24,14 @@ type Measured = {
   digitsEqual: boolean;
   /** Widest digit (em) per offered weight. */
   digitEm: Record<number, number>;
+  /** Its digits, as drawn, are lining. False: old-style with no lining set
+   *  (Marcellus, the scripts, Suez One) — times take the fallback's digits. */
+  liningDigits: boolean;
   latin: boolean;
   hebrew: boolean;
+  /** One variable file covers its weights (instances in between exist);
+   *  false: separate files, and a weight between them is drawn with one. */
+  variable: boolean;
   /** Sets nikud properly. Measured, then confirmed by eye in /fonts-lab. */
   nikudOk: boolean;
 };
@@ -55,6 +61,8 @@ const measured = (id: string): Measured => {
     hasTabularNums: built.hasTabularNums,
     digitsEqual: built.digitsEqual,
     digitEm: built.digitEm,
+    liningDigits: built.liningDigits,
+    variable: built.faces.some((face) => face.weight.includes(" ")),
     latin: built.latin,
     hebrew: built.hebrew,
     nikudOk: built.nikud,
@@ -223,6 +231,34 @@ export function clampWeight(stored: string | null | undefined, weight: number | 
   if (allowed.length === 0) return wanted;
   if (wanted <= allowed[0]) return allowed[0];
   return allowed.reduce((best, w) => (Math.abs(w - wanted) < Math.abs(best - wanted) ? w : best), allowed[0]);
+}
+
+/** The weights a face may be drawn at: what it offers, from its minimum up. */
+export function offeredWeights(stored: string | null | undefined): number[] {
+  const info = fontInfo(stored);
+  return info ? info.weights.filter((w) => w >= info.minWeight) : [];
+}
+
+/**
+ * The weight "bold" means in a face: 700 where it offers it, else the offered
+ * weight nearest to 700 from 600 up, else its heaviest. A face with one
+ * weight has no bold and draws that one.
+ */
+export function boldWeight(stored: string | null | undefined): number {
+  const weights = offeredWeights(stored);
+  if (weights.length === 0) return 700;
+  const heavy = weights.filter((w) => w >= 600);
+  if (heavy.length === 0) return weights[weights.length - 1];
+  return heavy.reduce((best, w) => (Math.abs(w - 700) < Math.abs(best - 700) ? w : best), heavy[0]);
+}
+
+/** For a face with old-style figures and no lining set, the fallback whose
+ *  digits a time is drawn in: Frank Ruhl Libre for a serif, Heebo otherwise.
+ *  Null for every other face. */
+export function digitFallbackFor(stored: string | null | undefined): "frank-ruhl-libre" | "heebo" | null {
+  const info = fontInfo(stored);
+  if (!info || info.measured.liningDigits) return null;
+  return info.generic === "serif" ? HEBREW_FALLBACK.serif : HEBREW_FALLBACK.other;
 }
 
 /** The Hebrew fallback a face gets when nothing overrides it: Frank Ruhl

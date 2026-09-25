@@ -191,12 +191,16 @@ try {
   // Two themes: the deliberately-non-Assistant default (what actually catches
   // a leak) and Assistant itself (a sanity check that a board choosing the
   // same face as chrome isn't a coincidence this test depends on).
-  for (const font of ["sefarim", "assistant"]) {
+  // Then every font theme (lib/fonts/themes.ts): a title in the heading font,
+  // the rest in the body font, identical in both halves.
+  const THEMES = ["classic-shul", "elegant", "modern", "warm", "simcha", "scholarly"];
+  for (const font of ["sefarim", "assistant", ...THEMES.map((t) => `theme:${t}`)]) {
     console.log(`\nTheme: ${font}`);
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     page.on("pageerror", (e) => check(false, "no page errors", e.message));
 
-    await page.goto(`${BASE}/font-parity?font=${font}`, { waitUntil: "networkidle" });
+    const query = font.startsWith("theme:") ? `font=assistant&theme=${font.slice(6)}` : `font=${font}`;
+    await page.goto(`${BASE}/font-parity?${query}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
 
     for (const [label, id] of [
@@ -228,6 +232,13 @@ try {
         `${label}: font-style matches`,
         `editor ${editor.fontStyle} / display ${display.fontStyle}`,
       );
+    }
+
+    if (font === "theme:simcha") {
+      const title = await widgetFont(page, "display", TITLE_ID);
+      const clock = await widgetFont(page, "display", CLOCK_FIXED_ID);
+      check(/^"DM Serif Display"|^"Suez One Hebrew/.test(title?.fontFamily ?? ""), "Simcha: the title is in the heading font", title?.fontFamily);
+      check(/^"?Lato"?,/.test(clock?.fontFamily ?? ""), "and a clock in the body font", clock?.fontFamily);
     }
 
     // Once per theme is enough for the parity loop above; the numeral
@@ -271,6 +282,84 @@ try {
       }
     }
 
+    await page.close();
+  }
+
+  // Applying a theme in the editor: one click, one undo step, and an element
+  // given its own font afterwards keeps it.
+  {
+    console.log("\nApplying a font theme in the editor");
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    page.on("pageerror", (e) => check(false, "no page errors", e.message));
+    await page.goto(`${BASE}/font-parity?font=assistant`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const titleFamily = async () => (await widgetFont(page, "editor", TITLE_ID))?.fontFamily ?? "";
+    const before = await titleFamily();
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("[data-font-theme]");
+    await page.locator('[data-font-theme="warm"]').click();
+    await page.waitForTimeout(300);
+    check(/^"Rubik Hebrew[^"]*", "?Outfit"?,/.test(await titleFamily()), "one click on Warm sets the title in Outfit, Rubik for Hebrew", await titleFamily());
+    check((await page.locator('[data-font-theme="warm"]').getAttribute("aria-checked")) === "true", "and Warm reads as the chosen theme");
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    check((await titleFamily()) === before, "one undo puts the fonts back", await titleFamily());
+
+    // The element font picker: every name in its own font, samples, hover
+    // preview on the canvas with no undo entry, then a click that applies.
+    const box = await page.locator(`[data-parity-half="editor"] [data-widget-id="${TITLE_ID}"]`).boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    await page.locator('[data-appearance-tab="text"]').click();
+    await page.locator("[data-font-picker] button").first().click();
+    await page.waitForSelector("[data-font-list]");
+    await page.waitForTimeout(600);
+    const rows = await page.evaluate(() => {
+      const row = (id) => document.querySelector(`[data-font-list] [data-font-option="${id}"]`);
+      const family = (el) => (el ? getComputedStyle(el).fontFamily : "");
+      const heights = new Set([...document.querySelectorAll("[data-font-list] [role=option]")].map((el) => el.getBoundingClientRect().height));
+      return {
+        heebo: family(row("heebo")?.querySelector("[data-font-sample]")),
+        heeboHebrew: row("heebo")?.querySelector("[data-font-hebrew-name]")?.textContent ?? "",
+        heeboHebrewSample: row("heebo")?.querySelector("[data-font-hebrew-sample]")?.textContent ?? "",
+        heeboSample: row("heebo")?.querySelector("[data-font-latin-sample]")?.textContent ?? "",
+        heights: [...heights],
+      };
+    });
+    check(/^"?Heebo"?/.test(rows.heebo), "the Heebo row draws its name in Heebo", rows.heebo);
+    check(rows.heeboHebrew === "היבו" && rows.heeboHebrewSample !== "" && rows.heeboSample !== "", "a Hebrew & English face shows its Hebrew name and both samples");
+    check(rows.heights.length === 1, "every row is one height", rows.heights.join(", "));
+    await page.locator("[data-font-list]").evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await page.waitForTimeout(500);
+    const playfair = await page.evaluate(() => {
+      const row = document.querySelector('[data-font-list] [data-font-option="playfair-display"]');
+      return { hebrew: row?.querySelector("[data-font-hebrew-name], [data-font-hebrew-sample]") !== null, sample: row?.querySelector("[data-font-latin-sample]")?.textContent ?? "" };
+    });
+    check(!playfair.hebrew && playfair.sample !== "", "an English-only face shows an English sample and no Hebrew");
+    const cinzel = await page.evaluate(() => {
+      const row = document.querySelector('[data-font-list] [data-font-option="cinzel"]');
+      return { note: row?.textContent.includes("capitals only"), transform: getComputedStyle(row?.querySelector("[data-font-latin-sample]")).textTransform };
+    });
+    check(cinzel.note && cinzel.transform === "uppercase", "a capitals-only face says so and shows its sample in capitals");
+
+    const undoBefore = await page.evaluate(() => document.querySelector("[data-history-count]")?.dataset.historyCount ?? null);
+    await page.locator('[data-font-list] [data-font-option="playfair-display"]').hover();
+    await page.waitForTimeout(250);
+    check(/Playfair Display/.test(await titleFamily()), "hovering Playfair Display shows it on the canvas", await titleFamily());
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(250);
+    check(!/Playfair Display/.test(await titleFamily()), "moving off the list puts it back", await titleFamily());
+    const undoAfter = await page.evaluate(() => document.querySelector("[data-history-count]")?.dataset.historyCount ?? null);
+    check(undoBefore === undoAfter, "and hovering left no undo entry", `${undoBefore} -> ${undoAfter}`);
+    await page.locator('[data-font-list] [data-font-option="playfair-display"]').click();
+    await page.waitForTimeout(250);
+    check(/Playfair Display/.test(await titleFamily()), "clicking applies it", await titleFamily());
+
+    const weights = await page.locator("[data-weight-select] option").allTextContents();
+    check(weights.join(",") === "Default,Regular,Medium,Semibold,Bold,Extra bold,Black", "the weight list offers Playfair's weights", weights.join(", "));
+    await page.locator("[data-weight-select]").selectOption("900");
+    await page.waitForTimeout(200);
+    check((await widgetFont(page, "editor", TITLE_ID))?.fontWeight === "900", "and a chosen weight draws the title at it");
     await page.close();
   }
 } finally {

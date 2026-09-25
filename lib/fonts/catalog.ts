@@ -148,7 +148,6 @@ export const HEBREW_FONTS: readonly HebrewFont[] = [
   hebrew("assistant", "Assistant", "אסיסטנט", "clean", "sans-serif", range(200, 800), { variable: true }),
   hebrew("rubik", "Rubik", "רוביק", "clean", "sans-serif", range(300, 900), { variable: true, italic: true }),
   hebrew("ibm-plex-sans-hebrew", "IBM Plex Sans Hebrew", "פלקס", "clean", "sans-serif", range(100, 700)),
-  hebrew("alef", "Alef", "אלף", "clean", "sans-serif", [400, 700]),
   hebrew("suez-one", "Suez One", "סואץ", "personality", "serif", [400]),
   hebrew("secular-one", "Secular One", "סקולר", "personality", "sans-serif", [400]),
   hebrew("bellefair", "Bellefair", "בלפר", "personality", "serif", [400]),
@@ -162,13 +161,27 @@ export const HEBREW_FONTS: readonly HebrewFont[] = [
     variable: true,
     label: "Handwriting",
   }),
-  // Kept only because boards were saved with it before the catalog existed.
+  // Kept only so boards already using them keep drawing: offered in no
+  // picker. Alef's figures are old-style with no lining set.
+  hebrew("alef", "Alef", "אלף", "legacy", "sans-serif", [400, 700]),
   hebrew("miriam-libre", "Miriam Libre", "מרים", "legacy", "sans-serif", range(400, 700), { variable: true }),
 ];
 
 /** Fonts every board may need whatever it picks: the two automatic Hebrew
  *  fallbacks. */
 export const HEBREW_FALLBACK = { serif: "frank-ruhl-libre", other: "heebo" } as const;
+
+/**
+ * Digit-only families of the two fallbacks (unicode-range 0–9 only), for the
+ * faces whose figures are old-style with no lining alternative: in a time,
+ * zmanim, date or countdown widget their digits are drawn in the matched
+ * fallback, lining and tabular, while their letters (AM, PM) stay their own
+ * (lib/board-theme.ts, numericFace). Everywhere else they keep their figures.
+ */
+export const DIGIT_FAMILIES: Record<(typeof HEBREW_FALLBACK)[keyof typeof HEBREW_FALLBACK], string> = {
+  "frank-ruhl-libre": "Frank Ruhl Libre Digits",
+  heebo: "Heebo Digits",
+};
 
 export const HEBREW_GROUPS: { id: HebrewGroup; label: string }[] = [
   { id: "classic", label: "Classic" },

@@ -5,19 +5,25 @@
  * Run with: npm run test:fonts
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { digitWidthVars, matchedWeight, numericFace } from "../lib/board-theme.ts";
 import { join } from "node:path";
 import { BUILT_FONTS } from "../lib/fonts/catalog.generated.ts";
 import { ENGLISH_FONTS, HEBREW_FONTS } from "../lib/fonts/catalog.ts";
 import {
   catalogId,
+  boldWeight,
   clampWeight,
+  offeredWeights,
   hebrewFallbackFor,
   HEBREW_OVERRIDE_FONTS,
   LEGACY_FONT_IDS,
   PICKABLE_FONTS,
   pickableFont,
 } from "../lib/fonts/index.ts";
+import { boardFontRoles, resolveElementFont } from "../lib/fonts/roles.ts";
+import { boardFonts } from "../lib/fonts/board-fonts.ts";
+import { FONT_THEMES, fontThemePatch, matchesFontTheme, newBoardFontOverrides } from "../lib/fonts/themes.ts";
 import { fontStack, resolvedHebrew } from "../lib/fonts/stack.ts";
 
 const results: { ok: boolean; label: string }[] = [];
@@ -78,7 +84,9 @@ for (const id of ["frank-ruhl-libre", "heebo"]) {
   const [lo, hi] = weight.split(" ").map(Number);
   check(lo <= 300 && hi >= 900, `${id} covers 300–900 for matching weights`, weight);
 }
-check(HEBREW_OVERRIDE_FONTS.length === 16, "16 Hebrew override fonts", String(HEBREW_OVERRIDE_FONTS.length));
+check(HEBREW_OVERRIDE_FONTS.length === 15, "15 Hebrew override fonts (the spec's 16, less Alef)", String(HEBREW_OVERRIDE_FONTS.length));
+check(!HEBREW_OVERRIDE_FONTS.some((f) => f.id === "alef") && !PICKABLE_FONTS.some((f) => f.id === "alef"), "Alef is in no picker");
+check(catalogId("alef") === "alef" && catalogId("alef") !== null, "but a board that uses Alef still resolves it");
 check(HEBREW_OVERRIDE_FONTS.find((f) => f.id === "noto-serif-hebrew")?.nikudOk === true, "Noto Serif Hebrew sets nikud");
 
 console.log("\n-- boards saved before the catalog -------------------------------");
@@ -109,6 +117,114 @@ check(resolvedHebrew("playfair-display") === "frank-ruhl-libre" && resolvedHebre
 console.log("\n-- nikud (measured; confirmed by eye in /fonts-lab) -----------------");
 for (const font of HEBREW_OVERRIDE_FONTS) console.log(`         ${font.nikudOk ? "sets nikud " : "NIKUD POOR "} ${font.name}`);
 check(HEBREW_OVERRIDE_FONTS.some((f) => !f.nikudOk), "the measurement can fail a font (not everything passes)");
+
+console.log("\n-- font roles and themes ---------------------------------------------");
+{
+  const old = boardFontRoles({ font: "rubik", hebrewFont: "auto" });
+  check(old.heading.font === "rubik" && old.accent.font === "rubik" && old.quote.font === "rubik",
+    "a board saved before themes: heading, accent and quote all fall back to its one font");
+  const empty = boardFontRoles({});
+  check(empty.body.font === "assistant" && empty.body.hebrew === "auto", "no font at all: Assistant, Auto Hebrew");
+
+  check(FONT_THEMES.length === 6, "six font themes", FONT_THEMES.map((t) => t.name).join(", "));
+  for (const theme of FONT_THEMES) {
+    for (const [role, value] of Object.entries(theme.roles)) {
+      check(Boolean(pickableFont(value!.font) || catalogId(value!.font)), `${theme.name}: ${role} font ${value!.font} is in the catalog`);
+      check(value!.hebrew === "auto" || HEBREW_OVERRIDE_FONTS.some((f) => f.id === value!.hebrew),
+        `${theme.name}: ${role} Hebrew ${value!.hebrew} is Auto or an override`);
+    }
+  }
+
+  const simcha = FONT_THEMES.find((t) => t.id === "simcha")!;
+  const roles = boardFontRoles({ ink: "ink", ...fontThemePatch(simcha) });
+  check(roles.heading.font === "dm-serif-display" && roles.heading.hebrew === "suez-one", "Simcha: DM Serif Display headings, Suez One Hebrew");
+  check(roles.accent.font === "great-vibes" && roles.body.font === "lato", "Great Vibes accent, Lato body");
+  check(resolveElementFont("inherit", "inherit", "heading", roles).font === "dm-serif-display", "a Title left to the theme takes the heading font");
+  check(resolveElementFont("inherit", "inherit", "body", roles).font === "lato", "any other element takes the body font");
+  check(resolveElementFont("accent", "inherit", "body", roles).font === "great-vibes", "an element set to Accent takes the accent font");
+  const own = resolveElementFont("cinzel", "inherit", "heading", roles);
+  check(own.font === "cinzel" && own.hebrew === "suez-one", "a font picked by name stays, with its role's Hebrew");
+
+  const warm = FONT_THEMES.find((t) => t.id === "warm")!;
+  const switched = boardFontRoles({ ...fontThemePatch(simcha), ...fontThemePatch(warm) });
+  check(switched.accent.font === "outfit", "switching to a theme without an accent clears the old one (falls back to heading)");
+  check(matchesFontTheme(fontThemePatch(warm), warm) && !matchesFontTheme(fontThemePatch(warm), simcha), "the applied theme reads back as chosen");
+
+  const scholarly = boardFontRoles(fontThemePatch(FONT_THEMES.find((t) => t.id === "scholarly")!));
+  check(scholarly.quote.font === "eb-garamond" && scholarly.quote.hebrew === "noto-rashi-hebrew", "Scholarly's quote style sets Hebrew in Rashi script");
+
+  const fresh = boardFontRoles(newBoardFontOverrides());
+  check(fresh.heading.font === "montserrat" && fresh.body.font === "inter", "a new board starts on Modern (Montserrat / Inter)");
+  check(!("accentFont" in newBoardFontOverrides()), "and stores nothing for the roles Modern leaves out");
+}
+
+console.log("\n-- old-style figures: times take the fallback's digits ---------------");
+{
+  for (const [id, family] of [
+    ["marcellus", "Frank Ruhl Libre Digits"],
+    ["suez-one", "Frank Ruhl Libre Digits"],
+    ["pinyon-script", "Heebo Digits"],
+    ["parisienne", "Heebo Digits"],
+    ["alef", "Heebo Digits"],
+  ] as const) {
+    check(numericFace(id).startsWith(`"${family}", `), `${id}: its times' digits come from ${family}`, numericFace(id));
+    check(!fontStack(id).includes("Digits"), `${id}: everywhere else it keeps its own figures`);
+  }
+  for (const id of ["inter", "playfair-display", "dancing-script", "caveat", "heebo"]) {
+    check(numericFace(id) === fontStack(id), `${id}: lining figures, its own digits in times too`);
+  }
+  check(matchedWeight(600, [300, 400, 700]) === 700 && matchedWeight(450, [300, 400, 700]) === 400 && matchedWeight(350, [400, 700]) === 400,
+    "a static face's in-between weight is the file CSS font matching picks");
+  check(digitWidthVars("karantina")["--board-digit-600"] === digitWidthVars("karantina")["--board-digit-700"],
+    "so Karantina's digit box at 600 is its 700 file's, the one drawn");
+  check(Object.keys(digitWidthVars("marcellus")).length === 0, "Marcellus's time digits are Frank Ruhl Libre's, tabular — no boxes");
+  check(Object.keys(digitWidthVars("pinyon-script")).length === 9, "Pinyon Script's are Heebo's, boxed to Heebo's widest digit");
+  const css = readFileSync(join("public/fonts", readdirSync("public/fonts").find((f) => f.startsWith("faces."))!), "utf8");
+  check(/font-family:"Heebo Digits"[^}]*unicode-range:U\+0030-0039/.test(css) && /font-family:"Frank Ruhl Libre Digits"[^}]*unicode-range:U\+0030-0039/.test(css),
+    "the digit families cover 0–9 and nothing else");
+}
+
+console.log("\n-- a board downloads only its own fonts (lib/fonts/board-fonts.ts) -----");
+{
+  const info = (type: string) =>
+    ({ title: { fontRole: "heading" as const }, clock: { showsTimes: true }, zmanim: { showsTimes: true } })[type as "title"];
+  const doc = (themeOverrides: Record<string, unknown>, widgets: { type: string; config: Record<string, unknown> }[]) => ({ themeOverrides, widgets });
+  const english = boardFonts([doc(newBoardFontOverrides(), [{ type: "title", config: { text: "Kiddush" } }, { type: "text", config: { text: "After davening" } }])], info);
+  const families = new Set(english.files.map((url) => url.split("/")[2]));
+  check([...families].sort().join(",") === "inter,montserrat", "a Modern board with English text: Montserrat and Inter, nothing else", [...families].join(", "));
+  check(english.files.every((url) => !url.includes("/hebrew-")), "and no Hebrew file, with no Hebrew on it");
+  check(english.stylesheet.startsWith("/fonts/faces."), "the stylesheet is listed, for a reboot offline", english.stylesheet);
+
+  const hebrew = boardFonts([doc(newBoardFontOverrides(), [{ type: "text", config: { text: "מנחה Mincha 6:45" } }])], info);
+  check(hebrew.files.some((url) => url.startsWith("/fonts/heebo/hebrew-")), "Hebrew text: the matched fallback's Hebrew file (Heebo for Inter)");
+  check(hebrew.faces.some((face) => face.family === "Heebo Hebrew for Inter" || face.family === "Heebo Hebrew"), "and its size-matched family is loaded before first paint",
+    hebrew.faces.map((f) => f.family).join(", "));
+
+  const override = boardFonts([doc({ font: "inter", hebrewFont: "suez-one" }, [{ type: "text", config: { text: "שבת" } }])], info);
+  check(override.files.some((url) => url.startsWith("/fonts/suez-one/hebrew-")) && !override.files.some((url) => url.startsWith("/fonts/heebo/")),
+    "a Hebrew override loads the override and not the fallback");
+  const unused = boardFonts([doc({ font: "inter" }, [{ type: "text", config: { text: "Hello" } }])], info);
+  check(!unused.files.some((url) => url.includes("suez-one")), "an override nobody chose loads nothing");
+
+  const oldStyle = boardFonts([doc({ font: "marcellus" }, [{ type: "clock", config: {} }])], info);
+  check(oldStyle.files.some((url) => url.startsWith("/fonts/frank-ruhl-libre/latin-")) && oldStyle.faces.some((f) => f.family === "Frank Ruhl Libre Digits"),
+    "a Marcellus clock brings Frank Ruhl Libre's digits");
+  const variable = boardFonts([doc({ font: "inter" }, [])], info);
+  check(variable.files.filter((url) => /^\/fonts\/inter\/latin-wght/.test(url)).length === 1, "a variable face is one file for regular and semibold", variable.files.join(", "));
+  check(variable.files.every((url) => existsSync(join("public", url))), "every listed file exists");
+}
+
+console.log("\n-- weights -----------------------------------------------------------");
+{
+  check(offeredWeights("cormorant-garamond")[0] === 500, "Cormorant Garamond offers nothing under 500", offeredWeights("cormorant-garamond").join(", "));
+  check(clampWeight("cormorant-garamond", 400) === 500, "and a regular Cormorant element is drawn at 500");
+  check(boldWeight("lato") === 700 && boldWeight("playfair-display") === 700, "bold is 700 where a face offers it");
+  check(boldWeight("marcellus") === 400, "a one-weight face has no bold and draws its one weight");
+  check(boldWeight("david-libre") === 700, "David Libre's bold is its 700");
+  const heavy = boardFonts([{ themeOverrides: { font: "lato" }, widgets: [{ type: "text", config: { text: "x", fontWeight: 900 } }] }], () => undefined);
+  check(heavy.files.some((url) => /\/lato\/latin-900-normal/.test(url)), "a chosen weight in a static face brings its file", heavy.files.join(", "));
+  check(heavy.files.some((url) => /\/lato\/latin-700-normal/.test(url)), "and Lato's bold comes with every Lato element");
+}
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} passed`);

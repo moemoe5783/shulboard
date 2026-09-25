@@ -1,6 +1,7 @@
 import { parseBoardDoc, type BoardWidget } from "@/lib/board-doc";
 import { dedupeDataNeeds } from "@/widgets/data-needs";
 import { getManifest } from "@/widgets/manifests";
+import { boardFonts } from "@/lib/fonts/board-fonts";
 import type { DataNeed } from "@/widgets/types";
 import { backgroundBundleAssets, resolveBoardBackground } from "./background";
 import { mediaProxyPath } from "./media";
@@ -227,5 +228,10 @@ export function assembleBundle(input: AssembleInput): BundlePayload {
     boards,
     content: input.content,
     assets,
+    // The font files these boards draw in, and nothing else (lib/fonts/board-fonts.ts).
+    fonts: boardFonts(
+      boards.map((board) => board.doc),
+      (type) => getManifest(type),
+    ),
   };
 }

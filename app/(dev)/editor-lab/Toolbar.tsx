@@ -58,11 +58,15 @@ export function Toolbar({
   const run = (id: string) => byId.get(id);
 
   const stepZoom = (direction: 1 | -1) => setZoom(nextZoomStep(zoom, direction));
+  // How many steps can be undone — for tests that check an action (a font
+  // hovered in a picker) left nothing in the history.
+  const historyCount = useEditor((s) => s.history.past.length);
 
   return (
     <div
       {...CHROME_DARK}
       className={`font-ui flex h-10 shrink-0 items-center gap-1 border-b px-2 ${CHROME_RULE}`}
+      data-history-count={historyCount}
     >
       <AddWidgetMenu canvas={canvas} />
 

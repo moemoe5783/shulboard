@@ -52,6 +52,31 @@ import {
  *  membership and the group's own bounding box. */
 export const GROUP_TYPE = "group";
 
+/** A hovered font: for some widgets' config, or for the board's themeOverrides. */
+export type FontPreview =
+  | { kind: "widgets"; ids: string[]; patch: Record<string, unknown> }
+  | { kind: "board"; patch: Record<string, unknown> };
+
+/** The document as the canvas draws it: with a hovered font laid over it. */
+export function withFontPreview(doc: BoardDoc, preview: FontPreview | null): BoardDoc {
+  if (!preview) return doc;
+  if (preview.kind === "board") {
+    const themeOverrides: Record<string, unknown> = { ...doc.themeOverrides };
+    for (const [key, value] of Object.entries(preview.patch)) {
+      if (value === undefined) delete themeOverrides[key];
+      else themeOverrides[key] = value;
+    }
+    return { ...doc, themeOverrides };
+  }
+  const ids = new Set(preview.ids);
+  return {
+    ...doc,
+    widgets: doc.widgets.map((widget) =>
+      ids.has(widget.id) ? { ...widget, config: { ...(widget.config as Record<string, unknown>), ...preview.patch } } : widget,
+    ),
+  };
+}
+
 export type EditorState = {
   doc: BoardDoc;
   /** True once load() has run. The transform layer waits for it, because it
@@ -104,6 +129,14 @@ export type EditorState = {
    * keeps that class of bug from coming back.
    */
   setWidgetConfig: (ids: string[], patch: Record<string, unknown>, label?: string) => void;
+  /**
+   * A font hovered in a picker, drawn on the canvas and nowhere else — not in
+   * the document, not in the undo history. The canvas renders the document
+   * with this laid over it (BoardEditor.tsx, `withFontPreview`); moving off
+   * the list clears it, and clicking commits the same patch the normal way.
+   */
+  fontPreview: FontPreview | null;
+  setFontPreview: (preview: FontPreview | null) => void;
   /** Change the board itself — its background, its theme (lib/board-background.ts).
    *  Undoable like every widget edit. Each field given replaces the old one. */
   setBoardStyle: (patch: BoardPatch, label?: string) => void;
@@ -200,6 +233,8 @@ export const useEditor = create<EditorState>((set, get) => {
     history: emptyHistory(),
 
     selection: [],
+    fontPreview: null,
+    setFontPreview: (fontPreview) => set({ fontPreview }),
     zoom: 1,
     snapEnabled: true,
     gridSize: 40,

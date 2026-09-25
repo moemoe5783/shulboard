@@ -150,6 +150,8 @@ export const manifest: WidgetManifest<ZmanimConfig> = {
   defaultSize: { w: 560, h: 400 },
   isPro: false,
   settingsSchema: zmanimConfigSchema,
+  // Times, zmanim or a date: no script faces offered, lining digits (widgets/types.ts).
+  showsTimes: true,
   dataNeeds,
   /**
    * SIZING — WIDTH-DRIVEN TYPE, VERTICAL SCROLL/PAGE (widgets/zmanim/fit.ts and

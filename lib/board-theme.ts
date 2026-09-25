@@ -1,8 +1,10 @@
 import { boardBackgroundCss, type BoardBackground } from "./board-background";
 import type { CSSProperties } from "react";
 import type { BoardDoc } from "@/lib/board-doc";
-import { fontInfo } from "@/lib/fonts";
+import { digitFallbackFor, fontInfo } from "@/lib/fonts";
+import { DIGIT_FAMILIES } from "@/lib/fonts/catalog";
 import { DEFAULT_FONT, fontStack } from "@/lib/fonts/stack";
+import { boardFontRoles } from "@/lib/fonts/roles";
 
 /*
  * How a board document turns into type and colour.
@@ -35,22 +37,31 @@ const WEIGHT_STEPS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
  * For a face WITHOUT tabular figures (no tnum, measured at build time): its
  * widest digit at every weight from 100 to 900, as `--board-digit-<weight>` custom properties, in em.
  * Measured per weight — a variable face's digits widen as it gets bolder — and
- * filled in between the measured weights by straight-line interpolation (and
- * held flat beyond them). Empty for a face with tnum, whose digits
+ * filled in between: a variable face by straight-line interpolation, a static
+ * face with the file the browser actually draws that weight with
+ * (matchedWeight) — and held flat beyond them. Empty for a face with tnum, whose digits
  * `lining-nums tabular-nums` already lines up — every digit box is then `auto`
  * (widgets/Digits.tsx).
  */
 export function digitWidthVars(font: string | undefined): Record<string, string> {
-  const info = fontInfo(font ?? DEFAULT_FONT);
+  // A face with old-style figures draws its time digits in the fallback
+  // (numericFace), so the boxes are the fallback's.
+  const info = fontInfo(digitFallbackFor(font ?? DEFAULT_FONT) ?? font ?? DEFAULT_FONT);
   if (!info || info.measured.hasTabularNums) return {};
   const measured = Object.entries(info.measured.digitEm)
     .map(([weight, em]) => [Number(weight), em] as const)
     .sort((a, b) => a[0] - b[0]);
   if (measured.length === 0) return {};
+  const variable = info.measured.variable;
   const at = (weight: number) => {
     if (weight <= measured[0][0]) return measured[0][1];
     const last = measured[measured.length - 1];
     if (weight >= last[0]) return last[1];
+    const exact = measured.find(([w]) => w === weight);
+    if (exact) return exact[1];
+    // A static face has no weight in between: the browser draws the file CSS
+    // font matching picks, so the box is that file's widest digit.
+    if (!variable) return measured.find(([w]) => w === matchedWeight(weight, measured.map(([w]) => w)))![1];
     const upper = measured.findIndex(([w]) => w >= weight);
     const [w0, e0] = measured[upper - 1];
     const [w1, e1] = measured[upper];
@@ -61,6 +72,25 @@ export function digitWidthVars(font: string | undefined): Record<string, string>
   return vars;
 }
 
+/**
+ * The weight a browser draws `wanted` at from a static face's weights — CSS
+ * font matching: an exact weight; for 400–500, heavier up to 500, then
+ * lighter, then heavier; below 400, lighter then heavier; above 500, heavier
+ * then lighter.
+ */
+export function matchedWeight(wanted: number, available: readonly number[]): number {
+  const sorted = [...available].sort((a, b) => a - b);
+  if (sorted.includes(wanted)) return wanted;
+  const lighter = sorted.filter((w) => w < wanted).reverse();
+  const heavier = sorted.filter((w) => w > wanted);
+  if (wanted >= 400 && wanted <= 500) {
+    const upTo500 = heavier.filter((w) => w <= 500);
+    return upTo500[0] ?? lighter[0] ?? heavier[0];
+  }
+  if (wanted < 400) return lighter[0] ?? heavier[0];
+  return heavier[0] ?? lighter[0];
+}
+
 /** The digit box width for text at a weight: its face's widest digit when the
  *  face needs boxes, else `auto`. */
 export function digitWidthVar(weight: number): string {
@@ -68,11 +98,23 @@ export function digitWidthVar(weight: number): string {
   return `var(--board-digit-${step}, auto)`;
 }
 
-/** The face numbers are set in: the text's own. Times, zmanim and countdowns
- *  line up through `tabular-nums` and, where a face needs them, digit boxes
- *  (digitWidthVars) — not by switching to another face. */
+/**
+ * The face a time, a zman or a countdown is set in: the text's own. Its digits
+ * line up through `lining-nums tabular-nums` and, where a face needs them,
+ * digit boxes (digitWidthVars).
+ *
+ * THE ONE EXCEPTION: a face whose figures are old-style with no lining set
+ * (Marcellus, Pinyon Script, Parisienne, Suez One — and Alef, kept for boards
+ * that use it) would draw a column of times at uneven heights whatever the
+ * widths. So its stack starts with the matched fallback's digit-only family
+ * (DIGIT_FAMILIES — Frank Ruhl Libre for a serif, Heebo otherwise): the
+ * digits come from the fallback, AM and PM and the colon from the face.
+ * This is only in the times; everywhere else the face keeps its own figures.
+ */
 export function numericFace(font: string | undefined, hebrew?: string | null): string {
-  return fontStack(font, hebrew);
+  const stack = fontStack(font, hebrew);
+  const fallback = digitFallbackFor(font ?? DEFAULT_FONT);
+  return fallback ? `"${DIGIT_FAMILIES[fallback]}", ${stack}` : stack;
 }
 
 /**
@@ -120,9 +162,10 @@ export const boardFontSize = boardLength;
 
 /** The style the board root carries, from the document's own theme. */
 export function boardRootStyle(doc: BoardDoc): CSSProperties {
-  const theme = doc.themeOverrides as { font?: string; hebrewFont?: string; ink?: string; background?: string };
-
-  const font = theme.font ?? DEFAULT_FONT;
+  const theme = doc.themeOverrides as { ink?: string; background?: string };
+  // The board root carries the body font; a heading, accent or quote is set on
+  // the element that uses it (widgets/style.ts).
+  const { font, hebrew } = boardFontRoles(doc.themeOverrides).body;
   const ink = (theme.ink ?? "ink") as BoardColor;
   const background = (theme.background ?? "surface") as BoardColor;
 
@@ -136,8 +179,8 @@ export function boardRootStyle(doc: BoardDoc): CSSProperties {
     // chrome (which sets `color-scheme: dark` for its own controls) and on a
     // TV alike, so it renders the same in both (CLAUDE.md: one renderer).
     colorScheme: "only light",
-    fontFamily: fontStack(font, theme.hebrewFont),
-    ["--board-numeric-font" as string]: numericFace(font, theme.hebrewFont),
+    fontFamily: fontStack(font, hebrew),
+    ["--board-numeric-font" as string]: numericFace(font, hebrew),
     ...digitWidthVars(font),
     color: BOARD_COLORS[ink] ?? BOARD_COLORS.ink,
     backgroundColor: BOARD_COLORS[background] ?? BOARD_COLORS.surface,

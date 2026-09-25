@@ -91,6 +91,8 @@ export const manifest: WidgetManifest<CandleLightingConfig> = {
   defaultSize: { w: 640, h: 220 },
   isPro: false,
   settingsSchema: candleLightingConfigSchema,
+  // Times, zmanim or a date: no script faces offered, lining digits (widgets/types.ts).
+  showsTimes: true,
   dataNeeds,
   /**
    * FIT TO BOX, AND ONLY FIT TO BOX — the same rule zmanim now follows. The

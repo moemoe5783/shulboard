@@ -9,7 +9,8 @@ import { DimensionsField } from "@/components/editor/DimensionsField";
 import { NumberField } from "@/components/editor/NumberField";
 import { PANEL_LABEL } from "@/components/editor/panelControls";
 import { readFontSize, useElementFontSize } from "@/components/editor/useElementFontSize";
-import { FontSelect, HebrewFontSelect } from "./FontSelects";
+import { BoardFontSettings } from "./BoardFontSettings";
+import { boardFontRoles } from "@/lib/fonts/roles";
 import { useElementOverflow } from "@/components/editor/useElementOverflow";
 import type { BoardBackground } from "@/lib/board-background";
 import type { BoardWidget } from "@/lib/board-doc";
@@ -68,6 +69,8 @@ function Body({
   const overflowing = useElementOverflow(selected.length === 1 ? selected[0].id : null);
   const applyRects = useEditor((s) => s.applyRects);
   const canvas = useEditor((s) => s.canvas);
+  const themeOverrides = useEditor((s) => s.doc.themeOverrides);
+  const setFontPreview = useEditor((s) => s.setFontPreview);
   // Which group of controls is showing. Kept across selection changes on
   // purpose — a gabbai restyling several widgets in a row stays on the
   // Appearance tab rather than being thrown back to Options each click.
@@ -190,7 +193,15 @@ function Body({
         {activeTab === "appearance" && (
           <AppearanceControls
             config={styleConfig}
+            fonts={{
+              roles: boardFontRoles(themeOverrides),
+              role: manifest?.fontRole ?? "body",
+              showsTimes: Boolean(manifest?.showsTimes),
+              // Text and Title draw their main text at the chosen weight.
+              weighted: manifest?.category === "text",
+            }}
             onChange={(patch: Partial<WidgetStyleConfig>) => setWidgetConfig(ids, patch)}
+            onFontPreview={(patch) => setFontPreview(patch ? { kind: "widgets", ids, patch } : null)}
             section={appearanceSection}
             onSection={setAppearanceSection}
             // The widget's own look settings (its Settings.tsx `appearance`),
@@ -287,7 +298,7 @@ function BoardSettings() {
   const doc = useEditor((s) => s.doc);
   const setBoardStyle = useEditor((s) => s.setBoardStyle);
   const background = doc.background as BoardBackground;
-  const theme = doc.themeOverrides as { ink?: string; font?: string; hebrewFont?: string };
+  const theme = doc.themeOverrides as { ink?: string };
   const lightText = theme.ink === "surface" || theme.ink === "paper";
 
   const setInk = (ink: "ink" | "surface", label = "Change board text colour") =>
@@ -337,19 +348,8 @@ function BoardSettings() {
         <p className={PANEL_LABEL}>Set automatically when you choose a background. Elements can override it on their Appearance tab.</p>
       </div>
 
-      <div className="mt-5 flex flex-col gap-3" data-board-fonts>
-        <FontSelect
-          label="Board font"
-          value={theme.font ?? "assistant"}
-          onChange={(font) => setBoardStyle({ themeOverrides: { ...doc.themeOverrides, font } }, "Change board font")}
-        />
-        <HebrewFontSelect
-          value={theme.hebrewFont ?? "auto"}
-          onChange={(hebrewFont) =>
-            setBoardStyle({ themeOverrides: { ...doc.themeOverrides, hebrewFont } }, "Change board Hebrew font")
-          }
-        />
-        <p className={PANEL_LABEL}>Elements can pick their own on their Appearance tab.</p>
+      <div className="mt-5">
+        <BoardFontSettings />
       </div>
     </div>
   );

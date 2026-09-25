@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { BundleEnvelope } from "@/lib/bundle/types";
-import { boardPictureUrls, DeviceFiles, type AssetProgress } from "./assets";
+import { boardFileUrls, DeviceFiles, type AssetProgress } from "./assets";
+import { loadFonts } from "./fonts";
 import { resetMediaStats } from "./debug";
 import { forgetBundle, readBundle, writeBundle } from "./store";
 import { deviceHeaders } from "./device";
@@ -168,7 +169,7 @@ export function useDisplay(token: string) {
       // photos aren't waited for here: each Gallery and Collage asks for its own
       // (assets.ts) and shows a page only once all of it has arrived.
       await loadFiles();
-      const pictures = await files.warmUrls(boardPictureUrls(next), reporter);
+      const pictures = await files.warmUrls(boardFileUrls(next), reporter);
       setStatus((s) => ({ ...s, assetProgress: null, assetPhase: null }));
       // Held back deliberately when a board is already showing: it keeps running
       // and the next poll tries again — a partially-cached bundle would show grey
@@ -180,6 +181,9 @@ export function useDisplay(token: string) {
         return;
       }
 
+      // Its fonts loaded before it goes up, so the new board never shows a
+      // moment of a fallback face (./fonts.ts).
+      await loadFonts(next.fonts);
       await writeBundle(token, next);
       adopt(next, "network");
     } catch {
@@ -218,7 +222,7 @@ export function useDisplay(token: string) {
     // Once per board, after its widgets have had time to declare their whole
     // cycles (assets.ts, evict); again on the next board, or after a reload.
     const timer = setTimeout(() => {
-      if (currentRef.current === bundle) void files.evict(boardPictureUrls(bundle));
+      if (currentRef.current === bundle) void files.evict(boardFileUrls(bundle));
     }, EVICT_AFTER_MS);
     return () => clearTimeout(timer);
   }, [bundle, files]);

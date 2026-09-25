@@ -136,8 +136,13 @@ Environment variables: @docs/environment.md
   `lining-nums tabular-nums` (`widgets/Digits.tsx`), which is enough in a face
   with tnum; a face without it gets a box per digit as wide as its widest
   digit at that weight, measured in the font files at build time
-  (`scripts/build-fonts.ts`, `--board-digit-<weight>`). The build report flags
-  any face whose figures are old-style with no lining alternative.
+  (`scripts/build-fonts.ts`, `--board-digit-<weight>`). The one exception is a
+  face whose figures are old-style with no lining set (Marcellus, Pinyon
+  Script, Parisienne, Suez One, and Alef for boards that already use it): in
+  a time widget only, its digits come from the matched fallback — Frank Ruhl
+  Libre for a serif, Heebo otherwise — through a digit-only family at the
+  front of the stack (`numericFace`, `DIGIT_FAMILIES`). The build report
+  lists those faces. Script faces aren't offered in time widgets' pickers.
   **The face is necessary and not sufficient.** Figures of equal width still
   do not line up when the strings are different lengths: `7:22 PM` against
   `11:21 AM` puts the two-digit hour a digit out past the one-digit ones,

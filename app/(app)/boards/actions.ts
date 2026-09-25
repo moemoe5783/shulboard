@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { boardDocAsJson, emptyBoardDoc } from "@/lib/board-doc";
+import { newBoardFontOverrides } from "@/lib/fonts/themes";
 import { requireActiveOrg } from "@/lib/orgs";
 import { resolutionById } from "@/lib/screens";
 import { createClient } from "@/lib/supabase/server";
@@ -34,7 +35,8 @@ export async function createBoard(
       name,
       canvas_width: resolution.width,
       canvas_height: resolution.height,
-      doc: boardDocAsJson(emptyBoardDoc()),
+      // A new board starts on the Modern font theme (lib/fonts/themes.ts).
+      doc: boardDocAsJson({ ...emptyBoardDoc(), themeOverrides: newBoardFontOverrides() }),
     })
     .select("id")
     .single();

@@ -41,6 +41,8 @@ export const manifest: WidgetManifest<ClockConfig> = {
   defaultSize: { w: 520, h: 220 },
   isPro: false,
   settingsSchema: clockConfigSchema,
+  // Times, zmanim or a date: no script faces offered, lining digits (widgets/types.ts).
+  showsTimes: true,
   /**
    * Nothing is fetched over the network — §3b: the clock is computed in the
    * browser from the system clock and needs no network, ever. The declaration

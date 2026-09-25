@@ -45,6 +45,7 @@ const PUBLIC_PREFIXES = [
   "/preview-lab",
   "/clock-lab",
   "/widgets-lab",
+  "/fonts-lab",
 ];
 
 function isPublic(pathname: string): boolean {

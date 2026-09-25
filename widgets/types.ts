@@ -95,6 +95,13 @@ export type ElementSizing = {
 export type WidgetManifest<TConfig = Record<string, unknown>> = {
   /** Matches `type` in the board document. Stable forever once shipped. */
   id: string;
+  /** The board font role (lib/fonts/roles.ts) this widget's text takes when
+   *  its font is left to the theme. Heading for Title; body when omitted. */
+  fontRole?: "heading" | "body";
+  /** Shows clock times, zmanim, a date or a countdown. Its font picker leaves
+   *  out script faces, and a face with old-style figures sets its digits in
+   *  the matched fallback (lib/board-theme.ts, numericFace). */
+  showsTimes?: boolean;
   /** Shown in the add-widget menu. Sentence case. */
   name: string;
   /** One line in the add-widget menu, saying what it puts on the board. */

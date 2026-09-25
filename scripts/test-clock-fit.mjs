@@ -86,13 +86,27 @@ try {
     });
   };
 
+  // A zone where the hour has two digits right now: fit sizes for the widest
+  // time the format can show, so "it fills the box" only holds on a time that
+  // wide — at 1:23 the drawn text is a digit narrower, by design.
+  const hourNow = (zone) =>
+    Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: true, timeZone: zone }).format(new Date()).split(" ")[0]);
+  const wideZone = Array.from({ length: 24 }, (_, i) => `Etc/GMT${i - 12 >= 0 ? "+" : ""}${i - 12}`).find((zone) => {
+    try {
+      return hourNow(zone) >= 10;
+    } catch {
+      return false;
+    }
+  });
+  const wide = `tz=${encodeURIComponent(wideZone)}`;
+
   console.log("\n-- fit follows the box ----------------------------------------");
   {
-    const narrow = await open("w=40&h=40");
+    const narrow = await open(`w=40&h=40&${wide}`);
     check(narrow.overhang <= 1, "a width-bound clock never passes the box's edges", `${narrow.overhang.toFixed(1)}px`);
     check(Math.abs(narrow.textW - narrow.boxW) <= 2, "and it grows to the box's full width", `${narrow.textW.toFixed(0)} of ${narrow.boxW.toFixed(0)}px`);
 
-    const wider = await open("w=60&h=40");
+    const wider = await open(`w=60&h=40&${wide}`);
     check(wider.fontPx > narrow.fontPx * 1.3, "a wider box means bigger type", `${narrow.fontPx.toFixed(0)} -> ${wider.fontPx.toFixed(0)}px`);
 
     const short = await open("w=90&h=15");
@@ -135,10 +149,11 @@ try {
     for (const [query, expected, why] of [
       ["font=heebo", "Heebo", "a widget set in Heebo shows its time in Heebo"],
       ["font=rubik", "Rubik", "and Rubik"],
-      ["font=alef", "Alef", "a widget set in Alef (no tabular figures) keeps Alef"],
+      ["font=alef", "Heebo Digits", "a widget set in Alef (old-style figures) takes Heebo's digits"],
       ["boardFont=davidLibre", "David Libre", "a board set in David Libre shows its clocks in it"],
-      ["boardFont=suezOne", "Suez One", "a board set in Suez One keeps Suez One"],
-      ["boardFont=heebo&font=alef", "Alef", "a widget's own font wins over the board's"],
+      ["boardFont=suezOne", "Frank Ruhl Libre Digits", "a board set in Suez One takes Frank Ruhl Libre's digits"],
+      ["boardFont=heebo&font=alef", "Heebo Digits", "a widget's own font wins over the board's"],
+      ["boardFont=heebo&font=inter", "Inter", "and a lining face keeps its own digits"],
     ]) {
       const clock = await open(`w=40&h=20&${query}`);
       check(clock.family === expected, why, clock.family);
@@ -150,6 +165,14 @@ try {
     check(/em$/.test(alef.digitBox), "Alef (no tnum) gets a digit box", alef.digitBox);
     check(rubik.digitBox === "" || rubik.digitBox === "auto", "Rubik gets none", rubik.digitBox || "unset");
     check(new Set(alef.digitWidths).size === 1, "and its digits share one width", alef.digitWidths.join(" "));
+
+    // Old-style figures, no lining set: the digits come from the matched
+    // fallback (a digit-only family first in the stack), the rest from the face.
+    const suez = await open("w=40&h=20&font=suezOne");
+    check(suez.family === "Frank Ruhl Libre Digits", "a Suez One clock draws its digits in Frank Ruhl Libre", suez.family);
+    const pinyon = await open("w=40&h=20&font=pinyon-script");
+    check(pinyon.family === "Heebo Digits", "a Pinyon Script clock draws its digits in Heebo", pinyon.family);
+    check(new Set(pinyon.digitWidths).size === 1, "boxed to Heebo's widest digit", pinyon.digitWidths.join(" "));
   }
 } finally {
   await browser.close();

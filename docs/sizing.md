@@ -449,7 +449,13 @@ faces instanced at each), the board root and a widget frame publish the widths
 as `--board-digit-<weight>`, and a digit's box reads the one for its own
 weight. Colons, spaces and AM/PM stay natural width. `npm run fonts` prints
 which faces use which method and flags any with old-style figures and no lining
-alternative. `scripts/test-clock-fit.mjs` pins both paths.
+alternative — for those (Marcellus, Pinyon Script, Parisienne, Suez One, and
+Alef, which no picker offers any more), a time widget's digits come from the
+matched fallback through a digit-only family (`"Frank Ruhl Libre Digits"`,
+`"Heebo Digits"`, unicode-range 0–9) at the front of the numeric stack, so they
+stand even; letters and the colon stay the face's own, and outside time widgets
+the face keeps its own figures. Script faces are left out of time widgets'
+font pickers. `scripts/test-clock-fit.mjs` pins all three paths.
 Hebrew Date, Parsha and Daf Yomi keep Frank Ruhl Libre for their Hebrew
 lines — that is sefarim typography for Hebrew letters, not a figure set.
 

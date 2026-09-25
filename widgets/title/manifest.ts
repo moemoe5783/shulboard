@@ -36,6 +36,8 @@ export const manifest: WidgetManifest<TitleConfig> = {
   defaultSize: { w: 800, h: 200 },
   isPro: false,
   settingsSchema: titleConfigSchema,
+  // A title is set in the board's heading font (lib/fonts/roles.ts).
+  fontRole: "heading",
   // Nothing to fetch. It says what it is told to say.
   dataNeeds: () => [],
   /**
